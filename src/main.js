@@ -31,6 +31,14 @@ import { mountWorldbookDetail } from './features/worldbook/worldbook-detail.js';
 import { mountPersonaList }     from './features/persona/persona-list.js';
 import { mountPersonaDetail }   from './features/persona/persona-detail.js';
 import { mountPersonaPick }     from './features/persona/persona-pick.js';
+import { mountMonitor }         from './features/monitor/monitor.js';
+import { mountMonitorView }     from './features/monitor/monitor-view.js';
+import { mountBottle }          from './features/bottle/bottle.js';
+import {
+  BEAR_CHARACTER_ID, BEAR_SESSION_ID, DEFAULT_BEAR_AVATAR,
+  ensureBearExists, pickAmbientLine,
+} from './core/pet.js';
+import { scanDueBottles } from './core/bottle.js';
 
 // Expose modules on window for console-driven dev/debugging.
 window.app = { db, router, ai, context };
@@ -60,6 +68,13 @@ function renderShell() {
         </span>
       </header>
       <div id="page-container"></div>
+      <!-- Desk pet orb. Sits inside .phone-frame but OUTSIDE #page-container
+           so it survives router.navigate() (pages get re-mounted, the orb
+           doesn't). Hidden until ensureBearExists + setupPet bring it up. -->
+      <button class="pet-orb" hidden type="button" aria-label="桌宠">
+        <img class="pet-orb-img" alt="">
+      </button>
+      <div class="pet-bubble" hidden></div>
     </div>
   `;
 }
@@ -144,9 +159,192 @@ async function boot() {
   router.registerPage('persona-list',      mountPersonaList);
   router.registerPage('persona-detail',    mountPersonaDetail);
   router.registerPage('persona-pick',      mountPersonaPick);
+  router.registerPage('monitor',           mountMonitor);
+  router.registerPage('monitor-view',      mountMonitorView);
+  router.registerPage('bottle',            mountBottle);
+
+  // Reserved bear character + session (id-stable, idempotent).
+  await ensureBearExists(db, ai.getActiveApiConfig);
+  // Bottles waiting to be auto-replied → check if any are due. Lazy
+  // generation: only fires API calls when bottles cross their replyDueAt.
+  scanDueBottles(db, ai).catch(err => console.warn('[boot] bottle scan failed:', err));
+  // Pet floating orb wiring (drag persistence, ambient bubble, click → chat).
+  setupPet(router).catch(err => console.warn('[boot] pet setup failed:', err));
 
   await router.navigate('home');
   console.log('[boot] mounted home');
+}
+
+// Set up the floating pet orb: load avatar / position from settings, wire
+// drag + click + ambient bubble. Idempotent — safe to call once at boot.
+async function setupPet(router) {
+  const orb    = document.querySelector('.pet-orb');
+  const img    = document.querySelector('.pet-orb-img');
+  const bubble = document.querySelector('.pet-bubble');
+  if (!orb || !img || !bubble) return;
+
+  const settings = (await db.get('settings', 'default')) || { id: 'default' };
+  if (settings.petEnabled === false) {
+    orb.hidden = true;
+    bubble.hidden = true;
+    return;
+  }
+  const bear = await db.get('characters', BEAR_CHARACTER_ID);
+  img.src = bear?.avatar || DEFAULT_BEAR_AVATAR;
+  orb.hidden = false;
+
+  // Restore position. Default: bottom-right with margin.
+  const frame = document.querySelector('.phone-frame');
+  const frameRect = frame.getBoundingClientRect();
+  const defaultX = frameRect.width  - 72;
+  const defaultY = frameRect.height - 140;
+  const x = Number.isFinite(settings.petX) ? settings.petX : defaultX;
+  const y = Number.isFinite(settings.petY) ? settings.petY : defaultY;
+  orb.style.left = clampToFrame(x, 'x') + 'px';
+  orb.style.top  = clampToFrame(y, 'y') + 'px';
+
+  function clampToFrame(v, axis) {
+    const r = frame.getBoundingClientRect();
+    const orbW = 48, orbH = 48;
+    if (axis === 'x') return Math.max(8, Math.min(v, r.width  - orbW - 8));
+    return Math.max(40, Math.min(v, r.height - orbH - 8));
+  }
+
+  // Pointer wiring:
+  //   - pointerdown starts both a long-press timer (touch/pen → enter chat)
+  //     and a drag-detect (>4px moved = drag, persisted on up).
+  //   - pointerup with no drag and no long-press fired = short tap, shows
+  //     an ambient bubble immediately.
+  //   - contextmenu (desktop right-click) = enter chat.
+  // The "tap to greet, long-press / right-click to chat" split matches
+  // physical pet UX expectations — you can pet the orb without it dragging
+  // you into a conversation.
+  let drag = null;
+  let longPressTimer = null;
+  let longPressFired = false;
+  const LONG_PRESS_MS = 600;
+
+  function clearLongPress() {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  }
+
+  orb.addEventListener('pointerdown', (e) => {
+    const orbRect = orb.getBoundingClientRect();
+    drag = {
+      pointerId: e.pointerId,
+      startX: e.clientX, startY: e.clientY,
+      offsetX: e.clientX - orbRect.left,
+      offsetY: e.clientY - orbRect.top,
+      moved: false,
+    };
+    longPressFired = false;
+    try { orb.setPointerCapture(e.pointerId); } catch (_) {}
+    // Long-press for touch / pen only (desktop has right-click instead)
+    if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+      longPressTimer = setTimeout(() => {
+        longPressFired = true;
+        bubble.hidden = true;
+        router.navigate('chat', { sessionId: BEAR_SESSION_ID });
+        longPressTimer = null;
+      }, LONG_PRESS_MS);
+    }
+  });
+  orb.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    if (!drag.moved && Math.hypot(dx, dy) > 4) {
+      drag.moved = true;
+      clearLongPress();  // moving cancels the long-press intent
+    }
+    if (drag.moved) {
+      const r = frame.getBoundingClientRect();
+      const nx = e.clientX - r.left - drag.offsetX;
+      const ny = e.clientY - r.top  - drag.offsetY;
+      orb.style.left = clampToFrame(nx, 'x') + 'px';
+      orb.style.top  = clampToFrame(ny, 'y') + 'px';
+      bubble.hidden = true;
+    }
+  });
+  orb.addEventListener('pointerup', async (e) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    try { orb.releasePointerCapture(e.pointerId); } catch (_) {}
+    clearLongPress();
+    const wasDrag = drag.moved;
+    const wasLongPress = longPressFired;
+    drag = null;
+    if (wasDrag) {
+      const newX = parseFloat(orb.style.left) || 0;
+      const newY = parseFloat(orb.style.top)  || 0;
+      const s = (await db.get('settings', 'default')) || { id: 'default' };
+      s.petX = newX; s.petY = newY;
+      await db.set('settings', s);
+      return;
+    }
+    if (wasLongPress) return;  // chat already navigated
+    // Plain short tap → pop an ambient bubble. If one's already up we just
+    // re-trigger so the user sees a fresh line.
+    await showBubble({ forceFresh: true });
+  });
+  // Right-click anywhere on the orb → go straight to chat.
+  orb.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    bubble.hidden = true;
+    router.navigate('chat', { sessionId: BEAR_SESSION_ID });
+  });
+
+  // Bubble — picks a rule-driven line, no API call. Click on bubble dismisses
+  // + writes petDismissed[triggerKey] = now (cooldown lives in pet.js).
+  // forceFresh: short-tap on the orb wants a greeting RIGHT NOW even if the
+  // bubble's already up; we transiently clear the dismissed map so a recently
+  // dismissed trigger can fire again, then restore it after the pick.
+  let currentTriggerKey = null;
+  async function showBubble({ forceFresh = false } = {}) {
+    let restoreDismissed = null;
+    if (forceFresh) {
+      const s = (await db.get('settings', 'default')) || { id: 'default' };
+      restoreDismissed = s.petDismissed || {};
+      s.petDismissed = {};
+      await db.set('settings', s);
+    }
+    const picked = await pickAmbientLine({ db, getActiveApiConfig: ai.getActiveApiConfig });
+    if (restoreDismissed) {
+      const s = (await db.get('settings', 'default')) || { id: 'default' };
+      // Only restore entries not for the trigger we just used, so the
+      // user-initiated greeting also counts as "seen" and won't re-pop on
+      // its own a moment later.
+      s.petDismissed = restoreDismissed;
+      if (picked) s.petDismissed[picked.triggerKey] = Date.now();
+      await db.set('settings', s);
+    }
+    if (!picked) return;
+    currentTriggerKey = picked.triggerKey;
+    bubble.textContent = picked.line;
+    positionBubble();
+    bubble.hidden = false;
+    const s = (await db.get('settings', 'default')) || { id: 'default' };
+    s.petLastBubbleAt = Date.now();
+    await db.set('settings', s);
+  }
+  function positionBubble() {
+    const orbRect = orb.getBoundingClientRect();
+    const frameRect = frame.getBoundingClientRect();
+    const bx = orbRect.left - frameRect.left - 100;  // bubble width-ish offset
+    const by = orbRect.top  - frameRect.top  - 44;   // above orb
+    bubble.style.left = Math.max(8, bx) + 'px';
+    bubble.style.top  = Math.max(40, by) + 'px';
+  }
+  bubble.addEventListener('click', async () => {
+    bubble.hidden = true;
+    if (currentTriggerKey) {
+      const s = (await db.get('settings', 'default')) || { id: 'default' };
+      s.petDismissed = { ...(s.petDismissed || {}), [currentTriggerKey]: Date.now() };
+      await db.set('settings', s);
+    }
+  });
+
+  // Fire once at boot, after a short delay so the page can mount first.
+  setTimeout(() => { showBubble().catch(() => {}); }, 800);
 }
 
 boot().catch(err => console.error('[boot] failed:', err));

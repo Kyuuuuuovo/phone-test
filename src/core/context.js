@@ -169,6 +169,15 @@ export async function buildSystemPrompt(sessionId, { featureContext } = {}) {
   // future just shown with time.
   const scheduleLines = await buildScheduleLines(character.id);
   if (scheduleLines) parts.push(`# 当前行程\n\n${scheduleLines}`);
+  // 8c. 摄像头 — what the character knows about cameras in their home.
+  // CRITICAL: spy cameras that are NOT yet discovered are NOT injected
+  // (the whole point of spy mode is the character doesn't know). Only
+  // injects (a) open cameras (character agreed to them) and (b) spy
+  // cameras AFTER discoveredAt is set (the character has already caught
+  // the user). Without this, monitor's noticed/discoveredAt state never
+  // reaches the chat side and the character keeps acting unaware.
+  const cameraLines = await buildCameraLines(character.id, persona?.name);
+  if (cameraLines) parts.push(`# 摄像头\n\n${cameraLines}`);
   // 9. 对话规范
   if (humanizer) {
     parts.push(`# 对话规范\n\n${humanizer}`);
@@ -189,6 +198,37 @@ export async function buildSystemPrompt(sessionId, { featureContext } = {}) {
   // 13. 动作定义表(每种动作的 JSON schema + 示例)
   parts.push(ACTION_SCHEMAS_TEXT);
   return parts.join('\n\n---\n\n');
+}
+
+// Camera knowledge for the character — only includes cameras the character
+// could plausibly know about:
+//   - open cameras (consented at placement)
+//   - spy cameras AFTER discoveredAt is set (i.e. the noticed=true moment
+//     in surveillance.js flipped the world state; character now knows)
+// Un-discovered spy cameras are deliberately omitted: injecting them
+// would tell the character about cameras the design says they don't know
+// about, breaking the whole spy/open distinction (CLAUDE.md 铁律 9).
+async function buildCameraLines(characterId, userName) {
+  const cameras = await db.query('cameras', 'characterId', characterId);
+  if (cameras.length === 0) return '';
+  const u = userName || '用户';
+  const lines = [];
+  const openRooms = cameras
+    .filter(c => c.mode === 'open')
+    .map(c => c.angle ? `${c.room}(角度:${c.angle})` : c.room);
+  if (openRooms.length > 0) {
+    lines.push(`${u} 在你家以下位置装了公开摄像头(你同意的,知道 ta 能从镜头看到你):\n${openRooms.map(r => '- ' + r).join('\n')}`);
+  }
+  const discoveredSpies = cameras.filter(c => c.mode === 'spy' && c.discoveredAt);
+  for (const cam of discoveredSpies) {
+    const d = new Date(cam.discoveredAt);
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    // Pure fact statement — no defined consequences. How the character
+    // reacts (cold war / smashed the lens / let it go) is up to persona,
+    // not the system prompt. CLAUDE.md 铁律 3.
+    lines.push(`你曾在 ${dateStr} 发现 ${u} 在你家 ${cam.room} 偷装了一台摄像头。`);
+  }
+  return lines.join('\n\n');
 }
 
 // Schedule entries near current time, formatted as text lines for prompt

@@ -8,7 +8,10 @@
 
 ### 后端核心(`src/core/`)
 
-- `db.js` —— IndexedDB 封装。`STORES` 常量是数据模型唯一来源。改动需 bump `DB_VERSION`。当前 `DB_VERSION = 4`。导出 `init / get / set / getAll / query(store, indexName, value) / del / clear / newId`。
+- `db.js` —— IndexedDB 封装。`STORES` 常量是数据模型唯一来源。改动需 bump `DB_VERSION`。当前 `DB_VERSION = 6`。导出 `init / get / set / getAll / query(store, indexName, value) / del / clear / newId`。
+- `pet.js` —— 桌宠模块。常量 `BEAR_PERSONA / AMBIENT_LINES`(作者锁定文案,普通用户改不到),保留 ID `BEAR_CHARACTER_ID = '__bear__'` / `BEAR_SESSION_ID = '__bear_session__'`;`ensureBearExists()` boot 时幂等保证两条 row 存在;`pickAmbientLine()` 按规则(无 API / 无角色 / lastMessageAt 老旧 / 时段)挑一条气泡文案,**不调 API**。聊天复用现有 chat 管线,不另起。
+- `bottle.js` —— 漂流瓶核心。`scanDueBottles(db, ai)` 找 `replyDueAt <= now` 的 drifting 瓶子懒生成回信(boot + open app 时调用);`replyAsContact` / `replyAsStranger` 分两种受众生成回信(联系人模式注入"匿名"事实让角色不知道作者是谁);`fishBottle` 让 AI 现造陌生人 + 瓶子内容;`promoteStrangerToFriend` 把瓶子上的 `generatedPersona` 升格成正式 character。**所有 prompt 文案是 // TODO(作者填写) 占位**,Claude 不替作者定稿语气。
+- `surveillance.js` —— 监控模块。`generateSnapshot(cameraId)` 拼专用 system prompt(persona + schedule + 最近聊天 + 房间 + angle + 模式事实 + 视角刚变动 hint)→ 严格 JSON schema(`{location, posture, activity, mood, caption, noticed}`)→ 写 `activityLog`,spy mode 且 noticed=true 时 flip `camera.discoveredAt`(铁律 9)。`proposeRooms(characterId, {excludeRoom})` 让 AI 给 3-4 个 ta 同意装/换机位的房间,prompt 里附"已装 N 台公开摄像头(房间:A、B)"上下文,允许 AI 返回 `[]` 表示 ta 拒绝再装。`proposeAngles(characterId, room)` 给 3-4 个合理镜头朝向(转动镜头流程的"AI 推荐"路径)。所有函数 `temperature: 0.4`。
 - `context.js` —— `buildSystemPrompt(sessionId)`(13 段拼接,见函数注释)、`buildMessageHistory(sessionId, maxRecent=40)`、`maybeCompressMemory(sessionId)`(无 threshold 参数;读 `settings.memoryEnabled / memoryThreshold`,默认 enabled + 20);prompt 第②层「当前状态」会自动注入 `# 当前行程`(`buildScheduleLines` 在 [-6h, +24h] 窗内挑相关行程,user 全注 + character 仅当前会话角色)。
 - `ai.js` —— `callAIOnce / callAI / requestReply` 三层。tool calling 支持 `get_current_time` / `get_weather` / `get_location`(按 chatSessions 的 toggle 启用)。`requestReply` 在末尾调一次 `maybeCompressMemory`。
 - `weather.js` —— 用户填 URL 模板 + key 的统一接口,响应原文 ≤1500 字传给 AI 自己解析(`PRESET_TEMPLATES` 是 3 个一键预设按钮)。
@@ -21,7 +24,7 @@
 - 全局壳:`.phone-frame` 用 `clamp(400px, calc((100vh - 24px) * 9 / 19.5), 480px)` 自适应桌面比例 + `align-items:center` 居中。状态栏:时间 + 4 根渐高竖线信号 SVG + 电池(`navigator.getBattery()`)。
 - **首页 (`home`)** —— 2 页:
   - 第 1 页:角色 / 世界书 / 人设 / 行程 + 装饰位(图片 / 便签 widget,`homeWidgets` store;widget 有 `size`(small/medium/large)+ `placement`(above/below tiles))+ 收藏 widget(自带)+「＋ 添加装饰」按钮
-  - 第 2 页:日记 / 推特 / 论坛 / 商城 / 监控(都是占位,点击 alert「还没做完」)
+  - 第 2 页:日记 / 推特 / 论坛 / 商城(占位)+ 监控(已实) —— 点 monitor icon → monitor 列表
   - Dock:**微信** / 设置
   - 整页 `overflow-y: hidden`,装饰物高度自适应不下滑
 - **微信壳 (`messaging`)** —— 4 个底 tab:
@@ -33,15 +36,18 @@
   attach-panel(语音 / 图片 / 红包 / 转账 / 位置 — 都用 in-frame modal 收集输入);
   bubble menu(右键 / 长按 500ms):引用 / 复制 / 收藏 / 删除;
   ⋯ 更多 → `chat-info`(置顶 toggle / 显示已读 toggle / 会话设置 / 聊天美化 / 记忆总结 / 编辑角色 / 清空 / 拉黑)
-- 已注册路由 (~30 个):
+- **监控 (`monitor` / `monitor-view`)**:列表 + 单画面卡。添加机位三步 modal:选角色 → 选模式(光明正大 / 偷窥)→ 选房间(光明正大走 `proposeRooms`,偷窥用户自填)。画面是 CCTV 风格深灰卡 + 噪点 overlay + saturate/hue 滤镜,显示 location/posture/activity/mood/caption + 红点 REC + 时间戳。spy 被察觉后顶部红条 + camera.discoveredAt 写入。快照式:刷新 = 一次 API 调用 = 一帧。
+- 已注册路由 (~32 个):
   - `home / settings / settings-api / settings-api-detail / settings-weather / settings-theme / settings-memory / settings-data / settings-clear`
   - `messaging / chat-list / chat / chat-info / chat-beautify / chat-settings / memory-manage`
   - `character-list / character-detail / worldbook-list / worldbook-detail / persona-list / persona-detail / persona-pick`
-  - `wallet / favorites-list / schedule`
+  - `wallet / favorites-list / schedule / monitor / monitor-view / bottle`
+- **桌宠**:全局悬浮球,挂在 `.phone-frame` 内、`#page-container` **兄弟节点**(跨页常驻,不走 router)。交互三档:**短点 = 冒一条氛围气泡**(强制 fresh,绕过冷却);**长按 (touch/pen 600ms) / 右键 = 进 `chat` sessionId=`__bear_session__`**;>4px 拖动 = 持久化新坐标。氛围气泡按规则(无 API / 无角色 / lastMessageAt 老旧 / 时段)挑文案,**不调 API**。位置 / 开关 / 气泡冷却进 `settings`。`__bear__` 在 character-list / contacts / 新建对话 modal / monitor 选角色 / 行程选角色 等所有"选角色"界面都被过滤(`c.id !== '__bear__'`),编辑入口只在 设置 → 桌宠 → 编辑桌宠人设(跳 `character-detail`)。
+- **漂流瓶 (`bottle`)**:网络隐喻(不是物理瓶子,UI 文案避开"海里/捞/漂着"),保留 audience 二选一,一瓶一回。两种受众模式:**contacts** = 从非内置非拉黑 character 里随机挑一个回信,注入 `ANONYMITY_FRAMING_FOR_CONTACTS` 让 ta 不知道作者是谁;**strangers** = 用 `STRANGER_PERSONA_GENERATOR_SYS` 现造一个网络上的陌生人(任何国家时区/年龄/身份/心情 — 强调多样性,不要默认温柔好人)再让 ta 回。发时只存 row(`status='drifting'`、`replyDueAt = now + 30min-4h 随机`);boot + 打开 app 时 `scanDueBottles` 找到期 drifting → 懒生成回信。"随机收一条" = AI 现造陌生人 + 写一封瓶子。回信 / 发的人支持「加好友」一键升格成正式 character。回信是**纯文本**,不走动作协议,不进 chatMessages —— 单独存在 `bottles` store。
 
 ---
 
-## 数据模型(`db.js` STORES,DB_VERSION = 4)
+## 数据模型(`db.js` STORES,DB_VERSION = 6)
 
 | store | 主键 | 索引 | 说明 |
 |---|---|---|---|
@@ -54,11 +60,14 @@
 | `chatMessages` | `id` | sessionId, createdAt | role(`user`/`character`/`system`)/ **actions[]** / createdAt |
 | `memories` | `id` | sessionId | 长对话压缩摘要,字段 sessionId / summary / fromMsgId / toMsgId / createdAt |
 | `apiConfig` | `id` | — | 多条;每条 id / name / apiUrl / apiKey / modelName / temperature。当前活跃由 `settings.activeApiConfigId` 指 |
-| `settings` | `id` | — | 单例 id=`default`。字段:`theme`(对象,见 [core/theme.js](src/core/theme.js))/ `themePresets[]` / `wallpaper`(base64 桌面壁纸)/ `activeApiConfigId` / `activePersonaId`(新建会话用)/ `weatherApi: {urlTemplate, apiKey}` / `memoryEnabled`(默认 true)/ `memoryThreshold`(默认 20)。`humanizerPrompt` 字段已废弃,在 `src/core/humanizer.js` 常量里 |
+| `settings` | `id` | — | 单例 id=`default`。字段:`theme`(对象,见 [core/theme.js](src/core/theme.js))/ `themePresets[]` / `wallpaper`(base64 桌面壁纸)/ `activeApiConfigId` / `activePersonaId`(新建会话用)/ `weatherApi: {urlTemplate, apiKey}` / `memoryEnabled`(默认 true)/ `memoryThreshold`(默认 20)/ `memoryBatchSize`(默认 10)/ `petEnabled`(默认 true)/ `petX` / `petY`(悬浮球持久化坐标)/ `petLastBubbleAt` / `petDismissed: {triggerKey: ts}`(气泡冷却记录)。`humanizerPrompt` 字段已废弃,在 `src/core/humanizer.js` 常量里 |
 | `wallet` | `id` | — | 单例 id=`default`,字段 balance。用户发红包/转账扣余额,领 AI 红包/转账加余额。充值在「我 → 钱包」 |
 | `favorites` | `id` | sessionId, savedAt | 收藏的消息条目,字段 sessionId / msgId / actionIdx / savedAt / note。bubble menu「收藏」存入这里,「我 → 收藏」浏览 |
 | `schedule` | `id` | startTs, characterId | 行程条目,字段 who(`user`/`character`)/ characterId(who=character 时)/ startTs / endTs / title / desc / createdAt。在 [now-6h, now+24h] 窗内被注入 system prompt 的「# 当前行程」段 |
-| `homeWidgets` | `id` | createdAt | 用户添加的桌面装饰,字段 type(`image`/`note`)/ data(base64 或文本)/ size(`small`/`medium`/`large`)/ placement(`above`/`below`)/ createdAt |
+| `homeWidgets` | `id` | createdAt | 用户添加的桌面装饰,字段 type(`image`/`note`)/ data(base64 或文本)/ size(`small`/`medium`/`large`)/ placement(`above`/`below`)/ `order`(拖拽重排后写入,排序时 fallback createdAt)/ createdAt |
+| `cameras` | `id` | characterId | 监控机位,字段 characterId / room / `angle?`(可选,镜头朝向描述) / mode(`open`/`spy`) / createdAt / `discoveredAt`(spy 被察觉时写入,null 表示未被察觉)/ `viewChangedAt?`(换机位或转动镜头时写入,monitor-view 渲染时过滤 createdAt < 这个值的旧 activityLog,数据保留但 UI 隐藏) |
+| `activityLog` | `id` | cameraId, characterId | 监控快照历史,字段 cameraId / characterId / sessionId? / `payload: {location, posture, activity, mood, caption, noticed, outOfReach?}` / createdAt。每次刷新画面 append 一条 |
+| `bottles` | `id` | status, castAt | 漂流瓶(网络隐喻,不是物理瓶子),字段 content / authorIsUser / audience(`contacts`/`strangers`) / status(`drifting`/`replied`/`read`) / replierCharacterId?(contacts 模式回信的角色 id) / generatedPersona?({name,persona,vibe,avatar?})(strangers 模式现造的人格) / reply? / castAt / replyDueAt? / repliedAt? / promotedCharacterId?。一瓶一回,要续聊走 `promoteStrangerToFriend` 升格成正式 character |
 
 ---
 
@@ -121,11 +130,11 @@
 - **位置功能进阶** —— 现在是纯展示卡片,以后可以做地图选点 + 经纬度
 
 ### Phase 2(MVP-2)
-- **群聊**:`chatSessions.participantIds[]` 字段、群里「谁该说话/什么时机说」机制(玩家@还是 AI 自决)
+- **群聊**:`chatSessions.participantIds[]` 字段、群里「谁该说话/什么时机说」机制(导演 + 演员两层 — 第一层轻量导演选 speakers,第二层每个 speaker 走现有单角色管线)。新建对话 modal 入口已预留(`new-group` 按钮,目前 alert 占位);action schema 已加可选 `from` 字段(单聊省略、群聊角色名)
 - `state` 动作做成可选开关,设置里开启后 prompt 才要求模型输出
 - **环境上下文扩展**(按铁律 12 模板):
-  - **监控**(「角色此刻在干嘛」):点开时基于当前时间 + 角色 schedule + persona 现生成,存到 `activityLog` store,prompt 注入「# 角色当前活动」
-  - **角色当前活动主动注入**(可选 toggle):跟行程合并,prompt 第②层多一段
+  - **监控被察觉反向注入聊天**:用户在 monitor 看到的画面,可选回灌到下轮 chat 的 system prompt 作为「# 你从监控里看到的」事实;open 模式默认不灌(角色本来就知道镜头),spy 模式可 toggle。这是真正把"单文件多 app 跨应用状态联动"的优势发挥出来
+  - **角色当前活动主动注入**(可选 toggle):activityLog 最近一条注入 chat prompt「# 角色当前活动」
 
 ### Phase 3+(应用扩展,同模式复制)
 - 朋友圈、论坛、推特、日记、语音视频电话、监控、商城

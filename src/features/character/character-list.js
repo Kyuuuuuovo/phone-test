@@ -19,7 +19,10 @@ export async function mountCharacterList(container, params, router) {
   const body = container.querySelector('.entity-list-body');
 
   async function renderList() {
-    const chars = await db.getAll('characters');
+    const all = await db.getAll('characters');
+    // Hide reserved system characters (e.g. __bear__ for the desk pet).
+    // They're managed via 设置 → 桌宠 instead.
+    const chars = all.filter(c => c.id !== '__bear__');
     chars.sort((a, b) => {
       if (!!a.blocked !== !!b.blocked) return a.blocked ? 1 : -1;
       return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);

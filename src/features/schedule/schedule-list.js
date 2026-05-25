@@ -12,7 +12,7 @@ export async function mountScheduleList(container, params, router) {
   async function render() {
     const entries = await db.getAll('schedule');
     entries.sort((a, b) => a.startTs - b.startTs);
-    const chars = await db.getAll('characters');
+    const chars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
     const charMap = new Map(chars.map(c => [c.id, c]));
 
     const buckets = bucketize(entries);
@@ -68,7 +68,7 @@ export async function mountScheduleList(container, params, router) {
   }
 
   async function openEditor(id) {
-    const chars = await db.getAll('characters');
+    const chars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
     const existing = id ? await db.get('schedule', id) : null;
     const e = existing || {
       who: 'user',
@@ -155,7 +155,7 @@ export async function mountScheduleList(container, params, router) {
   }
 
   async function openAIGenModal() {
-    const chars = await db.getAll('characters');
+    const chars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
     if (chars.length === 0) { alert('先去角色管理建一个角色'); return; }
     const now = new Date();
     const defaultStart = new Date(now);

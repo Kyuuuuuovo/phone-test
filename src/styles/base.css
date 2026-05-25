@@ -183,10 +183,15 @@ body[data-fx-texture]:not([data-fx-texture="none"]) .page > * { position: relati
   overflow: hidden;
 }
 
-/* Fake iOS status bar at very top of frame. */
+/* Fake iOS status bar at very top of frame.
+   min-height: 30px is fixed in BOTH default and notch modes — it's the
+   height the notch pill needs (30px). Keeping it constant means toggling
+   the notch theme is pure decoration: page-body's available vertical
+   space doesn't change. */
 .status-bar {
   flex: 0 0 auto;
   padding: max(6px, env(safe-area-inset-top)) 22px 6px;
+  min-height: 30px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1850,6 +1855,409 @@ label .label-text {
    for character messages. Toggled by .for-user / .for-char on the menu. */
 .bubble-menu.for-user .only-char,
 .bubble-menu.for-char .only-user { display: none; }
+
+/* ── Monitor / 监控 app ─────────────────────────────────────────────────
+   Camera-list rows + CCTV "frame card" + a noise overlay to sell the
+   surveillance look without trying to be a real video stream. */
+.camera-list { display: flex; flex-direction: column; gap: 8px; }
+.camera-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+}
+.camera-row:hover { background: var(--bubble-char); }
+.camera-row .cam-info { flex: 1; min-width: 0; }
+.camera-row .cam-title { font-size: 14px; font-weight: 600; }
+.camera-row .cam-meta  { font-weight: 400; color: var(--muted); margin-left: 4px; font-size: 13px; }
+.camera-row .cam-state-discovered {
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+  background: var(--danger);
+  color: #fff;
+  border-radius: 6px;
+  vertical-align: middle;
+  font-weight: 500;
+}
+.camera-row .cam-caption {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Mode picker cards in add-camera step 2 */
+.mode-pick { display: flex; flex-direction: column; gap: 10px; margin: 8px 0 14px; }
+.mode-card {
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  cursor: pointer;
+  font: inherit;
+  color: var(--fg);
+}
+.mode-card:hover { background: var(--bubble-char); }
+.mode-card .mode-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.mode-card .mode-desc { font-size: 12px; line-height: 1.6; color: var(--muted); }
+
+/* Room chip picker (open mode AI suggestions, spy mode placeholders) */
+.room-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 14px;
+}
+.room-chip {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--bubble-char);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--fg);
+  cursor: pointer;
+}
+.room-chip:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* The CCTV frame itself — dark, monospace, with a noise overlay + slight
+   green/desaturate filter. Layout: top strip (REC + time + room), body
+   (posture/activity/caption/mood corner), bottom strip (mode + character). */
+.cctv-card {
+  position: relative;
+  background: #11141a;
+  color: #d8e0d6;
+  border-radius: 6px;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  filter: saturate(0.75) hue-rotate(-8deg) contrast(1.1);
+  min-height: 240px;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 14px;
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.55), 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+.cctv-noise {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+    repeating-linear-gradient(0deg, rgba(255,255,255,0.02) 0 1px, transparent 1px 3px);
+  background-size: 3px 3px, 100% 3px;
+  opacity: 0.5;
+  mix-blend-mode: overlay;
+}
+.cctv-top {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  font-size: 11px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.35);
+}
+.cctv-rec {
+  color: #ff4c4c;
+  font-weight: 700;
+  letter-spacing: 1px;
+  animation: cctv-rec-blink 1.4s ease-in-out infinite;
+}
+@keyframes cctv-rec-blink {
+  0%, 60% { opacity: 1; }
+  70%, 100% { opacity: 0.35; }
+}
+.cctv-time { font-variant-numeric: tabular-nums; opacity: 0.85; }
+.cctv-room {
+  margin-left: auto;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  font-size: 10px;
+}
+.cctv-body {
+  position: relative;
+  flex: 1;
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: center;
+}
+.cctv-empty-body { opacity: 0.45; text-align: center; }
+/* "Out of reach" — user set an angle pointing somewhere the camera can't
+   physically see. The model flags outOfReach=true; we show a centered
+   "够不到" message instead of the usual posture/activity/mood cells so it
+   reads as a deliberate state (not as if the frame just had empty data). */
+.cctv-out-of-reach {
+  text-align: center;
+  opacity: 0.7;
+}
+.cctv-out-of-reach .cctv-posture {
+  color: #ffb3b3;
+  font-style: italic;
+}
+.cctv-posture {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: #b8e0c8;
+}
+.cctv-caption {
+  position: relative;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.4);
+  border-left: 2px solid rgba(184, 224, 200, 0.45);
+  font-size: 13px;
+  line-height: 1.6;
+  color: #d8e0d6;
+}
+.cctv-mood {
+  position: absolute;
+  right: 10px;
+  bottom: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  background: rgba(184, 224, 200, 0.12);
+  border: 1px solid rgba(184, 224, 200, 0.3);
+  border-radius: 4px;
+  color: #d8e0d6;
+}
+.cctv-mood-alert {
+  right: auto;
+  left: 10px;
+  background: rgba(255, 76, 76, 0.18);
+  border-color: rgba(255, 76, 76, 0.55);
+  color: #ffb3b3;
+  font-weight: 700;
+}
+.cctv-bottom {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 10px;
+  font-size: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  letter-spacing: 0.5px;
+}
+.cctv-meta { opacity: 0.7; }
+
+/* The red banner that shows when a spy camera was discovered. */
+.cctv-noticed {
+  background: rgba(255, 59, 48, 0.12);
+  color: var(--danger);
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+  font-size: 13px;
+  border: 1px solid rgba(255, 59, 48, 0.35);
+}
+
+.cctv-actions { margin-top: 4px; }
+.cctv-actions .refresh-btn { width: 100%; }
+
+/* Delete button in monitor-view header */
+.monitor-view-page .page-header .cam-delete {
+  background: none;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 6px;
+}
+.monitor-view-page .page-header .cam-delete:hover { color: var(--danger); }
+
+/* + button in monitor list header */
+.monitor-page .page-header .new-camera {
+  background: none;
+  border: none;
+  font-size: 26px;
+  line-height: 1;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+/* ── Desk pet (floating orb + ambient bubble) ──────────────────────────
+   The orb is absolutely positioned inside .phone-frame so it survives
+   page navigation (main.js mounts it once at boot, outside #page-container).
+   Position is persisted to settings.petX/petY. */
+.pet-orb {
+  position: absolute;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  cursor: grab;
+  z-index: 200;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+  touch-action: none;
+}
+.pet-orb:active { cursor: grabbing; }
+.pet-orb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+}
+.pet-orb[hidden] { display: none; }
+.pet-bubble {
+  position: absolute;
+  z-index: 201;
+  max-width: 200px;
+  padding: 8px 12px;
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+}
+.pet-bubble[hidden] { display: none; }
+.pet-bubble:hover { opacity: 0.9; }
+
+/* Settings "桌宠" section */
+.settings-section-title {
+  margin: 24px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding-left: 4px;
+}
+.pet-avatar-row { cursor: default; }
+.pet-avatar-row:hover { background: var(--surface); }
+.pet-avatar-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pet-avatar-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.pet-avatar-controls .btn { padding: 6px 12px; font-size: 13px; }
+
+/* ── Drift bottles ─────────────────────────────────────────────────────── */
+.bottle-page .page-header .actions {
+  display: flex;
+  gap: 6px;
+}
+.bottle-page .page-header .actions button {
+  padding: 4px 12px;
+  font-size: 13px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.bottle-page .page-header .actions .bottle-cast { background: var(--accent); color: #fff; }
+
+.bottle-bucket-title {
+  margin: 18px 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+.bottle-list { display: flex; flex-direction: column; gap: 8px; }
+.bottle-row {
+  display: flex;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+}
+.bottle-row:hover { background: var(--bubble-char); }
+.bottle-info { flex: 1; min-width: 0; }
+.bottle-content {
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bottle-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.bottle-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 10px;
+  border-radius: 4px;
+  margin-right: 6px;
+  font-weight: 500;
+}
+.bottle-tag.drifting { background: var(--bg-pinned); color: var(--muted); }
+.bottle-tag.replied  { background: var(--accent);    color: #fff; }
+
+/* Bottle detail modal — two stacked "letter cards" (original + reply) */
+.bottle-detail-modal .modal-actions { flex-wrap: wrap; }
+.bottle-card {
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.bottle-card.original {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.bottle-card.reply {
+  background: var(--bg-pinned);
+  border: 1px solid var(--border);
+}
+.bottle-card-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+.bottle-card-body {
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.persona-blurb { margin-top: 4px; font-size: 12px; color: var(--muted); }
+.bottle-reply-form textarea { resize: vertical; }
 
 /* Reply preview bar (above input, shown while quoting) */
 .reply-preview {

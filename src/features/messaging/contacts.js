@@ -19,7 +19,7 @@ export async function mountContacts(container, params, router) {
       latestByChar.set(s.characterId, s);
     }
   }
-  const charIds = Array.from(latestByChar.keys());
+  const charIds = Array.from(latestByChar.keys()).filter(id => id !== '__bear__');
   const chars = (await Promise.all(charIds.map(id => db.get('characters', id)))).filter(Boolean);
 
   const collator = new Intl.Collator('zh-Hans-CN', { sensitivity: 'base' });

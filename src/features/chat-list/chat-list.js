@@ -319,7 +319,8 @@ export async function openNewChatModal(container, router) {
 
   async function renderPickStage() {
     const allChars = await db.getAll('characters');
-    const chars = allChars.filter(c => !c.blocked);
+    // Filter out reserved system characters (__bear__ for desk pet).
+    const chars = allChars.filter(c => !c.blocked && c.id !== '__bear__');
     chars.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
     modal.innerHTML = `
       <div class="modal">
@@ -362,7 +363,7 @@ export async function openNewChatModal(container, router) {
   // alerts and closes. Keeping the entry point so the path is visible.
   async function renderGroupStage() {
     const allChars = await db.getAll('characters');
-    const chars = allChars.filter(c => !c.blocked);
+    const chars = allChars.filter(c => !c.blocked && c.id !== '__bear__');
     chars.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
     modal.innerHTML = `
       <div class="modal">

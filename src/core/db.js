@@ -2,7 +2,7 @@
 // Data model frozen in STORES below — bump DB_VERSION when changing schema.
 
 export const DB_NAME = 'phone-app';
-export const DB_VERSION = 4;
+export const DB_VERSION = 6;
 
 // Object store definitions. Applied during onupgradeneeded.
 // keyPath = primary key field; indexes = secondary lookup paths.
@@ -76,6 +76,38 @@ export const STORES = {
     keyPath: 'id',
     indexes: [
       { name: 'createdAt', keyPath: 'createdAt' },
+    ],
+  },
+  // Surveillance cameras placed by the user. mode: 'open' (角色知道有摄像头)
+  // or 'spy' (角色不知道). One row per (character, room, mode). discoveredAt
+  // turns spy → exposed when the snapshot model returns noticed=true.
+  cameras: {
+    keyPath: 'id',
+    indexes: [
+      { name: 'characterId', keyPath: 'characterId' },
+    ],
+  },
+  // Snapshot history. Every camera refresh appends one row; payload holds
+  // the structured fields the model returned (location/posture/activity/
+  // mood/caption/noticed). Read latest by sorting on createdAt desc.
+  activityLog: {
+    keyPath: 'id',
+    indexes: [
+      { name: 'cameraId',    keyPath: 'cameraId' },
+      { name: 'characterId', keyPath: 'characterId' },
+    ],
+  },
+  // Drift bottles (漂流瓶). One reply per bottle, no threading.
+  // Fields: id, content, authorIsUser (bool), audience('contacts'|'strangers'),
+  // status ('drifting'|'replied'|'read'),
+  // replierCharacterId (contacts mode) | generatedPersona ({name,persona,avatar?,vibe?}) (strangers mode),
+  // reply (string), castAt, replyDueAt, repliedAt.
+  // Indexed by status (cheap drifting-bottle scan) and castAt (sort newest first).
+  bottles: {
+    keyPath: 'id',
+    indexes: [
+      { name: 'status',  keyPath: 'status'  },
+      { name: 'castAt',  keyPath: 'castAt'  },
     ],
   },
 };

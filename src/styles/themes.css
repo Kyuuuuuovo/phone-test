@@ -35,15 +35,12 @@ body[data-theme="notch"] .phone-frame::before {
   pointer-events: none;
 }
 
-/* Push status-bar content aside so it doesn't collide with the notch. */
+/* Only widen left/right padding so time/battery sit clear of the notch
+   pill in the middle. We deliberately DO NOT touch min-height or top
+   padding here — the base .status-bar is already 30px tall (enough for
+   the 30px notch), and overriding the height would make toggling the
+   notch theme reflow .page-body. B 方案: notch is pure decoration. */
 body[data-theme="notch"] .status-bar {
-  padding: 12px 28px 6px;
-  min-height: 40px;
-  align-items: flex-start;
-}
-body[data-theme="notch"] .status-bar .status-time {
-  padding-top: 2px;
-}
-body[data-theme="notch"] .status-bar .status-icons {
-  padding-top: 2px;
+  padding-left: 28px;
+  padding-right: 28px;
 }
