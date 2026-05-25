@@ -3,14 +3,23 @@
 import * as db from './db.js';
 import * as ai from './ai.js';
 import { HUMANIZER_PROMPT } from './humanizer.js';
+import { BEHAVIOR_GUIDANCE } from './behavior.js';
 
-// Output format constraint appended to every system prompt.
-// Forces model to return ONLY a JSON array of action objects.
-export const OUTPUT_FORMAT_SPEC = `# 输出格式严格约束
+// Output format constraints — split into two segments so they sit at different
+// positions in the prompt: count + JSON-only rule first (before per-turn data),
+// schema table last (right before the model generates). Both are stable text.
+
+export const OUTPUT_COUNT_SPEC = `# 输出格式严格约束
 
 你必须只返回一个合法的 JSON 数组,数组里每个元素是一个动作对象,绝对不要返回任何 JSON 数组以外的文本(无解释、无 markdown 代码块包裹、无前后多余字符)。
 
-允许的动作类型如下,每种类型给出 schema:
+# 数量约束
+
+至少 1 条,通常 1-5 条,如有必要可以更多。`;
+
+export const ACTION_SCHEMAS_TEXT = `# 动作定义表
+
+本轮可用的动作类型如下,每种类型给出 schema:
 
 1. text — 普通文本消息
    { "type": "text", "content": "..." }
@@ -32,10 +41,6 @@ export const OUTPUT_FORMAT_SPEC = `# 输出格式严格约束
 
 你可以在一个数组里发多条动作(用来断句、补刀、撤回等)。
 
-# 数量约束
-
-至少 1 条,通常 1-5 条,如有必要可以更多。
-
 示例(只是示例,不要照抄):
 [
   { "type": "text", "content": "在的" },
@@ -45,18 +50,27 @@ export const OUTPUT_FORMAT_SPEC = `# 输出格式严格约束
 再次强调:只输出 JSON 数组本身,不输出任何其他字符,也不要用 \`\`\`json 包裹。`;
 
 // Build the system prompt for one session.
-// Section order:
-//   1. Framing line              "你是【char】,正在与【user】聊天。" (always)
-//   2. # 角色设定                  (always)
-//   3. # 世界观 / 背景设定(前置)    (worldbook entries with position='before')
-//   4. # 世界观 / 背景设定          (entries with position='inline', default — vibes next to character)
+// Section order (maps to the user-facing 6-block abstraction in CLAUDE.md):
+//   ① Framing
+//   1. "你是【char】,正在与【user】聊天。" (always)
+//   ② 上下文(static setting + memory + state)
+//   2. # 世界观 / 背景设定(前置)    (worldbook entries with position='before')
+//   3. # 角色设定                  (always)
+//   4. # 世界观 / 背景设定          (entries with position='inline', default)
 //   5. # 世界观 / 背景设定(后置)    (entries with position='after')
 //   6. # 用户人设                  (if a persona is linked)
 //   7. # 过往记忆                  (if any memory summaries)
 //   8. # 当前社交状态              (if character.blocked)
+//   ③ 对话规范
 //   9. # 对话规范                  (humanizer constant, if non-empty)
-//  10. # 用户本轮使用的功能定义     (optional featureContext arg — set per-turn from outside)
-//  11. OUTPUT_FORMAT_SPEC          (always last)
+//   ④ 动作使用规约
+//  10. # 动作使用规约               (behavior constant, if non-empty — WHEN to use which action)
+//  (per-turn hook)
+//  11. # 用户本轮使用的功能定义     (optional featureContext arg — set per-turn)
+//   ⑤ 输出格式数量约束
+//  12. OUTPUT_COUNT_SPEC          (JSON-only + count constraints, always)
+//   ⑥ 动作定义表
+//  13. ACTION_SCHEMAS_TEXT        (per-action JSON schemas + example, always last)
 export async function buildSystemPrompt(sessionId, { featureContext } = {}) {
   const session = await db.get('chatSessions', sessionId);
   if (!session) throw new Error(`buildSystemPrompt: session ${sessionId} not found`);
@@ -83,10 +97,9 @@ export async function buildSystemPrompt(sessionId, { featureContext } = {}) {
   const memories = await db.query('memories', 'sessionId', sessionId);
   memories.sort((a, b) => a.createdAt - b.createdAt);
 
-  // Global humanizer / conversation conventions. App-level meta constraint,
-  // authored in src/core/humanizer.js (NOT visible to end users).
-  // See CLAUDE.md 铁律 10.
-  const humanizer = (HUMANIZER_PROMPT ?? '').trim();
+  // Author-locked meta constants — NOT visible to end users. See CLAUDE.md 铁律 10.
+  const humanizer = (HUMANIZER_PROMPT  ?? '').trim();
+  const behavior  = (BEHAVIOR_GUIDANCE ?? '').trim();
 
   const parts = [];
   // 1. Framing — who you are, who you're talking to.
@@ -96,11 +109,12 @@ export async function buildSystemPrompt(sessionId, { featureContext } = {}) {
     ? `你是【${charName}】,正在与【${userName}】聊天。`
     : `你是【${charName}】,正在跟一位用户聊天。`);
   // 2. 角色设定
-  parts.push(`# 角色设定\n\n${character.persona || character.name || '(无设定)'}`);
-  // 3. 世界观(前置)
+  // 2. 世界观(前置)
   if (wbBy.before.length > 0) {
     parts.push(`# 世界观 / 背景设定(前置)\n\n${wbBy.before.join('\n\n')}`);
   }
+  // 3. 角色设定
+  parts.push(`# 角色设定\n\n${character.persona || character.name || '(无设定)'}`);
   // 4. 世界观(默认)
   if (wbBy.inline.length > 0) {
     parts.push(`# 世界观 / 背景设定\n\n${wbBy.inline.join('\n\n')}`);
@@ -125,14 +139,21 @@ export async function buildSystemPrompt(sessionId, { featureContext } = {}) {
   if (humanizer) {
     parts.push(`# 对话规范\n\n${humanizer}`);
   }
-  // 10. 用户本轮使用的功能定义 (per-turn hook — caller passes featureContext to describe what app
+  // 10. 动作使用规约 — WHEN / in what context to use each action.
+  //     Boundary: action-context spec, NOT character-behavior steering.
+  if (behavior) {
+    parts.push(`# 动作使用规约\n\n${behavior}`);
+  }
+  // 11. 用户本轮使用的功能定义 (per-turn hook — caller passes featureContext to describe what app
   //     feature triggered this AI call, e.g. voice button / transfer button).
   const fc = (featureContext ?? '').trim();
   if (fc) {
     parts.push(`# 用户本轮使用的功能定义\n\n${fc}`);
   }
-  // 11. 输出格式
-  parts.push(OUTPUT_FORMAT_SPEC);
+  // 12. 输出数量约束 + 只输 JSON 数组
+  parts.push(OUTPUT_COUNT_SPEC);
+  // 13. 动作定义表(每种动作的 JSON schema + 示例)
+  parts.push(ACTION_SCHEMAS_TEXT);
   return parts.join('\n\n---\n\n');
 }
 
