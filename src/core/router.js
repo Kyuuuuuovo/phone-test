@@ -1,19 +1,38 @@
 // Page navigation and stack management.
-// Each page is a string id mapped to a mount function. Stack supports back().
+// Each page is identified by a string id and mapped to a mountFn:
+//   async mountFn(container, params, routerApi) => teardownFn
+// navigate clears container, calls previous teardown, then mounts new page.
 
-const pages = new Map();    // id -> mountFn(container, params)
-const stack = [];           // [{ id, params }, ...]
+const pages = new Map();
+const stack = [];
+let _container = null;
+let _teardown = null;
+
+export function setContainer(el) {
+  _container = el;
+}
 
 export function registerPage(id, mountFn) {
   pages.set(id, mountFn);
 }
 
-export async function navigate(pageId, params = {}) {
-  throw new Error('router.navigate: not implemented');
+export async function navigate(id, params = {}) {
+  const mount = pages.get(id);
+  if (!mount) throw new Error(`router: unknown page "${id}"`);
+  if (_teardown) {
+    try { _teardown(); } catch (e) { console.warn('router: teardown threw', e); }
+    _teardown = null;
+  }
+  if (_container) _container.innerHTML = '';
+  stack.push({ id, params });
+  _teardown = await mount(_container, params, { navigate, back });
 }
 
 export async function back() {
-  throw new Error('router.back: not implemented');
+  if (stack.length < 2) return;
+  stack.pop();                  // drop current
+  const prev = stack.pop();     // re-navigate to previous (re-pushes)
+  await navigate(prev.id, prev.params);
 }
 
 export function current() {
