@@ -1,0 +1,146 @@
+// System prompt assembly and long-conversation memory compression.
+
+import * as db from './db.js';
+import * as ai from './ai.js';
+
+// Output format constraint appended to every system prompt.
+// Forces model to return ONLY a JSON array of action objects.
+export const OUTPUT_FORMAT_SPEC = `# 输出格式严格约束
+
+你必须只返回一个合法的 JSON 数组,数组里每个元素是一个动作对象,绝对不要返回任何 JSON 数组以外的文本(无解释、无 markdown 代码块包裹、无前后多余字符)。
+
+允许的动作类型如下,每种类型给出 schema:
+
+1. text — 普通文本消息
+   { "type": "text", "content": "..." }
+
+2. reply — 引用回复(quoteMsgId 是被引用消息的 id,从历史里找;quoteMsgId 可省略)
+   { "type": "reply", "content": "...", "quoteMsgId": "..." }
+
+3. recall — 撤回(可选 targetMsgId;省略则撤回你刚刚发出的上一条)
+   { "type": "recall", "targetMsgId": "..." }
+
+4. image — 发送图片(只给描述文字,前端按描述渲染)
+   { "type": "image", "description": "..." }
+
+5. voice — 语音条(content 是文字内容,duration 是估算秒数,可省略)
+   { "type": "voice", "content": "...", "duration": 8 }
+
+你可以在一个数组里连续发多条动作(像真人聊天那样断句、补刀、撤回都行)。
+
+示例(只是示例,不要照抄):
+[
+  { "type": "text", "content": "在的" },
+  { "type": "text", "content": "刚去倒了杯水,你说" }
+]
+
+再次强调:只输出 JSON 数组本身,不输出任何其他字符,也不要用 \`\`\`json 包裹。`;
+
+// Build the system prompt for one session.
+// Order: character persona + bound worldbook entries (priority/order sorted) +
+//        player persona + session memories (old→new) + output format spec.
+export async function buildSystemPrompt(sessionId) {
+  const session = await db.get('chatSessions', sessionId);
+  if (!session) throw new Error(`buildSystemPrompt: session ${sessionId} not found`);
+
+  const character = await db.get('characters', session.characterId);
+  if (!character) throw new Error(`buildSystemPrompt: character ${session.characterId} not found`);
+
+  const persona = session.personaId ? await db.get('personas', session.personaId) : null;
+
+  // Worldbook entries bound to this character.
+  const bindings = await db.query('characterWorldbooks', 'characterId', character.id);
+  bindings.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+  const wbBlocks = [];
+  for (const binding of bindings) {
+    const entries = await db.query('worldbookEntries', 'worldbookId', binding.worldbookId);
+    const enabled = entries.filter(e => e.enabled !== false);
+    enabled.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    for (const entry of enabled) {
+      wbBlocks.push(`【${entry.title || '条目'}】\n${entry.content || ''}`);
+    }
+  }
+
+  const memories = await db.query('memories', 'sessionId', sessionId);
+  memories.sort((a, b) => a.createdAt - b.createdAt);
+
+  const parts = [];
+  parts.push(`# 角色设定\n\n你将扮演的角色:\n\n${character.persona || character.name || '(无设定)'}`);
+  if (wbBlocks.length > 0) {
+    parts.push(`# 世界观 / 背景设定\n\n${wbBlocks.join('\n\n')}`);
+  }
+  if (persona) {
+    parts.push(`# 用户人设\n\n你的聊天对象的人设:\n\n${persona.persona || persona.name || '(未填写)'}`);
+  }
+  if (memories.length > 0) {
+    parts.push(`# 过往记忆(由老到新)\n\n${memories.map(m => m.summary).join('\n\n')}`);
+  }
+  parts.push(OUTPUT_FORMAT_SPEC);
+  return parts.join('\n\n---\n\n');
+}
+
+// Pull the most recent `maxRecent` chat messages, formatted as OpenAI-style messages.
+export async function buildMessageHistory(sessionId, maxRecent = 40) {
+  const all = await db.query('chatMessages', 'sessionId', sessionId);
+  all.sort((a, b) => a.createdAt - b.createdAt);
+  const recent = all.slice(-maxRecent);
+  return recent.map(toApiMessage);
+}
+
+function toApiMessage(msg) {
+  if (msg.role === 'character') {
+    // Echo the model's own past JSON-array output verbatim — reinforces format.
+    return { role: 'assistant', content: JSON.stringify(msg.actions ?? []) };
+  }
+  return {
+    role: msg.role === 'system' ? 'system' : 'user',
+    content: renderActionsAsText(msg.actions ?? []),
+  };
+}
+
+function renderActionsAsText(actions) {
+  return actions.map(a => {
+    switch (a.type) {
+      case 'text':   return a.content || '';
+      case 'reply':  return a.content || '';  // model sees the quoted msg earlier in history
+      case 'image':  return `[图片: ${a.description || a.src || ''}]`;
+      case 'voice':  return `[语音: ${a.content || ''}]`;
+      case 'recall': return `[撤回了一条消息]`;
+      default:       return `[${a.type}]`;
+    }
+  }).filter(Boolean).join('\n');
+}
+
+// Compress oldest overflow messages into a memory summary, then delete them.
+// Returns the new memory id, or null if nothing to compress.
+export async function maybeCompressMemory(sessionId, threshold = 40) {
+  const all = await db.query('chatMessages', 'sessionId', sessionId);
+  if (all.length <= threshold) return null;
+  all.sort((a, b) => a.createdAt - b.createdAt);
+  const overflow = all.slice(0, all.length - threshold);
+  if (overflow.length === 0) return null;
+
+  const dump = overflow.map(m => {
+    const speaker = m.role === 'user' ? '用户' : (m.role === 'character' ? '角色' : 'system');
+    return `${speaker}: ${renderActionsAsText(m.actions ?? [])}`;
+  }).join('\n');
+
+  const sys = '你是对话压缩助手。把下面这段对话压成不超过 300 字的中文摘要,只保留关键信息(谁说了什么、做了什么、关系/情绪变化、约定、提到的人物或地点)。摘要不分段、不列表、不加任何前缀或解释,只输出摘要文本本身。';
+  const summary = await ai.callAI({
+    systemPrompt: sys,
+    messages: [{ role: 'user', content: dump }],
+    temperature: 0.3,
+  });
+
+  const memId = db.newId();
+  await db.set('memories', {
+    id: memId,
+    sessionId,
+    summary: summary.trim(),
+    fromMsgId: overflow[0].id,
+    toMsgId: overflow[overflow.length - 1].id,
+    createdAt: Date.now(),
+  });
+  for (const msg of overflow) await db.del('chatMessages', msg.id);
+  return memId;
+}
