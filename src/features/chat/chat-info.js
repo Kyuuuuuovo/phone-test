@@ -37,6 +37,10 @@ export async function mountChatInfo(container, params, router) {
             <span class="settings-label">显示已读标记</span>
             <input type="checkbox" data-toggle="showReadReceipts"${session.showReadReceipts !== false ? ' checked' : ''}>
           </label>
+          <label class="settings-item toggle-row">
+            <span class="settings-label">显示头像</span>
+            <input type="checkbox" data-toggle="showAvatars"${session.showAvatars !== false ? ' checked' : ''}>
+          </label>
           <button class="settings-item" data-action="settings">
             <span class="settings-label">会话设置</span>
             <span class="settings-chevron">›</span>
@@ -51,6 +55,14 @@ export async function mountChatInfo(container, params, router) {
           </button>
           <button class="settings-item" data-action="character">
             <span class="settings-label">编辑角色资料</span>
+            <span class="settings-chevron">›</span>
+          </button>
+          <button class="settings-item" data-action="export">
+            <span class="settings-label">导出聊天数据</span>
+            <span class="settings-chevron">›</span>
+          </button>
+          <button class="settings-item" data-action="import">
+            <span class="settings-label">导入聊天数据</span>
             <span class="settings-chevron">›</span>
           </button>
           <button class="settings-item danger" data-action="clear">
@@ -100,6 +112,46 @@ export async function mountChatInfo(container, params, router) {
     } else if (action === 'character') {
       router.navigate('character-detail', { id: session.characterId });
 
+    } else if (action === 'export') {
+      try {
+        const payload = await buildSessionExport(sessionId);
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const charName = (payload.character?.name || 'chat').replace(/[\\/:*?"<>|]/g, '_');
+        const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        a.download = `phone-app-chat-${charName}-${ts}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        alert(`已导出:${payload.chatMessages.length} 条消息 + ${payload.memories.length} 条记忆`);
+      } catch (e) {
+        alert(`导出失败:${String(e).slice(0, 200)}`);
+      }
+
+    } else if (action === 'import') {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.json,application/json';
+      input.style.display = 'none';
+      document.body.appendChild(input);
+      input.addEventListener('change', async () => {
+        const file = input.files?.[0];
+        document.body.removeChild(input);
+        if (!file) return;
+        if (!confirm('导入会创建一个新对话(原数据不动)。继续吗?')) return;
+        try {
+          const newSid = await importSessionFromFile(file);
+          alert('导入成功');
+          router.navigate('chat', { sessionId: newSid });
+        } catch (e) {
+          alert(`导入失败:${String(e).slice(0, 300)}`);
+        }
+      }, { once: true });
+      input.click();
+
     } else if (action === 'clear') {
       if (!confirm('清空这个对话的所有消息和记忆?角色保留。')) return;
       const msgs = await db.query('chatMessages', 'sessionId', sessionId);
@@ -137,4 +189,108 @@ function renderAvatar(c) {
 
 function esc(s) {
   return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
+}
+
+// Bundle everything needed to recreate this session on another machine:
+// the session row, all its messages + memories, the character (so the
+// import doesn't require the same character to already exist), the persona
+// (if bound), and any worldbooks mounted to that character (with entries
+// and the link rows).
+async function buildSessionExport(sessionId) {
+  const session = await db.get('chatSessions', sessionId);
+  if (!session) throw new Error('会话不存在');
+  const chatMessages = await db.query('chatMessages', 'sessionId', sessionId);
+  const memories     = await db.query('memories',     'sessionId', sessionId);
+  const character    = session.characterId ? await db.get('characters', session.characterId) : null;
+  const persona      = session.personaId   ? await db.get('personas',   session.personaId)   : null;
+  const cwbRels = session.characterId
+    ? await db.query('characterWorldbooks', 'characterId', session.characterId)
+    : [];
+  const worldbooks = [];
+  const worldbookEntries = [];
+  for (const rel of cwbRels) {
+    const wb = await db.get('worldbooks', rel.worldbookId);
+    if (wb) worldbooks.push(wb);
+    const entries = await db.query('worldbookEntries', 'worldbookId', rel.worldbookId);
+    worldbookEntries.push(...entries);
+  }
+  return {
+    _meta: { app: 'phone-app', kind: 'session-export', version: 1, exportedAt: Date.now() },
+    session,
+    chatMessages,
+    memories,
+    character,
+    persona,
+    worldbooks,
+    worldbookEntries,
+    characterWorldbooks: cwbRels,
+  };
+}
+
+// Insert payload as a new session — keeps original IDs for character /
+// worldbook / persona / link rows (skip if already present locally), but
+// generates a fresh sessionId and fresh message/memory IDs so re-importing
+// the same file twice produces two independent sessions. reply.quoteMsgId
+// is remapped through the new IDs to keep quote bubbles pointing at the
+// right messages.
+async function importSessionFromFile(file) {
+  const text = await file.text();
+  const data = JSON.parse(text);
+  if (data?._meta?.kind !== 'session-export') {
+    throw new Error('文件不是 session 导出格式');
+  }
+
+  if (data.character) {
+    const existing = await db.get('characters', data.character.id);
+    if (!existing) await db.set('characters', data.character);
+  }
+  if (data.persona) {
+    const existing = await db.get('personas', data.persona.id);
+    if (!existing) await db.set('personas', data.persona);
+  }
+  for (const wb of data.worldbooks || []) {
+    if (!(await db.get('worldbooks', wb.id))) await db.set('worldbooks', wb);
+  }
+  for (const we of data.worldbookEntries || []) {
+    if (!(await db.get('worldbookEntries', we.id))) await db.set('worldbookEntries', we);
+  }
+  for (const cwb of data.characterWorldbooks || []) {
+    if (!(await db.get('characterWorldbooks', cwb.id))) await db.set('characterWorldbooks', cwb);
+  }
+
+  const newSid = db.newId();
+  const baseTs = Date.now();
+  await db.set('chatSessions', {
+    ...data.session,
+    id: newSid,
+    createdAt: baseTs,
+    lastMessageAt: baseTs,
+  });
+
+  const msgIdMap = new Map();
+  for (const m of data.chatMessages || []) msgIdMap.set(m.id, db.newId());
+  for (const m of data.chatMessages || []) {
+    const remappedActions = (m.actions || []).map(a => {
+      if (a.type === 'reply' && a.quoteMsgId && msgIdMap.has(a.quoteMsgId)) {
+        return { ...a, quoteMsgId: msgIdMap.get(a.quoteMsgId) };
+      }
+      return a;
+    });
+    await db.set('chatMessages', {
+      ...m,
+      id: msgIdMap.get(m.id),
+      sessionId: newSid,
+      actions: remappedActions,
+    });
+  }
+
+  for (const mem of data.memories || []) {
+    await db.set('memories', {
+      ...mem,
+      id: db.newId(),
+      sessionId: newSid,
+    });
+  }
+
+  return newSid;
 }

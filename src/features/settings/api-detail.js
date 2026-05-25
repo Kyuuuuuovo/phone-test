@@ -34,7 +34,7 @@ export async function mountApiDetail(container, params, router) {
             <input name="name" type="text" placeholder="新配置" value="${esc(config.name)}">
           </label>
           <label>
-            <div class="label-text">API URL(不带 /chat/completions)</div>
+            <div class="label-text">API URL(填 base 或完整端点都行)</div>
             <input name="apiUrl" type="text" placeholder="https://api.openai.com/v1" value="${esc(config.apiUrl)}">
           </label>
           <label>
@@ -52,6 +52,10 @@ export async function mountApiDetail(container, params, router) {
           <label>
             <div class="label-text">Temperature(0-2)</div>
             <input name="temperature" type="number" step="0.1" min="0" max="2" value="${config.temperature ?? 0.8}">
+          </label>
+          <label>
+            <div class="label-text">Max tokens(可选 · 留空走供应商默认。多动作 JSON 数组建议至少 2048)</div>
+            <input name="maxTokens" type="number" min="1" step="1" placeholder="比如 4096" value="${config.maxTokens ?? ''}">
           </label>
           <div class="form-actions">
             <button type="submit" class="btn">保存</button>
@@ -78,6 +82,8 @@ export async function mountApiDetail(container, params, router) {
 
   async function saveFromForm() {
     const fd = new FormData(form);
+    const maxTokensRaw = String(fd.get('maxTokens') || '').trim();
+    const maxTokens = maxTokensRaw ? parseInt(maxTokensRaw, 10) : null;
     const cfg = {
       id,
       name:        String(fd.get('name')      || '').trim() || '新配置',
@@ -85,6 +91,7 @@ export async function mountApiDetail(container, params, router) {
       apiKey:      String(fd.get('apiKey')    || '').trim(),
       modelName:   String(fd.get('modelName') || '').trim(),
       temperature: parseFloat(fd.get('temperature')) || 0.8,
+      maxTokens:   Number.isFinite(maxTokens) && maxTokens > 0 ? maxTokens : null,
     };
     await db.set('apiConfig', cfg);
     return cfg;

@@ -314,8 +314,70 @@ label .label-text {
 .form-status.success { color: var(--success); }
 .form-status.error   { color: var(--danger); }
 
-/* Home: pages + pager + dock layout */
-.page.home { padding: 0; }
+/* Home: pages + pager + dock layout.
+   `background: transparent` so the wallpaper set on .phone-frame in
+   mountHome() shows through (status bar + dock get the same continuity).
+   `position: relative` so .edit-done can be absolutely positioned inside. */
+.page.home { padding: 0; background: transparent; position: relative; }
+
+/* ── Edit mode (long-press / right-click on home) ─────────────────────────
+   In edit mode: widgets jiggle, their delete × is always visible, the
+   `+ 添加装饰` button appears, page horizontal scroll is paused, and a
+   floating "完成" button shows in the top-right to exit. Visual feedback
+   only — interaction wiring lives in home.js. */
+.page.home .edit-done {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 50;
+  padding: 6px 14px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+}
+.page.home:not(.editing) .edit-done { display: none; }
+/* Hide the add-widget button outside of edit mode so a freshly-decorated
+   home doesn't show a permanent dashed-border slot. Long-press / right-click
+   to bring it back. Exception: zero user widgets → keep the button visible
+   so the user always has a path back into adding decorations (otherwise
+   deleting the last widget would leave no entry point if they forget the
+   long-press / right-click gestures). */
+.page.home:not(.editing):not(.no-user-widgets) .widget-add { display: none; }
+.page.home.editing .widget.user-widget {
+  animation: home-jiggle 0.36s ease-in-out infinite alternate;
+  cursor: grab;
+  touch-action: none;  /* claim drag — don't let touch scroll the page */
+}
+.page.home.editing .widget.user-widget .widget-del { opacity: 1; }
+/* The widget is lifted via position:fixed + inline left/top (see home.js).
+   We just kill the jiggle, dim slightly, and add a stronger shadow. The
+   transform is owned by inline style now so don't set it here. */
+.page.home.editing .widget.user-widget.dragging {
+  cursor: grabbing;
+  opacity: 0.85;
+  animation: none;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
+}
+/* Placeholder that occupies the dragged widget's old grid slot so the
+   row layout doesn't collapse while dragging. */
+.widget-placeholder {
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  border: 1.5px dashed color-mix(in srgb, var(--fg) 18%, transparent);
+  pointer-events: none;
+}
+.widget-placeholder.size-small  { grid-column: span 1; }
+.widget-placeholder.size-medium,
+.widget-placeholder.size-large  { grid-column: span 2; }
+@keyframes home-jiggle {
+  from { transform: rotate(-0.7deg); }
+  to   { transform: rotate(0.7deg); }
+}
 .home-pages {
   flex: 1;
   display: flex;
@@ -363,14 +425,12 @@ label .label-text {
 .home-dock {
   flex: 0 0 auto;
   padding: 10px 12px max(10px, env(safe-area-inset-bottom));
-  /* Translucent so the home wallpaper actually shows through to the dock —
-     was a hardcoded `rgba(255,255,255,0.65)` which became a bright white slab
-     on dark wallpapers and broke the visual continuity. Now follows the
-     theme surface + lets ~60% of the wallpaper through. */
-  background: color-mix(in srgb, var(--surface) 40%, transparent);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  /* Sit on top of the wallpaper without a visible seam — no border, very
+     light tint so it feels like a soft bottom shelf rather than a separate
+     slab. The icon tiles themselves are still their own glass blocks. */
+  background: color-mix(in srgb, var(--surface) 20%, transparent);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
 }
 .dock-grid {
   grid-template-columns: repeat(2, max-content) !important;
@@ -1316,6 +1376,19 @@ label .label-text {
   min-width: 0;
   max-width: calc(100% - 52px);
 }
+/* When the user toggles "显示头像" off in chat-info, the .msg-avatar is
+   omitted and .msg-actions can take the row's full width. */
+.msg-row.no-avatar .msg-actions { max-width: 100%; }
+
+/* Archived messages — context.js maybeCompressMemory tags them with
+   archived=true instead of deleting (so favorites don't dangle and history
+   scroll still works). They render dimmed so the user sees this part is
+   "AI now reads the summary, not the originals". */
+.msg-row.archived { opacity: 0.55; }
+.msg-row.archived .bubble,
+.msg-row.archived .bubble-money,
+.msg-row.archived .bubble-location,
+.msg-row.archived .bubble-recall { filter: saturate(0.6); }
 .msg-row.user .msg-actions { align-items: flex-end; }
 .msg-row.char .msg-actions { align-items: flex-start; }
 .msg-avatar {
@@ -1380,37 +1453,18 @@ label .label-text {
 }
 .bubble-image, .bubble-reply { font-style: italic; opacity: 0.92; }
 
-/* Voice bubble — WeChat-style play bar; click to reveal transcript */
-.bubble.bubble-voice { padding: 6px 10px; cursor: pointer; }
-.bubble-voice .voice-bar {
-  display: flex;
+/* Voice bubble — inline, behaves like a text bubble. A small "▶ N″" tag
+   sits before the transcript; the whole thing wraps naturally so width =
+   content length and height = a single line when content fits. */
+.bubble-voice .voice-meta {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  width: var(--voice-w, 100px);
-  user-select: none;
-}
-.bubble-voice .voice-icon { font-size: 13px; }
-.bubble-voice .voice-waves {
-  flex: 1;
-  height: 8px;
-  background: repeating-linear-gradient(
-    90deg,
-    currentColor 0 2px,
-    transparent 2px 6px
-  );
-  opacity: 0.4;
-  border-radius: 2px;
-}
-.bubble-voice .voice-dur { font-size: 12px; opacity: 0.85; font-variant-numeric: tabular-nums; }
-.bubble-voice .voice-text {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid currentColor;
-  border-color: color-mix(in srgb, currentColor 25%, transparent);
-  font-size: 13px;
-  font-style: italic;
-  opacity: 0.92;
-  user-select: text;
+  gap: 3px;
+  font-size: 12px;
+  opacity: 0.7;
+  margin-right: 6px;
+  font-variant-numeric: tabular-nums;
+  vertical-align: baseline;
 }
 
 /* Red packet / transfer — wide-and-short WeChat-style card.
@@ -1792,6 +1846,10 @@ label .label-text {
 }
 .bubble-menu button:hover { background: var(--bubble-char); }
 .bubble-menu button.danger { color: var(--danger); }
+/* Side-specific menu entries — 编辑 only for user messages, 重新生成 only
+   for character messages. Toggled by .for-user / .for-char on the menu. */
+.bubble-menu.for-user .only-char,
+.bubble-menu.for-char .only-user { display: none; }
 
 /* Reply preview bar (above input, shown while quoting) */
 .reply-preview {

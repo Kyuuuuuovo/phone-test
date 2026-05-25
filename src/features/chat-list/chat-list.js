@@ -342,16 +342,72 @@ export async function openNewChatModal(container, router) {
         `}
         <div class="modal-actions">
           <button type="button" class="btn secondary cancel">取消</button>
+          <button type="button" class="btn secondary new-group">创建群聊</button>
           <button type="button" class="btn new-char">+ 新建角色</button>
         </div>
       </div>
     `;
     modal.querySelector('.cancel').addEventListener('click', () => modal.remove());
     modal.querySelector('.new-char').addEventListener('click', () => renderCreateStage());
+    modal.querySelector('.new-group').addEventListener('click', () => renderGroupStage());
     modal.querySelectorAll('[data-char-id]').forEach(btn => {
       btn.addEventListener('click', async () => {
         await createSessionForCharacter(btn.dataset.charId);
       });
+    });
+  }
+
+  // Group-chat creation. UI is wired so users can pick members + a name, but
+  // the AI side (multi-character reply scheduling) is still P3 — submit just
+  // alerts and closes. Keeping the entry point so the path is visible.
+  async function renderGroupStage() {
+    const allChars = await db.getAll('characters');
+    const chars = allChars.filter(c => !c.blocked);
+    chars.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+    modal.innerHTML = `
+      <div class="modal">
+        <div class="modal-header">创建群聊</div>
+        <p class="hint">勾选要加入群的角色,起个群名。群聊的 AI 调度还在开发中,先把入口预留出来。</p>
+        <form class="new-group-form" autocomplete="off">
+          <label>
+            <div class="label-text">群名</div>
+            <input name="title" required placeholder="比如:周末出游" autocomplete="off">
+          </label>
+          <div class="label-text">成员(至少 2 个)</div>
+          ${chars.length > 0 ? `
+            <div class="character-pick-list">
+              ${chars.map(c => `
+                <label class="character-pick-row" style="cursor: pointer;">
+                  <input type="checkbox" name="member" value="${esc(c.id)}" style="width:auto;margin-right:8px;">
+                  ${renderAvatar(c)}
+                  <div class="session-info">
+                    <div class="session-name">${esc(c.name || '(未命名)')}</div>
+                    <div class="session-preview">${esc((c.persona || '').slice(0, 60))}</div>
+                  </div>
+                </label>
+              `).join('')}
+            </div>
+          ` : `<p class="hint">还没有可选角色。</p>`}
+          <div class="modal-actions">
+            <button type="button" class="btn secondary back-pick">‹ 返回</button>
+            <button type="submit" class="btn">创建</button>
+          </div>
+        </form>
+      </div>
+    `;
+    modal.querySelector('.back-pick').addEventListener('click', renderPickStage);
+    modal.querySelector('form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const form = modal.querySelector('form');
+      const fd = new FormData(form);
+      const title = String(fd.get('title') || '').trim();
+      const members = fd.getAll('member').map(String);
+      if (!title) return;
+      if (members.length < 2) { alert('至少选 2 个角色'); return; }
+      // P3: this is where we'd db.set('chatSessions', { participantIds: members, ... })
+      // and navigate to a group-chat view. Currently no group-chat AI flow.
+      alert(`群聊功能还在开发中。\n群名:${title}\n成员:${members.length} 人`);
+      modal.remove();
     });
   }
 

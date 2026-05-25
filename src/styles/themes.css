@@ -10,10 +10,10 @@ body[data-theme="notch"] {
 
 body[data-theme="notch"] .phone-frame {
   border-radius: 42px;
-  margin: 12px auto;
-  height: calc(100% - 24px);
-  /* No inset bezel — the pill should look embedded in the screen itself
-     (real iPhone style), not separated from a black frame above it. */
+  /* No margin/height shrink — keeping the frame full-height so the notch
+     only "carves" a pill out of the top edge instead of also pinching the
+     whole device into a smaller box (which made every page lose ~24px
+     vertical space the moment notch was enabled). */
   box-shadow: 0 0 24px rgba(0, 0, 0, 0.35);
   position: relative;
 }

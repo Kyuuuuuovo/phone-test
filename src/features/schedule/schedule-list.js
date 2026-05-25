@@ -212,14 +212,24 @@ export async function mountScheduleList(container, params, router) {
       const character = await db.get('characters', charId);
       if (!character) { status.textContent = '角色不存在'; status.className = 'form-status error'; return; }
 
-      status.textContent = '调用 AI…'; status.className = 'form-status';
+      // Show "in flight" by mutating the submit button itself — the bottom
+      // form-status used to ALSO carry a "调用 AI…" line, which was visual
+      // noise (the disabled button already says everything). Now status only
+      // surfaces on error / success.
+      const submitBtn = modal.querySelector('button[type="submit"]');
+      const submitLabelOrig = submitBtn.textContent;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'AI 调用中…';
+      status.textContent = ''; status.className = 'form-status';
       const sys = '你是日程生成助手。基于人物的人设和指定的时间段,为 ta 生成一系列合理的日程。\n\n要求:\n- 只输出 JSON 数组,不要任何其他文字、不要 markdown 代码块包裹\n- 每项格式:{"startTs": ISO8601 字符串, "endTs": ISO8601 字符串(可选), "title": 简短标题, "desc": 描述(可选)}\n- 数量 3-8 条,时间必须落在指定区间内\n- 安排要符合人物身份、作息、性格(老师不会凌晨 3 点上课)\n- 标题简短(2-6 字),描述可以稍详(< 30 字)';
       const userMsg = `人物名:${character.name || '(未命名)'}\n\n人设:\n${character.persona || '(无)'}\n\n时间区间:${new Date(startTs).toISOString()} 到 ${new Date(endTs).toISOString()}\n\n额外引导:${hint || '(无)'}`;
       try {
         const raw = await ai.callAI({ systemPrompt: sys, messages: [{ role: 'user', content: userMsg }], temperature: 0.7 });
         const entries = parseScheduleJSON(raw);
         if (!Array.isArray(entries) || entries.length === 0) {
-          status.textContent = '解析失败:模型返回的不是合法的 JSON 数组'; status.className = 'form-status error'; return;
+          status.textContent = '解析失败:模型返回的不是合法的 JSON 数组'; status.className = 'form-status error';
+          submitBtn.disabled = false; submitBtn.textContent = submitLabelOrig;
+          return;
         }
         let added = 0;
         for (const e of entries) {
@@ -241,6 +251,7 @@ export async function mountScheduleList(container, params, router) {
         setTimeout(() => { modal.remove(); render(); }, 600);
       } catch (e) {
         status.textContent = `失败:${String(e).slice(0, 200)}`; status.className = 'form-status error';
+        submitBtn.disabled = false; submitBtn.textContent = submitLabelOrig;
       }
     });
   }

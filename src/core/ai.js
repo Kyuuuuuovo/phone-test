@@ -28,7 +28,14 @@ export async function callAIOnce({ systemPrompt, messages, temperature, tools })
   if (!config || !config.apiUrl || !config.apiKey || !config.modelName) {
     throw new Error('ai.callAIOnce: 没有可用的 API 配置 — 去 设置 → API 设置 创建一组并选中');
   }
-  const url = `${config.apiUrl.replace(/\/+$/, '')}/chat/completions`;
+  // URL: users frequently paste the full ".../v1/chat/completions" endpoint
+  // into apiUrl instead of just the base. If we always appended again, the
+  // request would hit ".../chat/completions/chat/completions" → 404. So
+  // detect and only append when not already present.
+  const apiUrlClean = config.apiUrl.replace(/\/+$/, '');
+  const url = apiUrlClean.endsWith('/chat/completions')
+    ? apiUrlClean
+    : `${apiUrlClean}/chat/completions`;
   const body = {
     model: config.modelName,
     messages: systemPrompt
@@ -36,6 +43,13 @@ export async function callAIOnce({ systemPrompt, messages, temperature, tools })
       : [...messages],
     temperature: temperature ?? config.temperature ?? 0.8,
   };
+  // Optional per-config max_tokens. Important for action-array replies:
+  // multi-action JSON arrays can be long, and providers with a stingy
+  // default completion cap will truncate mid-array → parseActions throws.
+  // Left unset by default so providers' own defaults still apply.
+  if (Number.isFinite(config.maxTokens) && config.maxTokens > 0) {
+    body.max_tokens = config.maxTokens;
+  }
   if (Array.isArray(tools) && tools.length > 0) {
     body.tools = tools;
   }
@@ -271,7 +285,21 @@ export async function requestReply(sessionId, { featureContext } = {}) {
     throw new Error('AI 最终回复 content 不是字符串 — 模型可能不支持 tools / function calling');
   }
   const rawText = finalMessage.content;
-  const actions = parseActions(rawText);
+  // Parse-fallback: if the model didn't return a valid JSON array (e.g.
+  // truncated by max_tokens, wrapped in prose, broke format on a small
+  // model), surface the raw text to the user as a single text action
+  // rather than failing the whole reply. The user can then re-roll or
+  // adjust prompt without losing visibility into what the model said.
+  let actions;
+  try {
+    actions = parseActions(rawText);
+  } catch (e) {
+    console.warn('[ai] parseActions failed, surfacing raw text as a single text action:', e);
+    actions = [{
+      type: 'text',
+      content: `[模型回复格式异常 · 已显示原文]\n\n${rawText}`,
+    }];
+  }
 
   const now = Date.now();
   const messageId = db.newId();

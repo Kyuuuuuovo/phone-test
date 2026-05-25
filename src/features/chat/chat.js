@@ -79,6 +79,8 @@ export async function mountChat(container, params, router) {
         <button data-action="quote">引用</button>
         <button data-action="copy">复制</button>
         <button data-action="favorite">收藏</button>
+        <button data-action="edit" class="only-user">编辑</button>
+        <button data-action="regenerate">重新生成</button>
         <button data-action="delete" class="danger">删除</button>
       </div>
     </div>
@@ -135,9 +137,10 @@ export async function mountChat(container, params, router) {
     Object.assign(session, freshS);
 
     const showReceipts = freshS.showReadReceipts !== false;  // default on
+    const showAvatars  = freshS.showAvatars       !== false;  // default on
     const readUpTo     = Number(freshS.readReceiptUpToTs || 0);
 
-    const ctx = { previewMap, character: cur, persona, showReceipts, readUpTo };
+    const ctx = { previewMap, character: cur, persona, showReceipts, showAvatars, readUpTo };
 
     const parts = [];
     let prevTs = null;
@@ -208,6 +211,13 @@ export async function mountChat(container, params, router) {
     const msgId = bubble.dataset.msgId;
     if (!msgId) return;
     activeBubbleMsgId = msgId;
+    // Side-specific entries: user msgs show 编辑 (not 重新生成),
+    // character msgs show 重新生成 (not 编辑). Driven by class on the menu,
+    // hidden in CSS per .only-user / .only-char.
+    const row = bubble.closest('.msg-row');
+    const isUser = !!row?.classList.contains('user');
+    bubbleMenu.classList.toggle('for-user',  isUser);
+    bubbleMenu.classList.toggle('for-char', !isUser);
     bubbleMenu.hidden = false;
     // Position the menu: place above the bubble, clamp to viewport (page).
     const pageRect = chatPage.getBoundingClientRect();
@@ -247,10 +257,16 @@ export async function mountChat(container, params, router) {
     sendBtn.disabled = true;
     aiBtn.classList.add('loading');
     try {
-      await ai.requestReply(sessionId);
+      const result = await ai.requestReply(sessionId);
       // After AI replies, all preceding user messages count as 已读.
       await markReadUpToLatestUserMsg();
       await refresh();
+      // Reveal the new character bubbles one by one so multi-action replies
+      // (which currently arrive as one DB write with N actions) don't dump
+      // all bubbles into the stream at the same instant. Pacing is rough —
+      // length-based, capped 2s — but it's enough to feel like the other
+      // side is typing rather than flooding.
+      await streamingReveal(result?.messageId);
     } catch (e) {
       alert(`AI 回复失败:${String(e).slice(0, 300)}`);
     } finally {
@@ -259,6 +275,26 @@ export async function mountChat(container, params, router) {
       aiBtn.classList.remove('loading');
     }
   };
+
+  async function streamingReveal(msgId) {
+    if (!msgId) return;
+    const items = stream.querySelectorAll(`[data-msg-id="${cssEscape(msgId)}"]`);
+    if (items.length === 0) return;
+    for (const el of items) {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(8px)';
+      el.style.transition = 'opacity 0.22s ease, transform 0.22s ease';
+    }
+    for (let i = 0; i < items.length; i++) {
+      const el = items[i];
+      const text = (el.textContent || '').trim();
+      const delay = i === 0 ? 150 : Math.min(2000, 250 + text.length * 35);
+      await new Promise(r => setTimeout(r, delay));
+      el.style.opacity = '';
+      el.style.transform = '';
+      stream.scrollTop = stream.scrollHeight;
+    }
+  }
 
   async function markReadUpToLatestUserMsg() {
     const all = await db.query('chatMessages', 'sessionId', sessionId);
@@ -371,14 +407,9 @@ export async function mountChat(container, params, router) {
   let touchStartXY = null;
 
   const onStreamClick = async (e) => {
-    // Voice bubble — click toggles the spoken-text reveal below the bar.
-    const voiceBar = e.target.closest('.voice-bar');
-    if (voiceBar) {
-      const bubble = voiceBar.closest('.bubble-voice');
-      const text = bubble?.querySelector('.voice-text');
-      if (text) text.hidden = !text.hidden;
-      return;
-    }
+    // Voice bubbles used to need a click to reveal the transcript; that
+    // mechanic is gone (transcript is now inline). Whole-bubble click is
+    // a no-op now.
 
     // Claim a red_packet / transfer bubble — the whole .claimable card is the
     // hit target (WeChat-style: tap anywhere on the envelope to open).
@@ -485,13 +516,87 @@ export async function mountChat(container, params, router) {
         // Subtle toast: reuse alert for now, polished UI later.
         // alert('已加入收藏');
       }
+    } else if (btn.dataset.action === 'edit') {
+      // In-place edit: find the action by idx, prompt for the editable field
+      // based on its type, write back. Only the *text-bearing* fields are
+      // editable (content / message / description / etc.) — structural fields
+      // like amount or recall target stay untouched here to keep the action
+      // protocol intact. recall actions can't be edited (no content to change).
+      const msg = await db.get('chatMessages', msgId);
+      if (!msg || !Array.isArray(msg.actions)) return;
+      const a = msg.actions[actionIdx];
+      if (!a) return;
+      const editTarget = pickEditField(a);
+      if (!editTarget) { alert('这种消息没法编辑'); return; }
+      const next = prompt(editTarget.label, editTarget.value);
+      if (next === null) return;
+      msg.actions = msg.actions.map((x, i) => i === actionIdx ? { ...x, [editTarget.field]: next } : x);
+      await db.set('chatMessages', msg);
+      await refresh();
+
+    } else if (btn.dataset.action === 'regenerate') {
+      // Regenerate from this point: works on both user and character msgs.
+      // - On a user msg: delete every AI reply that came after, then ask the
+      //   AI to reply again (now seeing history up to this user msg).
+      // - On a character msg: also delete this msg itself, then regenerate
+      //   (so the result replaces it).
+      // We don't touch user messages other than the target — the user wrote
+      // them and probably wants them preserved.
+      const target = await db.get('chatMessages', msgId);
+      if (!target) return;
+      const all = await db.query('chatMessages', 'sessionId', sessionId);
+      all.sort((a, b) => a.createdAt - b.createdAt);
+      const targetIdx = all.findIndex(m => m.id === msgId);
+      const toDelete = [];
+      if (target.role === 'character') toDelete.push(target);
+      for (let i = targetIdx + 1; i < all.length; i++) {
+        if (all[i].role === 'character') toDelete.push(all[i]);
+      }
+      const promptText = toDelete.length === 0
+        ? '让 AI 基于当前对话再生成一条新回复,确定吗?'
+        : `重新生成会删除这条之后的 ${toDelete.length} 条 AI 回复,然后让 AI 重新回复。确定吗?`;
+      if (!confirm(promptText)) return;
+      for (const m of toDelete) await db.del('chatMessages', m.id);
+      await refresh();
+      aiBtn.disabled = true;
+      sendBtn.disabled = true;
+      aiBtn.classList.add('loading');
+      try {
+        const result = await ai.requestReply(sessionId);
+        await markReadUpToLatestUserMsg();
+        await refresh();
+        await streamingReveal(result?.messageId);
+      } catch (e) {
+        alert(`重新生成失败:${String(e).slice(0, 300)}`);
+      } finally {
+        aiBtn.disabled = false;
+        sendBtn.disabled = false;
+        aiBtn.classList.remove('loading');
+      }
+
     } else if (btn.dataset.action === 'delete') {
-      if (!confirm('删除这条消息?')) return;
+      if (!confirm('删除这一条消息?(只删本条,前后消息保留)')) return;
       await db.del('chatMessages', msgId);
       if (replyingTo === msgId) clearReply();
       await refresh();
     }
   };
+
+  // Return { field, value, label } for the editable text on an action, or
+  // null if the action has nothing reasonable to edit (recall, etc).
+  function pickEditField(a) {
+    switch (a.type) {
+      case 'text':            return { field: 'content',     value: a.content     || '', label: '编辑文字' };
+      case 'reply':           return { field: 'content',     value: a.content     || '', label: '编辑回复内容' };
+      case 'voice':           return { field: 'content',     value: a.content     || '', label: '编辑语音文字' };
+      case 'image':           return { field: 'description', value: a.description || '', label: '编辑图片描述' };
+      case 'unblock_request': return { field: 'content',     value: a.content     || '', label: '编辑请求说明' };
+      case 'red_packet':      return { field: 'message',     value: a.message     || '', label: '编辑红包祝福语' };
+      case 'transfer':        return { field: 'message',     value: a.message     || '', label: '编辑转账说明' };
+      case 'location':        return { field: 'name',        value: a.name        || '', label: '编辑地点名' };
+      default: return null;
+    }
+  }
 
   const onReplyCancel = () => clearReply();
 
@@ -580,10 +685,17 @@ function renderMessageRow(msg, ctx) {
     .map((a, i) => renderAction(a, side, msg.id, i, ctx.previewMap, ctx.character))
     .join('');
   const who = side === 'user' ? ctx.persona : ctx.character;
-  const avatar = renderRowAvatar(who, side);
+  const avatar = ctx.showAvatars ? renderRowAvatar(who, side) : '';
   const showRead = ctx.showReceipts && side === 'user' && msg.createdAt <= ctx.readUpTo;
   const readMark = showRead ? `<div class="read-mark">已读</div>` : '';
-  return `<div class="msg-row ${side}">${avatar}<div class="msg-actions">${bubbles}${readMark}</div></div>`;
+  // Archived messages (compressed into a memory summary) are dimmed so the
+  // user can see "this part has been summarized; the AI now reads the
+  // summary instead of the originals", while still being able to scroll
+  // through the actual history.
+  const clsList = ['msg-row', side];
+  if (!ctx.showAvatars) clsList.push('no-avatar');
+  if (msg.archived) clsList.push('archived');
+  return `<div class="${clsList.join(' ')}">${avatar}<div class="msg-actions">${bubbles}${readMark}</div></div>`;
 }
 
 function renderRowAvatar(who, side) {
@@ -630,17 +742,13 @@ function renderAction(a, side, msgId, idx, previewMap, character) {
     case 'image':
       return `<div class="bubble ${side} bubble-image" ${attrs}>[图片] ${esc(a.description || a.src || '')}</div>`;
     case 'voice': {
+      // Inline voice bubble: a small "▶ N″" prefix tag + the transcript right
+      // after it, so the bubble width follows content length (just like a
+      // text bubble) and the transcript is visible without an extra tap —
+      // the old click-to-reveal mechanic was unreliable on desktop and the
+      // fixed 220px voice-bar looked oversized next to one-line text bubbles.
       const dur = Number(a.duration) || Math.max(1, Math.round((a.content || '').length / 4));
-      // Visual width hints at voice length, like WeChat: 1s -> ~70px, 30s -> ~220px
-      const widthPx = Math.min(220, 70 + Math.min(30, dur) * 5);
-      return `<div class="bubble ${side} bubble-voice" ${attrs}>
-        <div class="voice-bar" style="--voice-w:${widthPx}px">
-          <span class="voice-icon">▶</span>
-          <span class="voice-waves"></span>
-          <span class="voice-dur">${dur}″</span>
-        </div>
-        <div class="voice-text" hidden>${esc(a.content || '')}</div>
-      </div>`;
+      return `<div class="bubble ${side} bubble-voice" ${attrs}><span class="voice-meta">▶ ${dur}″</span>${esc(a.content || '')}</div>`;
     }
     case 'recall':
       return `<div class="bubble-recall">[消息已撤回]</div>`;
