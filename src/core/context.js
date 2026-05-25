@@ -34,8 +34,7 @@ export const OUTPUT_FORMAT_SPEC = `# 输出格式严格约束
 
 # 数量约束
 
-- 一次回复通常包含 1-3 条动作。
-- 最多不超过 5 条。
+至少 1 条,通常 1-5 条,如有必要可以更多。
 
 示例(只是示例,不要照抄):
 [
@@ -47,16 +46,18 @@ export const OUTPUT_FORMAT_SPEC = `# 输出格式严格约束
 
 // Build the system prompt for one session.
 // Section order:
-//   1. # 通用对话规范              (humanizer constant, if non-empty)
-//   2. # 世界观 / 背景设定(前置)    (worldbook entries with position='before')
-//   3. # 角色设定
+//   1. Framing line              "你是【char】,正在与【user】聊天。" (always)
+//   2. # 角色设定                  (always)
+//   3. # 世界观 / 背景设定(前置)    (worldbook entries with position='before')
 //   4. # 世界观 / 背景设定          (entries with position='inline', default — vibes next to character)
 //   5. # 世界观 / 背景设定(后置)    (entries with position='after')
 //   6. # 用户人设                  (if a persona is linked)
 //   7. # 过往记忆                  (if any memory summaries)
-//   8. # 当前社交状态              (if character.blocked — placed near the generation moment)
-//   9. OUTPUT_FORMAT_SPEC          (always last)
-export async function buildSystemPrompt(sessionId) {
+//   8. # 当前社交状态              (if character.blocked)
+//   9. # 对话规范                  (humanizer constant, if non-empty)
+//  10. # 用户本轮使用的功能定义     (optional featureContext arg — set per-turn from outside)
+//  11. OUTPUT_FORMAT_SPEC          (always last)
+export async function buildSystemPrompt(sessionId, { featureContext } = {}) {
   const session = await db.get('chatSessions', sessionId);
   if (!session) throw new Error(`buildSystemPrompt: session ${sessionId} not found`);
 
@@ -88,28 +89,49 @@ export async function buildSystemPrompt(sessionId) {
   const humanizer = (HUMANIZER_PROMPT ?? '').trim();
 
   const parts = [];
-  if (humanizer) {
-    parts.push(`# 通用对话规范\n\n${humanizer}`);
-  }
+  // 1. Framing — who you are, who you're talking to.
+  const charName = character.name || '(未命名角色)';
+  const userName = persona?.name || null;
+  parts.push(userName
+    ? `你是【${charName}】,正在与【${userName}】聊天。`
+    : `你是【${charName}】,正在跟一位用户聊天。`);
+  // 2. 角色设定
+  parts.push(`# 角色设定\n\n${character.persona || character.name || '(无设定)'}`);
+  // 3. 世界观(前置)
   if (wbBy.before.length > 0) {
     parts.push(`# 世界观 / 背景设定(前置)\n\n${wbBy.before.join('\n\n')}`);
   }
-  parts.push(`# 角色设定\n\n你将扮演的角色:\n\n${character.persona || character.name || '(无设定)'}`);
+  // 4. 世界观(默认)
   if (wbBy.inline.length > 0) {
     parts.push(`# 世界观 / 背景设定\n\n${wbBy.inline.join('\n\n')}`);
   }
+  // 5. 世界观(后置)
   if (wbBy.after.length > 0) {
     parts.push(`# 世界观 / 背景设定(后置)\n\n${wbBy.after.join('\n\n')}`);
   }
+  // 6. 用户人设
   if (persona) {
-    parts.push(`# 用户人设\n\n你的聊天对象的人设:\n\n${persona.persona || persona.name || '(未填写)'}`);
+    parts.push(`# 用户人设\n\n${persona.persona || persona.name || '(未填写)'}`);
   }
+  // 7. 过往记忆
   if (memories.length > 0) {
     parts.push(`# 过往记忆(由老到新)\n\n${memories.map(m => m.summary).join('\n\n')}`);
   }
+  // 8. 当前社交状态
   if (character.blocked) {
     parts.push(`# 当前社交状态\n\n注意:你目前已被对方加入黑名单。这是该 app 内的关系状态,具体如何反应由你的人设决定。`);
   }
+  // 9. 对话规范
+  if (humanizer) {
+    parts.push(`# 对话规范\n\n${humanizer}`);
+  }
+  // 10. 用户本轮使用的功能定义 (per-turn hook — caller passes featureContext to describe what app
+  //     feature triggered this AI call, e.g. voice button / transfer button).
+  const fc = (featureContext ?? '').trim();
+  if (fc) {
+    parts.push(`# 用户本轮使用的功能定义\n\n${fc}`);
+  }
+  // 11. 输出格式
   parts.push(OUTPUT_FORMAT_SPEC);
   return parts.join('\n\n---\n\n');
 }

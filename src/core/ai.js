@@ -198,8 +198,8 @@ async function executeToolCall(tc, session) {
 // (up to MAX_ROUNDS). Final message must be text (containing the JSON-action array).
 const MAX_TOOL_ROUNDS = 5;
 
-export async function requestReply(sessionId) {
-  const systemPrompt = await context.buildSystemPrompt(sessionId);
+export async function requestReply(sessionId, { featureContext } = {}) {
+  const systemPrompt = await context.buildSystemPrompt(sessionId, { featureContext });
   const baseMessages = await context.buildMessageHistory(sessionId);
   const session = await db.get('chatSessions', sessionId);
 
