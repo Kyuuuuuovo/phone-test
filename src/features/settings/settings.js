@@ -13,6 +13,14 @@ export async function mountSettings(container, params, router) {
             <span class="settings-label">API 设置</span>
             <span class="settings-chevron">›</span>
           </button>
+          <button class="settings-item" data-target="settings-weather">
+            <span class="settings-label">天气 API</span>
+            <span class="settings-chevron">›</span>
+          </button>
+          <button class="settings-item" data-target="settings-theme">
+            <span class="settings-label">外观</span>
+            <span class="settings-chevron">›</span>
+          </button>
           <button class="settings-item" data-target="settings-data">
             <span class="settings-label">数据备份</span>
             <span class="settings-chevron">›</span>

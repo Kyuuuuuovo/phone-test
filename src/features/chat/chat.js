@@ -28,17 +28,21 @@ export async function mountChat(container, params, router) {
   }
   const character = await db.get('characters', session.characterId);
 
+  const isBlocked = !!character?.blocked;
+
   container.innerHTML = `
     <div class="page chat-page">
       <header class="page-header">
         <button class="back">‹</button>
-        <div class="title">${esc(character?.name ?? '聊天')}</div>
+        <div class="title">${esc(character?.name ?? '聊天')}${isBlocked ? ' <span class="blocked-badge">已拉黑</span>' : ''}</div>
         <button class="icon-btn more-btn" title="更多">${SVG.more}</button>
       </header>
+      ${isBlocked ? `<div class="blocked-banner">这个角色已被你拉黑。AI 知情,会按角色人设决定怎么反应。解除拉黑的权利只在你手里。</div>` : ''}
       <div class="more-menu" hidden>
-        <button data-action="pin"   class="pin-item">${session.isPinned ? '取消置顶' : '置顶聊天'}</button>
+        <button data-action="pin"      class="pin-item">${session.isPinned ? '取消置顶' : '置顶聊天'}</button>
+        <button data-action="settings">会话设置</button>
         <button data-action="clear">清空聊天记录</button>
-        <button data-action="block" class="danger">加入黑名单</button>
+        <button data-action="block"    class="block-item${isBlocked ? '' : ' danger'}">${isBlocked ? '解除拉黑' : '加入黑名单'}</button>
       </div>
       <div class="chat-stream"></div>
       <div class="reply-preview" hidden>
@@ -106,7 +110,9 @@ export async function mountChat(container, params, router) {
     const msgs = await db.query('chatMessages', 'sessionId', sessionId);
     msgs.sort((a, b) => a.createdAt - b.createdAt);
     previewMap = new Map(msgs.map(m => [m.id, firstActionText(m)]));
-    stream.innerHTML = msgs.map(m => renderMessage(m, previewMap)).join('');
+    // Re-read character so unblock_request buttons reflect current state after toggles.
+    const cur = await db.get('characters', session.characterId);
+    stream.innerHTML = msgs.map(m => renderMessage(m, previewMap, cur)).join('');
     stream.scrollTop = stream.scrollHeight;
   }
   await refresh();
@@ -242,6 +248,8 @@ export async function mountChat(container, params, router) {
       session.isPinned = !session.isPinned;
       await db.set('chatSessions', session);
       pinItem.textContent = session.isPinned ? '取消置顶' : '置顶聊天';
+    } else if (btn.dataset.action === 'settings') {
+      await router.navigate('chat-settings', { sessionId });
     } else if (btn.dataset.action === 'clear') {
       if (!confirm('清空这个对话的所有消息和记忆?角色保留。')) return;
       const msgs = await db.query('chatMessages', 'sessionId', sessionId);
@@ -251,19 +259,36 @@ export async function mountChat(container, params, router) {
       clearReply();
       await refresh();
     } else if (btn.dataset.action === 'block') {
-      if (!confirm('加入黑名单会删掉这个对话(消息 + 记忆),角色本身保留。继续?')) return;
-      const msgs = await db.query('chatMessages', 'sessionId', sessionId);
-      for (const m of msgs) await db.del('chatMessages', m.id);
-      const mems = await db.query('memories', 'sessionId', sessionId);
-      for (const m of mems) await db.del('memories', m.id);
-      await db.del('chatSessions', sessionId);
-      await router.navigate('chat-list');
+      const fresh = await db.get('characters', session.characterId);
+      if (!fresh) return;
+      const goingToBlock = !fresh.blocked;
+      if (goingToBlock && !confirm(`把「${fresh.name || '这个角色'}」加入黑名单?对话和消息会保留,AI 会通过 system prompt 知道这个状态,你可以随时解除。`)) return;
+      fresh.blocked = goingToBlock;
+      fresh.updatedAt = Date.now();
+      await db.set('characters', fresh);
+      await router.navigate('chat', { sessionId });
     }
   };
 
   // Bubble context-menu open: long-press (touch) + right-click (desktop)
   let longPressTimer = null;
   let touchStartXY = null;
+
+  const onStreamClick = async (e) => {
+    const ub = e.target.closest('.unblock-btn');
+    if (!ub || ub.disabled) return;
+    const fresh = await db.get('characters', session.characterId);
+    if (!fresh?.blocked) {
+      // already unblocked elsewhere — just refresh the view
+      await refresh();
+      return;
+    }
+    if (!confirm(`解除对「${fresh.name || '这个角色'}」的拉黑?`)) return;
+    fresh.blocked = false;
+    fresh.updatedAt = Date.now();
+    await db.set('characters', fresh);
+    await router.navigate('chat', { sessionId });
+  };
 
   const onStreamContextMenu = (e) => {
     const bubble = e.target.closest('.bubble');
@@ -361,6 +386,7 @@ export async function mountChat(container, params, router) {
   replyCancel.addEventListener('click', onReplyCancel);
   input.addEventListener('keydown', onKey);
   input.addEventListener('input', autosize);
+  stream.addEventListener('click', onStreamClick);
   stream.addEventListener('contextmenu', onStreamContextMenu);
   stream.addEventListener('touchstart', onStreamTouchStart, { passive: true });
   stream.addEventListener('touchmove',  onStreamTouchMove,  { passive: true });
@@ -379,6 +405,7 @@ export async function mountChat(container, params, router) {
     replyCancel.removeEventListener('click', onReplyCancel);
     input.removeEventListener('keydown', onKey);
     input.removeEventListener('input', autosize);
+    stream.removeEventListener('click', onStreamClick);
     stream.removeEventListener('contextmenu', onStreamContextMenu);
     stream.removeEventListener('touchstart', onStreamTouchStart);
     stream.removeEventListener('touchmove',  onStreamTouchMove);
@@ -397,16 +424,17 @@ function firstActionText(msg) {
     case 'image':  return `[图片] ${a.description || ''}`;
     case 'voice':  return `[语音] ${a.content || ''}`;
     case 'recall': return '[消息已撤回]';
+    case 'unblock_request': return `[请求解除拉黑] ${a.content || ''}`;
     default:       return `[${a.type}]`;
   }
 }
 
-function renderMessage(msg, previewMap) {
+function renderMessage(msg, previewMap, character) {
   const side = msg.role === 'user' ? 'user' : 'char';
-  return (msg.actions ?? []).map(a => renderAction(a, side, msg.id, previewMap)).join('');
+  return (msg.actions ?? []).map(a => renderAction(a, side, msg.id, previewMap, character)).join('');
 }
 
-function renderAction(a, side, msgId, previewMap) {
+function renderAction(a, side, msgId, previewMap, character) {
   const attrs = `data-msg-id="${esc(msgId)}"`;
   switch (a.type) {
     case 'text':
@@ -424,6 +452,16 @@ function renderAction(a, side, msgId, previewMap) {
       return `<div class="bubble ${side} bubble-voice" ${attrs}>▶ ${esc(a.content || '')} · ${Number(a.duration) || 0}″</div>`;
     case 'recall':
       return `<div class="bubble-recall">[消息已撤回]</div>`;
+    case 'unblock_request': {
+      const stillBlocked = !!character?.blocked;
+      const label = stillBlocked ? '解除拉黑(同意 TA 重新联系你)' : '已解除';
+      const dis   = stillBlocked ? '' : ' disabled';
+      return `<div class="bubble ${side} bubble-unblock-request" ${attrs}>
+        <div class="ur-label">解除拉黑请求</div>
+        <div class="ur-content">${esc(a.content || '')}</div>
+        <button class="btn unblock-btn"${dis}>${label}</button>
+      </div>`;
+    }
     default:
       return `<div class="bubble ${side} bubble-unknown" ${attrs}>[${esc(a.type)}]</div>`;
   }

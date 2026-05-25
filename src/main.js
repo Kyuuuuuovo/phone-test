@@ -7,10 +7,20 @@ import * as context from './core/context.js';
 import { mountHome }        from './features/home/home.js';
 import { mountSettings }    from './features/settings/settings.js';
 import { mountApiSettings } from './features/settings/api-settings.js';
+import { mountApiDetail }   from './features/settings/api-detail.js';
+import { mountWeatherApi }  from './features/settings/weather-api.js';
+import { mountTheme }       from './features/settings/theme.js';
 import { mountDataBackup }  from './features/settings/data-backup.js';
 import { mountClearData }   from './features/settings/clear-data.js';
 import { mountChatList }    from './features/chat-list/chat-list.js';
 import { mountChat }        from './features/chat/chat.js';
+import { mountChatSettings } from './features/chat/chat-settings.js';
+import { mountCharacterList }   from './features/character/character-list.js';
+import { mountCharacterDetail } from './features/character/character-detail.js';
+import { mountWorldbookList }   from './features/worldbook/worldbook-list.js';
+import { mountWorldbookDetail } from './features/worldbook/worldbook-detail.js';
+import { mountPersonaList }     from './features/persona/persona-list.js';
+import { mountPersonaDetail }   from './features/persona/persona-detail.js';
 
 // Expose modules on window for console-driven dev/debugging.
 window.app = { db, router, ai, context };
@@ -78,10 +88,16 @@ async function startBattery() {
   render(1.0, false);
 }
 
+async function applyTheme() {
+  const settings = await db.get('settings', 'default');
+  document.body.dataset.theme = settings?.theme || 'default';
+}
+
 async function boot() {
   await db.init();
   console.log('[boot] db ready');
 
+  await applyTheme();
   renderShell();
   startClock();
   startBattery();
@@ -89,11 +105,21 @@ async function boot() {
   router.setContainer(document.getElementById('page-container'));
   router.registerPage('home',           mountHome);
   router.registerPage('settings',       mountSettings);
-  router.registerPage('settings-api',   mountApiSettings);
+  router.registerPage('settings-api',        mountApiSettings);
+  router.registerPage('settings-api-detail', mountApiDetail);
+  router.registerPage('settings-weather',    mountWeatherApi);
+  router.registerPage('settings-theme',      mountTheme);
   router.registerPage('settings-data',  mountDataBackup);
   router.registerPage('settings-clear', mountClearData);
-  router.registerPage('chat-list',      mountChatList);
-  router.registerPage('chat',           mountChat);
+  router.registerPage('chat-list',         mountChatList);
+  router.registerPage('chat',              mountChat);
+  router.registerPage('chat-settings',     mountChatSettings);
+  router.registerPage('character-list',    mountCharacterList);
+  router.registerPage('character-detail',  mountCharacterDetail);
+  router.registerPage('worldbook-list',    mountWorldbookList);
+  router.registerPage('worldbook-detail',  mountWorldbookDetail);
+  router.registerPage('persona-list',      mountPersonaList);
+  router.registerPage('persona-detail',    mountPersonaDetail);
 
   await router.navigate('home');
   console.log('[boot] mounted home');

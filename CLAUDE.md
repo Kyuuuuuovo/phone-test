@@ -16,7 +16,7 @@
 ### UI(`src/features/`)
 
 - 全局壳在 `main.js` 的 `renderShell()`:`.phone-frame`(桌面下 480px 居中 + 阴影)+ `.status-bar`(时间自动每 30s 更新,电量接 `navigator.getBattery()` + 充电雷电图标,信号占位文本)+ `#page-container`
-- 已注册路由:`home / settings / settings-api / settings-data / settings-clear / chat-list / chat`
+- 已注册路由:`home / settings / settings-api / settings-api-detail / settings-weather / settings-theme / settings-data / settings-clear / chat-list / chat / chat-settings / character-list / character-detail / worldbook-list / worldbook-detail / persona-list / persona-detail`
 - 聊天页:消息流(每条 `chatMessage.actions[]` 里每个 action 渲染一个气泡)/ 引用预览条 / 输入框 + 加号按钮 + 发送 + 让 AI 回复 / 推上来的 attach-panel(语音/图片 可用,位置/文件 占位) / 头部「⋯ 更多」菜单(置顶/清空/加黑名单) / 气泡长按 500ms 或右键 → 菜单(引用/复制/删除)
 
 ---
@@ -27,14 +27,14 @@
 |---|---|---|---|
 | `characters` | `id` | — | 角色,字段 name/persona/avatar/notes/createdAt/updatedAt |
 | `worldbooks` | `id` | — | 世界书容器(只有元数据) |
-| `worldbookEntries` | `id` | worldbookId | 条目,字段 title/content/order/enabled。**v1 全量常驻注入**,关键词触发字段(keys/position/depth)留空 |
+| `worldbookEntries` | `id` | worldbookId | 条目,字段 title/content/order/enabled/`position`(`before`/`inline`/`after`,决定在 system prompt 里相对角色设定的注入位置;默认 `inline`)。**v1 全量常驻注入**,关键词触发字段(keys/depth)留空 |
 | `characterWorldbooks` | `id` | characterId, worldbookId | 多对多关系表,字段 priority |
 | `personas` | `id` | — | 玩家人设库 |
-| `chatSessions` | `id` | characterId, lastMessageAt | 字段 characterId / personaId / title / createdAt / lastMessageAt / **isPinned** |
+| `chatSessions` | `id` | characterId, lastMessageAt | 主字段 characterId / personaId / title / createdAt / lastMessageAt / **isPinned**;会话设置另带 `charTzEnabled` / `charWeatherEnabled` / `charCityMode` / `charCityKey` / `charCityLabel` + `user*` 同样 5 字段(per-session 时区天气工具开关) |
 | `chatMessages` | `id` | sessionId, createdAt | 字段 role(`user`/`character`/`system`)/ **actions[]**(原始动作数组,UI 渲染时按 type 分发)/ createdAt |
 | `memories` | `id` | sessionId | 长对话压缩出来的摘要,字段 summary/fromMsgId/toMsgId |
-| `apiConfig` | `id` | — | 单例,id=`default`,字段 apiUrl/apiKey/modelName/temperature |
-| `settings` | `id` | — | 单例,id=`default`,以后放 theme 等 |
+| `apiConfig` | `id` | — | **多条记录**,每条字段 id/name/apiUrl/apiKey/modelName/temperature。哪条是活跃由 `settings.activeApiConfigId` 指 |
+| `settings` | `id` | — | 单例,id=`default`,字段 `theme` / `activeApiConfigId` / `weatherApi: {provider, apiKey}`(`humanizerPrompt` 字段已废弃,改在 `src/core/humanizer.js` 常量里) |
 
 ---
 
@@ -47,6 +47,7 @@
 - `recall { targetMsgId? }`
 - `image { description }` —— 用户上传时也可以 `src`
 - `voice { content, duration? }` —— 用户发的语音是「文字内容 + UI 渲染成语音条」,不做真 TTS
+- `unblock_request { content }` —— **受控动作**。AI 不能自己改 `character.blocked`,只能通过这个动作「请求」对方解除拉黑。前端渲染成一条带按钮的特殊气泡,用户点同意才真的把 `character.blocked` 设为 false。状态改变权始终在用户手里。
 
 **数量约束**:1-3 默认,最多 5。**只此而已,绝不在 prompt 里写行为引导**(见下面铁律 3)。
 
@@ -64,6 +65,8 @@
 6. **加号是「推上来」的面板**,不是悬浮 popup(微信式 UX)。和 `.chat-input` 是 flex 兄弟,展开时挤短消息流。
 7. **置顶视觉用底色(`--bg-pinned`),不用 emoji 标记**。
 8. **iOS 刘海外壳 + 多主题切换** —— 框架已预留(主题 CSS 变量都在 `:root`,phone-frame 居中、可扩展刘海)。UI 细节暂缓。
+9. **「状态 = 情景陈述,不是功能开关」**:像 `character.blocked` 这种世界状态,**不**在前端直接禁掉某些功能(比如禁用 AI 回复按钮)。而是把布尔位翻译成一段**事实陈述**塞进 system prompt(「你目前已被对方加入黑名单」),让模型按 `character.persona` 自己决定怎么演。AI 想反向改变状态(比如请求加回)必须走一个明确动作类型(`unblock_request`),前端把它渲染成需要用户点击同意的特殊气泡 —— 状态改变权始终在用户手里。这是铁律 3 的延伸:陈述事实 ≠ 行为引导。
+10. **「app 元约束 ≠ 角色行为引导」**:铁律 3 禁的是**给某个具体角色塞固化的行为引导**(那是 `character.persona` 该写的)。但**全局对话规范**——「这是个聊天 app 模拟器,要像真人打字而不是像 AI 在写作」——属于 app 范式层、跟具体演谁无关,**不算违反铁律 3**。它存在 `src/core/humanizer.js` 的 `HUMANIZER_PROMPT` 常量(**作者锁定,普通用户看不到也改不到**),由 `context.buildSystemPrompt` 在最顶部以「# 通用对话规范」段注入。将来朋友圈 / 日记 / 论坛等场景的 prompt 拼装函数也都 `import` 这个常量。**内容由作者书写**(去 AI 腔禁词清单 / 碎片节奏 / 情绪规则等),Claude 不代笔。空字符串就不注入。
 
 ---
 

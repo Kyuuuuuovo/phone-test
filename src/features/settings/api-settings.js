@@ -1,102 +1,77 @@
-// API config form. Edits apiConfig.default. "Test connection" pings the endpoint.
+// API config list. Each row is one named config; one is marked active.
+// Click row to edit. "+" creates a new blank config and navigates to detail.
 
 import * as db from '../../core/db.js';
-import * as ai from '../../core/ai.js';
 
 export async function mountApiSettings(container, params, router) {
-  const config = (await db.get('apiConfig', 'default')) || {
-    id: 'default', apiUrl: '', apiKey: '', modelName: '', temperature: 0.8,
-  };
-
   container.innerHTML = `
     <div class="page">
       <header class="page-header">
         <button class="back">‹ 返回</button>
         <div class="title">API 设置</div>
+        <div class="actions">
+          <button class="new-api" title="新建配置">+</button>
+        </div>
       </header>
-      <div class="page-body">
-        <form class="settings-form" autocomplete="off">
-          <label>
-            <div class="label-text">API URL(不带 /chat/completions)</div>
-            <input name="apiUrl" type="text" placeholder="https://api.openai.com/v1" value="${esc(config.apiUrl)}">
-          </label>
-          <label>
-            <div class="label-text">API Key</div>
-            <input name="apiKey" type="password" placeholder="sk-..." value="${esc(config.apiKey)}">
-          </label>
-          <label>
-            <div class="label-text">Model</div>
-            <input name="modelName" type="text" placeholder="gpt-4o-mini" value="${esc(config.modelName)}">
-          </label>
-          <label>
-            <div class="label-text">Temperature(0-2)</div>
-            <input name="temperature" type="number" step="0.1" min="0" max="2" value="${config.temperature ?? 0.8}">
-          </label>
-          <div class="form-actions">
-            <button type="submit" class="btn">保存</button>
-            <button type="button" class="btn secondary test-conn">测试连接</button>
-          </div>
-          <div class="form-status"></div>
-        </form>
-      </div>
+      <div class="page-body api-list-body"></div>
     </div>
   `;
 
-  const form    = container.querySelector('form');
-  const status  = container.querySelector('.form-status');
-  const backBtn = container.querySelector('.back');
-  const testBtn = container.querySelector('.test-conn');
+  const body = container.querySelector('.api-list-body');
 
-  async function saveFromForm() {
-    const fd = new FormData(form);
-    const cfg = {
-      id: 'default',
-      apiUrl:    String(fd.get('apiUrl')    || '').trim(),
-      apiKey:    String(fd.get('apiKey')    || '').trim(),
-      modelName: String(fd.get('modelName') || '').trim(),
-      temperature: parseFloat(fd.get('temperature')) || 0.8,
-    };
-    await db.set('apiConfig', cfg);
-    return cfg;
+  async function renderList() {
+    const settings = (await db.get('settings', 'default')) || { id: 'default' };
+    const activeId = settings.activeApiConfigId || null;
+    const configs = await db.getAll('apiConfig');
+    configs.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    if (configs.length === 0) {
+      body.innerHTML = `
+        <p class="hint">还没有配置。点右上角 + 新建一组,填好 API URL / Key / 模型后就能开聊。</p>
+      `;
+      return;
+    }
+    body.innerHTML = `
+      <div class="settings-list">
+        ${configs.map(c => {
+          const active = c.id === activeId;
+          const sub = [c.modelName, truncate(c.apiUrl, 32)].filter(Boolean).join(' · ');
+          return `
+            <button class="settings-item api-row" data-id="${esc(c.id)}">
+              <span class="settings-label">
+                <div class="api-name">${esc(c.name || '(未命名)')}</div>
+                <div class="api-sub">${esc(sub || '未填写')}</div>
+              </span>
+              <span class="api-active${active ? ' on' : ''}">${active ? '使用中' : '›'}</span>
+            </button>
+          `;
+        }).join('')}
+      </div>
+    `;
   }
 
-  const onBack = () => router.back();
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    await saveFromForm();
-    status.textContent = '已保存';
-    status.className = 'form-status success';
-  };
-  const onTest = async () => {
-    status.className = 'form-status';
-    status.textContent = '保存配置...';
-    try {
-      await saveFromForm();
-      status.textContent = '调用中...';
-      const reply = await ai.callAI({
-        systemPrompt: '你只用一句话回复。',
-        messages: [{ role: 'user', content: 'ping' }],
-        temperature: 0.5,
+  await renderList();
+
+  const onClick = async (e) => {
+    if (e.target.closest('.back')) return router.back();
+    if (e.target.closest('.new-api')) {
+      const id = db.newId();
+      await db.set('apiConfig', {
+        id, name: '新配置', apiUrl: '', apiKey: '', modelName: '', temperature: 0.8,
       });
-      status.textContent = `连接 OK,模型回复:${reply.trim().slice(0, 120)}`;
-      status.className = 'form-status success';
-    } catch (e) {
-      status.textContent = `连接失败:${String(e).slice(0, 300)}`;
-      status.className = 'form-status error';
+      return router.navigate('settings-api-detail', { id });
     }
+    const row = e.target.closest('[data-id]');
+    if (row) router.navigate('settings-api-detail', { id: row.dataset.id });
   };
-
-  backBtn.addEventListener('click', onBack);
-  form.addEventListener('submit', onSubmit);
-  testBtn.addEventListener('click', onTest);
-
-  return () => {
-    backBtn.removeEventListener('click', onBack);
-    form.removeEventListener('submit', onSubmit);
-    testBtn.removeEventListener('click', onTest);
-  };
+  container.addEventListener('click', onClick);
+  return () => container.removeEventListener('click', onClick);
 }
 
+function truncate(s, n) {
+  s = String(s || '');
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
 function esc(s) {
   return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

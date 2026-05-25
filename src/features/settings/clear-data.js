@@ -34,16 +34,25 @@ export async function mountClearData(container, params, router) {
     const includesApi = includeApi.checked;
     const msg = includesApi
       ? '真的要清空全部数据(包含 API 设置)吗?这无法撤销。'
-      : '真的要清空角色 / 对话 / 世界书 / 人设 / 记忆吗?API 设置会保留。';
+      : '真的要清空角色 / 对话 / 世界书 / 人设 / 记忆吗?API 设置和主题会保留。';
     if (!confirm(msg)) return;
     try {
       status.className = 'form-status';
       status.textContent = '清空中…';
+      // settings holds theme + activeApiConfigId — never wipe it, only edit.
+      const PROTECTED = new Set(['settings', ...(includesApi ? [] : ['apiConfig'])]);
       const cleared = [];
       for (const name of Object.keys(db.STORES)) {
-        if (!includesApi && name === 'apiConfig') continue;
+        if (PROTECTED.has(name)) continue;
         await db.clear(name);
         cleared.push(name);
+      }
+      // If wiping apiConfig, also null out the stale active pointer.
+      if (includesApi) {
+        const s = (await db.get('settings', 'default')) || { id: 'default' };
+        s.activeApiConfigId = null;
+        await db.set('settings', s);
+        cleared.push('apiConfig');
       }
       status.textContent = `已清空:${cleared.join(', ')}`;
       status.className = 'form-status success';

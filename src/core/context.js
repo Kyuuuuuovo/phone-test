@@ -2,6 +2,7 @@
 
 import * as db from './db.js';
 import * as ai from './ai.js';
+import { HUMANIZER_PROMPT } from './humanizer.js';
 
 // Output format constraint appended to every system prompt.
 // Forces model to return ONLY a JSON array of action objects.
@@ -26,6 +27,9 @@ export const OUTPUT_FORMAT_SPEC = `# 输出格式严格约束
 5. voice — 语音条(content 是文字内容,duration 是估算秒数,可省略)
    { "type": "voice", "content": "...", "duration": 8 }
 
+6. unblock_request — 请求对方解除拉黑(content 是你想对对方说的话;前端会渲染成一个让用户决定是否同意的按钮)
+   { "type": "unblock_request", "content": "..." }
+
 你可以在一个数组里发多条动作(用来断句、补刀、撤回等)。
 
 # 数量约束
@@ -42,8 +46,16 @@ export const OUTPUT_FORMAT_SPEC = `# 输出格式严格约束
 再次强调:只输出 JSON 数组本身,不输出任何其他字符,也不要用 \`\`\`json 包裹。`;
 
 // Build the system prompt for one session.
-// Order: character persona + bound worldbook entries (priority/order sorted) +
-//        player persona + session memories (old→new) + output format spec.
+// Section order:
+//   1. # 通用对话规范              (humanizer constant, if non-empty)
+//   2. # 世界观 / 背景设定(前置)    (worldbook entries with position='before')
+//   3. # 角色设定
+//   4. # 世界观 / 背景设定          (entries with position='inline', default — vibes next to character)
+//   5. # 世界观 / 背景设定(后置)    (entries with position='after')
+//   6. # 用户人设                  (if a persona is linked)
+//   7. # 过往记忆                  (if any memory summaries)
+//   8. # 当前社交状态              (if character.blocked — placed near the generation moment)
+//   9. OUTPUT_FORMAT_SPEC          (always last)
 export async function buildSystemPrompt(sessionId) {
   const session = await db.get('chatSessions', sessionId);
   if (!session) throw new Error(`buildSystemPrompt: session ${sessionId} not found`);
@@ -53,32 +65,50 @@ export async function buildSystemPrompt(sessionId) {
 
   const persona = session.personaId ? await db.get('personas', session.personaId) : null;
 
-  // Worldbook entries bound to this character.
+  // Group worldbook entries by injection position.
+  const wbBy = { before: [], inline: [], after: [] };
   const bindings = await db.query('characterWorldbooks', 'characterId', character.id);
   bindings.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
-  const wbBlocks = [];
   for (const binding of bindings) {
     const entries = await db.query('worldbookEntries', 'worldbookId', binding.worldbookId);
     const enabled = entries.filter(e => e.enabled !== false);
     enabled.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     for (const entry of enabled) {
-      wbBlocks.push(`【${entry.title || '条目'}】\n${entry.content || ''}`);
+      const pos = (entry.position === 'before' || entry.position === 'after') ? entry.position : 'inline';
+      wbBy[pos].push(`【${entry.title || '条目'}】\n${entry.content || ''}`);
     }
   }
 
   const memories = await db.query('memories', 'sessionId', sessionId);
   memories.sort((a, b) => a.createdAt - b.createdAt);
 
+  // Global humanizer / conversation conventions. App-level meta constraint,
+  // authored in src/core/humanizer.js (NOT visible to end users).
+  // See CLAUDE.md 铁律 10.
+  const humanizer = (HUMANIZER_PROMPT ?? '').trim();
+
   const parts = [];
+  if (humanizer) {
+    parts.push(`# 通用对话规范\n\n${humanizer}`);
+  }
+  if (wbBy.before.length > 0) {
+    parts.push(`# 世界观 / 背景设定(前置)\n\n${wbBy.before.join('\n\n')}`);
+  }
   parts.push(`# 角色设定\n\n你将扮演的角色:\n\n${character.persona || character.name || '(无设定)'}`);
-  if (wbBlocks.length > 0) {
-    parts.push(`# 世界观 / 背景设定\n\n${wbBlocks.join('\n\n')}`);
+  if (wbBy.inline.length > 0) {
+    parts.push(`# 世界观 / 背景设定\n\n${wbBy.inline.join('\n\n')}`);
+  }
+  if (wbBy.after.length > 0) {
+    parts.push(`# 世界观 / 背景设定(后置)\n\n${wbBy.after.join('\n\n')}`);
   }
   if (persona) {
     parts.push(`# 用户人设\n\n你的聊天对象的人设:\n\n${persona.persona || persona.name || '(未填写)'}`);
   }
   if (memories.length > 0) {
     parts.push(`# 过往记忆(由老到新)\n\n${memories.map(m => m.summary).join('\n\n')}`);
+  }
+  if (character.blocked) {
+    parts.push(`# 当前社交状态\n\n注意:你目前已被对方加入黑名单。这是该 app 内的关系状态,具体如何反应由你的人设决定。`);
   }
   parts.push(OUTPUT_FORMAT_SPEC);
   return parts.join('\n\n---\n\n');
@@ -111,6 +141,7 @@ function renderActionsAsText(actions) {
       case 'image':  return `[图片: ${a.description || a.src || ''}]`;
       case 'voice':  return `[语音: ${a.content || ''}]`;
       case 'recall': return `[撤回了一条消息]`;
+      case 'unblock_request': return `[请求对方解除拉黑: ${a.content || ''}]`;
       default:       return `[${a.type}]`;
     }
   }).filter(Boolean).join('\n');

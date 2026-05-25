@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
 
-const PORT = 5173;
+const PORT = parseInt(process.env.PORT, 10) || 5173;
 const ROOT = path.dirname(url.fileURLToPath(import.meta.url));
 
 const MIME = {
