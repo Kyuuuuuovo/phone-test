@@ -2,28 +2,124 @@
 // Pages scroll horizontally with snap; dock is fixed below.
 // Single page hides the pager dots. Mouse drag-to-scroll supplied via Pointer Events.
 
+import * as db from '../../core/db.js';
+
 const SVG = {
   chat:      `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>`,
   character: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`,
   book:      `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-2 16H8v-2h8v2zm0-4H8v-2h8v2zm0-4H8V8h8v2z"/></svg>`,
   persona:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="10" r="3"/><path d="M6.5 18.5c1-2.4 3.2-3.5 5.5-3.5s4.5 1.1 5.5 3.5"/></svg>`,
   gear:      `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0 0 13.92 2h-3.84a.49.49 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.73 8.47a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>`,
+  diary:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5z"/><path d="M5 4v18"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>`,
+  schedule:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/><circle cx="8.5" cy="14" r="0.8" fill="currentColor"/><circle cx="12" cy="14" r="0.8" fill="currentColor"/><circle cx="15.5" cy="14" r="0.8" fill="currentColor"/></svg>`,
+  camera:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="14" height="12" rx="2"/><path d="M17 10l4-2v8l-4-2z"/><circle cx="10" cy="12" r="2"/></svg>`,
+  shop:      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h16l-1.5 11a2 2 0 0 1-2 1.7h-9a2 2 0 0 1-2-1.7z"/><path d="M8 8V6a4 4 0 0 1 8 0v2"/></svg>`,
+  twitter:   `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 3l7.5 10.2L3.5 21h2l6.2-6.9L17 21h4l-7.9-10.7L20.5 3h-2L13 8.9 8 3z"/></svg>`,
+  forum:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-4 4v-4H4a0 0 0 0 1 0 0V6a2 2 0 0 1 2-2z"/><path d="M9 9h6M9 12h4"/></svg>`,
 };
 
-// Pages — each is an array of tiles. Add a second page later by appending.
+// Pages — page 1 keeps the main player tools tight + leaves vertical room
+// for user-added decoration widgets above (homeWidgets store, see widget-row).
+// Page 2 collects Phase 3+ placeholder apps. ids without a registered route
+// fall through home.js's catch and show the "还没做完" alert.
 const PAGES = [
   [
     { id: 'character-list', label: '角色',   icon: SVG.character },
     { id: 'worldbook-list', label: '世界书', icon: SVG.book },
     { id: 'persona-list',   label: '人设',   icon: SVG.persona },
+    { id: 'schedule',       label: '行程',   icon: SVG.schedule },
+  ],
+  [
+    { id: 'diary',          label: '日记',   icon: SVG.diary },
+    { id: 'twitter',        label: '推特',   icon: SVG.twitter },
+    { id: 'forum',          label: '论坛',   icon: SVG.forum },
+    { id: 'shop',           label: '商城',   icon: SVG.shop },
+    { id: 'monitor',        label: '监控',   icon: SVG.camera },
   ],
 ];
 
 // Dock — frequently-used, always visible.
 const DOCK = [
-  { id: 'chat-list', label: '聊天', icon: SVG.chat },
+  { id: 'messaging', label: '微信', icon: SVG.chat },
   { id: 'settings',  label: '设置', icon: SVG.gear },
 ];
+
+// Built-in widgets shown above the app grid. User-added widgets from
+// homeWidgets store are appended after these.
+const BUILTIN_WIDGETS = [
+  { type: 'favorites' },
+];
+
+async function renderFavoritesWidget() {
+  const favs = await db.getAll('favorites');
+  if (favs.length === 0) {
+    return `
+      <div class="widget widget-empty" data-target="favorites-list">
+        <div class="widget-title">收藏</div>
+        <div class="widget-empty-msg">还没有收藏 — 长按消息添加</div>
+      </div>
+    `;
+  }
+  favs.sort((a, b) => (b.savedAt ?? 0) - (a.savedAt ?? 0));
+  const pick = favs[Math.floor(Math.random() * Math.min(favs.length, 5))];  // random of latest 5
+  const msg = await db.get('chatMessages', pick.msgId);
+  const action = msg?.actions?.[pick.actionIdx ?? 0];
+  const session = msg ? await db.get('chatSessions', msg.sessionId) : null;
+  const character = session ? await db.get('characters', session.characterId) : null;
+  const text = action ? actionPreviewForWidget(action) : '(原消息已删除)';
+  return `
+    <div class="widget widget-favorites" data-target="favorites-list">
+      <div class="widget-head">
+        <span class="widget-title">收藏</span>
+        <span class="widget-count">${favs.length}</span>
+      </div>
+      <div class="widget-quote">${escHtml(text)}</div>
+      <div class="widget-from">— ${escHtml(character?.name || '(未知)')}</div>
+    </div>
+  `;
+}
+
+function actionPreviewForWidget(a) {
+  switch (a.type) {
+    case 'text':   return a.content || '';
+    case 'reply':  return a.content || '';
+    case 'image':  return `[图片] ${a.description || ''}`;
+    case 'voice':  return `[语音] ${a.content || ''}`;
+    case 'red_packet': return `[红包 ¥${Number(a.amount || 0).toFixed(2)}] ${a.message || ''}`;
+    case 'transfer':   return `[转账 ¥${Number(a.amount || 0).toFixed(2)}] ${a.message || ''}`;
+    default: return `[${a.type}]`;
+  }
+}
+
+async function renderWidget(w) {
+  if (w.type === 'favorites') return await renderFavoritesWidget();
+  if (w.type === 'image')     return renderImageWidget(w);
+  if (w.type === 'note')      return renderNoteWidget(w);
+  return '';
+}
+
+function renderImageWidget(w) {
+  const size = w.size || 'medium';
+  return `
+    <div class="widget widget-image user-widget size-${size}" data-widget-id="${escHtml(w.id)}">
+      <img src="${escHtml(w.data || '')}" alt="">
+      <button class="widget-del" title="删除">×</button>
+    </div>
+  `;
+}
+function renderNoteWidget(w) {
+  const size = w.size || 'medium';
+  return `
+    <div class="widget widget-note user-widget size-${size}" data-widget-id="${escHtml(w.id)}">
+      <div class="widget-note-text">${escHtml(w.data || '')}</div>
+      <button class="widget-del" title="删除">×</button>
+    </div>
+  `;
+}
+
+function escHtml(s) {
+  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
+}
 
 function tileHtml(t) {
   return `
@@ -34,14 +130,211 @@ function tileHtml(t) {
   `;
 }
 
+function escAttr(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+// Two-step add-widget modal: pick type → fill content. Saves to homeWidgets
+// store and re-navigates to home to refresh.
+async function openAddWidgetModal(container, router) {
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-header">添加桌面装饰</div>
+      <div class="widget-type-picker">
+        <button type="button" class="widget-type-btn" data-type="image">
+          <div class="type-icon">🖼</div>
+          <div>图片</div>
+          <div class="type-hint">上传一张图片贴到桌面</div>
+        </button>
+        <button type="button" class="widget-type-btn" data-type="note">
+          <div class="type-icon">📝</div>
+          <div>便签</div>
+          <div class="type-hint">写几个字贴到桌面</div>
+        </button>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn secondary cancel-btn">取消</button>
+      </div>
+    </div>
+  `;
+  container.appendChild(modal);
+  modal.querySelector('.cancel-btn').addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.remove();
+  });
+  modal.querySelectorAll('[data-type]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const type = btn.dataset.type;
+      if (type === 'image') {
+        modal.remove();
+        await pickImageAndSave(container, router);
+      } else if (type === 'note') {
+        renderNoteEditor(modal, container, router);
+      }
+    });
+  });
+}
+
+async function pickImageAndSave(container, router) {
+  const file = await new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = () => resolve(input.files?.[0] || null);
+    input.click();
+  });
+  if (!file) return;
+  if (file.size > 4 * 1024 * 1024) {
+    alert(`图片太大(${(file.size/1024/1024).toFixed(1)} MB),建议 < 4 MB`);
+    return;
+  }
+  const data = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(file);
+  });
+  // After loading image, ask user for size + placement
+  const opts = await askSizeAndPlacement(container);
+  if (!opts) return;
+  await db.set('homeWidgets', {
+    id: db.newId(),
+    type: 'image',
+    data,
+    size: opts.size,
+    placement: opts.placement,
+    createdAt: Date.now(),
+  });
+  await router.navigate('home');
+}
+
+function renderNoteEditor(modal, container, router) {
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-header">便签</div>
+      <form class="note-form">
+        <label>
+          <div class="label-text">内容</div>
+          <textarea name="text" rows="4" required placeholder="写点什么..."></textarea>
+        </label>
+        <label>
+          <div class="label-text">大小</div>
+          <select name="size">
+            <option value="small">小(半行)</option>
+            <option value="medium" selected>中(整行)</option>
+            <option value="large">大(整行,高些)</option>
+          </select>
+        </label>
+        <label>
+          <div class="label-text">位置</div>
+          <select name="placement">
+            <option value="above" selected>app 上方</option>
+            <option value="below">app 下方</option>
+          </select>
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary cancel-btn">取消</button>
+          <button type="submit" class="btn">添加</button>
+        </div>
+      </form>
+    </div>
+  `;
+  modal.querySelector('.cancel-btn').addEventListener('click', () => modal.remove());
+  modal.querySelector('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(modal.querySelector('form'));
+    const text = String(fd.get('text') || '').trim();
+    if (!text) return;
+    await db.set('homeWidgets', {
+      id: db.newId(),
+      type: 'note',
+      data: text,
+      size: String(fd.get('size') || 'medium'),
+      placement: String(fd.get('placement') || 'above'),
+      createdAt: Date.now(),
+    });
+    modal.remove();
+    await router.navigate('home');
+  });
+}
+
+// Mini-modal to ask size + placement after a file is already picked.
+// Resolves to { size, placement } or null.
+function askSizeAndPlacement(container) {
+  return new Promise((resolve) => {
+    const modal = document.createElement('div');
+    modal.className = 'modal-backdrop';
+    modal.innerHTML = `
+      <div class="modal">
+        <div class="modal-header">大小和位置</div>
+        <form class="size-form">
+          <label>
+            <div class="label-text">大小</div>
+            <select name="size">
+              <option value="small">小(半行)</option>
+              <option value="medium" selected>中(整行)</option>
+              <option value="large">大(整行,高些)</option>
+            </select>
+          </label>
+          <label>
+            <div class="label-text">位置</div>
+            <select name="placement">
+              <option value="above" selected>app 上方</option>
+              <option value="below">app 下方</option>
+            </select>
+          </label>
+          <div class="modal-actions">
+            <button type="button" class="btn secondary cancel-btn">取消</button>
+            <button type="submit" class="btn">添加</button>
+          </div>
+        </form>
+      </div>
+    `;
+    container.appendChild(modal);
+    const close = () => modal.remove();
+    modal.querySelector('.cancel-btn').addEventListener('click', () => { close(); resolve(null); });
+    modal.querySelector('form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const fd = new FormData(modal.querySelector('form'));
+      close();
+      resolve({
+        size: String(fd.get('size') || 'medium'),
+        placement: String(fd.get('placement') || 'above'),
+      });
+    });
+  });
+}
+
 export async function mountHome(container, params, router) {
   const showPager = PAGES.length > 1;
+  // Read wallpaper from settings — set as inline background-image so it only
+  // applies to the home page (other pages keep their own bg). base64-encoded
+  // image data lives on settings.wallpaper.
+  const settings = await db.get('settings', 'default');
+  const wallpaper = settings?.wallpaper || null;
+  const wallpaperStyle = wallpaper
+    ? ` style="background-image: url(&quot;${escAttr(wallpaper)}&quot;); background-size: cover; background-position: center;"`
+    : '';
+  const userWidgets = await db.getAll('homeWidgets');
+  userWidgets.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  // Split user widgets by placement; builtin favorites always stays above.
+  const above = [...BUILTIN_WIDGETS, ...userWidgets.filter(w => (w.placement || 'above') === 'above')];
+  const below = userWidgets.filter(w => w.placement === 'below');
+  const aboveHtmls = (await Promise.all(above.map(renderWidget))).filter(Boolean).join('');
+  const belowHtmls = (await Promise.all(below.map(renderWidget))).filter(Boolean).join('');
+  // The add button always sits at the end of the "above" row so users
+  // can summon the picker without scrolling.
+  const aboveBlock = aboveHtmls + `<button class="widget-add" type="button" title="添加桌面装饰">＋ 添加装饰</button>`;
   container.innerHTML = `
-    <div class="page home">
+    <div class="page home"${wallpaperStyle}>
       <div class="home-pages">
-        ${PAGES.map(page => `
+        ${PAGES.map((page, i) => `
           <div class="home-page">
+            ${i === 0 ? `<div class="widget-row above-row">${aboveBlock}</div>` : ''}
             <div class="app-grid">${page.map(tileHtml).join('')}</div>
+            ${i === 0 && belowHtmls ? `<div class="widget-row below-row">${belowHtmls}</div>` : ''}
           </div>
         `).join('')}
       </div>
@@ -110,8 +403,24 @@ export async function mountHome(container, params, router) {
   pagesEl.addEventListener('pointerup', onPointerEnd);
   pagesEl.addEventListener('pointercancel', onPointerEnd);
 
-  // Click handlers — both tile launches and dot navigation.
+  // Click handlers — tile launches, dot navigation, widget add/delete.
   const onClick = async (e) => {
+    // Delete a user widget (× button on hover)
+    const delBtn = e.target.closest('.widget-del');
+    if (delBtn) {
+      e.stopPropagation();
+      const w = delBtn.closest('[data-widget-id]');
+      if (w && confirm('删除这个装饰?')) {
+        await db.del('homeWidgets', w.dataset.widgetId);
+        await router.navigate('home');  // re-mount cheaply
+      }
+      return;
+    }
+    // Add a widget (＋ button)
+    if (e.target.closest('.widget-add')) {
+      await openAddWidgetModal(container, router);
+      return;
+    }
     const dot = e.target.closest('.dot');
     if (dot) {
       const idx = parseInt(dot.dataset.page, 10) || 0;

@@ -42,7 +42,7 @@ export async function mountWorldbookDetail(container, params, router) {
 
         <div class="entries-section">
           <div class="entries-header">
-            <div class="label-text">条目(v1 全量常驻注入,order 小的先注入)</div>
+            <div class="label-text">条目(v1 全量常驻注入)</div>
             <button type="button" class="btn add-entry">+ 新建条目</button>
           </div>
           <div class="entries-list"></div>
@@ -65,7 +65,7 @@ export async function mountWorldbookDetail(container, params, router) {
 
   async function renderEntries() {
     const entries = await db.query('worldbookEntries', 'worldbookId', id);
-    entries.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    entries.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
     if (entries.length === 0) {
       entriesList.innerHTML = `<p class="hint">还没有条目,点上方「+ 新建条目」开始。</p>`;
       return;
@@ -75,12 +75,11 @@ export async function mountWorldbookDetail(container, params, router) {
       return `
       <div class="entry-card" data-entry-id="${esc(e.id)}">
         <div class="entry-card-row">
-          <input class="entry-title" placeholder="条目标题(给 AI 看)" value="${esc(e.title)}">
-          <input type="number" class="entry-order" title="注入顺序(数字小的先)" value="${e.order ?? 0}" step="1">
+          <input class="entry-title" placeholder="标题(只你自己看,用来识别条目)" value="${esc(e.title)}">
           <select class="entry-position" title="注入位置">
-            <option value="before"${pos === 'before' ? ' selected' : ''}>角色前</option>
-            <option value="inline"${pos === 'inline' ? ' selected' : ''}>角色后(默认)</option>
-            <option value="after"${pos === 'after'   ? ' selected' : ''}>所有静态设定后</option>
+            <option value="before"${pos === 'before' ? ' selected' : ''}>角色设定前</option>
+            <option value="inline"${pos === 'inline' ? ' selected' : ''}>角色设定后(默认)</option>
+            <option value="after"${pos === 'after'   ? ' selected' : ''}>用户人设后</option>
           </select>
           <label class="entry-enabled" title="启用">
             <input type="checkbox"${e.enabled !== false ? ' checked' : ''}>
@@ -112,7 +111,6 @@ export async function mountWorldbookDetail(container, params, router) {
     if (!e) return;
     e.title    = card.querySelector('.entry-title').value.trim();
     e.content  = card.querySelector('.entry-content').value;
-    e.order    = parseInt(card.querySelector('.entry-order').value, 10) || 0;
     e.enabled  = card.querySelector('.entry-enabled input').checked;
     e.position = card.querySelector('.entry-position').value || 'inline';
     await db.set('worldbookEntries', e);
@@ -138,14 +136,11 @@ export async function mountWorldbookDetail(container, params, router) {
   };
 
   const onAddEntry = async () => {
-    const existing = await db.query('worldbookEntries', 'worldbookId', id);
-    const maxOrder = existing.reduce((m, e) => Math.max(m, e.order ?? 0), 0);
     await db.set('worldbookEntries', {
       id: db.newId(),
       worldbookId: id,
       title: '',
       content: '',
-      order: maxOrder + 1,
       enabled: true,
       position: 'inline',
       createdAt: Date.now(),
@@ -157,7 +152,7 @@ export async function mountWorldbookDetail(container, params, router) {
   const onEntriesChange = async (e) => {
     const card = e.target.closest('.entry-card');
     if (!card) return;
-    if (e.target.matches('.entry-title, .entry-content, .entry-order, .entry-position') ||
+    if (e.target.matches('.entry-title, .entry-content, .entry-position') ||
         e.target.matches('.entry-enabled input')) {
       try {
         await saveEntryFromCard(card);

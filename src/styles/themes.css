@@ -9,24 +9,28 @@ body[data-theme="notch"] {
 }
 
 body[data-theme="notch"] .phone-frame {
-  border-radius: 38px;
+  border-radius: 42px;
   margin: 12px auto;
   height: calc(100% - 24px);
-  box-shadow: 0 0 0 4px #1a1a1c, 0 0 24px rgba(0, 0, 0, 0.4);
+  /* No inset bezel — the pill should look embedded in the screen itself
+     (real iPhone style), not separated from a black frame above it. */
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.35);
   position: relative;
 }
 
-/* The notch itself — black pill hanging from the top of the frame. */
+/* The notch — black pill that visually carves out of the top of the screen.
+   No top gap, no separate frame; just a flat-topped pill clipped by the
+   frame's overflow:hidden + border-radius so it merges with the screen edge. */
 body[data-theme="notch"] .phone-frame::before {
   content: "";
   position: absolute;
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 124px;
-  height: 28px;
+  width: 120px;
+  height: 30px;
   background: #000;
-  border-radius: 0 0 18px 18px;
+  border-radius: 0 0 20px 20px;
   z-index: 100;
   pointer-events: none;
 }

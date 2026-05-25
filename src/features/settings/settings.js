@@ -21,6 +21,10 @@ export async function mountSettings(container, params, router) {
             <span class="settings-label">外观</span>
             <span class="settings-chevron">›</span>
           </button>
+          <button class="settings-item" data-target="settings-memory">
+            <span class="settings-label">记忆总结</span>
+            <span class="settings-chevron">›</span>
+          </button>
           <button class="settings-item" data-target="settings-data">
             <span class="settings-label">数据备份</span>
             <span class="settings-chevron">›</span>

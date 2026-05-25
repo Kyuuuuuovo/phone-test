@@ -4,16 +4,25 @@ import * as db from './core/db.js';
 import * as router from './core/router.js';
 import * as ai from './core/ai.js';
 import * as context from './core/context.js';
+import { applyTheme as applyThemeObj } from './core/theme.js';
 import { mountHome }        from './features/home/home.js';
 import { mountSettings }    from './features/settings/settings.js';
 import { mountApiSettings } from './features/settings/api-settings.js';
 import { mountApiDetail }   from './features/settings/api-detail.js';
 import { mountWeatherApi }  from './features/settings/weather-api.js';
 import { mountTheme }       from './features/settings/theme.js';
+import { mountMemorySettings } from './features/settings/memory.js';
 import { mountDataBackup }  from './features/settings/data-backup.js';
 import { mountClearData }   from './features/settings/clear-data.js';
 import { mountChatList }    from './features/chat-list/chat-list.js';
+import { mountMessaging }   from './features/messaging/messaging.js';
+import { mountWallet }      from './features/wallet/wallet.js';
+import { mountFavoritesList } from './features/favorites/favorites-list.js';
+import { mountScheduleList } from './features/schedule/schedule-list.js';
 import { mountChat }        from './features/chat/chat.js';
+import { mountChatInfo }    from './features/chat/chat-info.js';
+import { mountChatBeautify } from './features/chat/chat-beautify.js';
+import { mountMemoryManage } from './features/chat/memory-manage.js';
 import { mountChatSettings } from './features/chat/chat-settings.js';
 import { mountCharacterList }   from './features/character/character-list.js';
 import { mountCharacterDetail } from './features/character/character-detail.js';
@@ -21,6 +30,7 @@ import { mountWorldbookList }   from './features/worldbook/worldbook-list.js';
 import { mountWorldbookDetail } from './features/worldbook/worldbook-detail.js';
 import { mountPersonaList }     from './features/persona/persona-list.js';
 import { mountPersonaDetail }   from './features/persona/persona-detail.js';
+import { mountPersonaPick }     from './features/persona/persona-pick.js';
 
 // Expose modules on window for console-driven dev/debugging.
 window.app = { db, router, ai, context };
@@ -32,7 +42,12 @@ function renderShell() {
       <header class="status-bar">
         <span class="status-time">--:--</span>
         <span class="status-icons">
-          <span class="signal">•••ıl</span>
+          <svg class="signal-icon" viewBox="0 0 17 12" width="17" height="12" aria-hidden="true">
+            <rect x="0"  y="9" width="2" height="3"  rx="0.5" fill="currentColor"/>
+            <rect x="4"  y="6" width="2" height="6"  rx="0.5" fill="currentColor"/>
+            <rect x="8"  y="3" width="2" height="9"  rx="0.5" fill="currentColor"/>
+            <rect x="12" y="0" width="2" height="12" rx="0.5" fill="currentColor"/>
+          </svg>
           <span class="battery">
             <span class="battery-pct">--%</span>
             <svg class="battery-icon" viewBox="0 0 27 12" width="27" height="12" aria-hidden="true">
@@ -90,7 +105,7 @@ async function startBattery() {
 
 async function applyTheme() {
   const settings = await db.get('settings', 'default');
-  document.body.dataset.theme = settings?.theme || 'default';
+  applyThemeObj(settings?.theme);
 }
 
 async function boot() {
@@ -109,10 +124,18 @@ async function boot() {
   router.registerPage('settings-api-detail', mountApiDetail);
   router.registerPage('settings-weather',    mountWeatherApi);
   router.registerPage('settings-theme',      mountTheme);
+  router.registerPage('settings-memory',     mountMemorySettings);
   router.registerPage('settings-data',  mountDataBackup);
   router.registerPage('settings-clear', mountClearData);
   router.registerPage('chat-list',         mountChatList);
+  router.registerPage('messaging',         mountMessaging);
+  router.registerPage('wallet',            mountWallet);
+  router.registerPage('favorites-list',    mountFavoritesList);
+  router.registerPage('schedule',          mountScheduleList);
   router.registerPage('chat',              mountChat);
+  router.registerPage('chat-info',         mountChatInfo);
+  router.registerPage('chat-beautify',     mountChatBeautify);
+  router.registerPage('memory-manage',     mountMemoryManage);
   router.registerPage('chat-settings',     mountChatSettings);
   router.registerPage('character-list',    mountCharacterList);
   router.registerPage('character-detail',  mountCharacterDetail);
@@ -120,6 +143,7 @@ async function boot() {
   router.registerPage('worldbook-detail',  mountWorldbookDetail);
   router.registerPage('persona-list',      mountPersonaList);
   router.registerPage('persona-detail',    mountPersonaDetail);
+  router.registerPage('persona-pick',      mountPersonaPick);
 
   await router.navigate('home');
   console.log('[boot] mounted home');

@@ -2,7 +2,7 @@
 // Data model frozen in STORES below — bump DB_VERSION when changing schema.
 
 export const DB_NAME = 'phone-app';
-export const DB_VERSION = 2;
+export const DB_VERSION = 4;
 
 // Object store definitions. Applied during onupgradeneeded.
 // keyPath = primary key field; indexes = secondary lookup paths.
@@ -54,6 +54,30 @@ export const STORES = {
   },
   apiConfig: { keyPath: 'id', indexes: [] },  // singleton, id='default'
   settings:  { keyPath: 'id', indexes: [] },  // singleton, id='default'
+  wallet:    { keyPath: 'id', indexes: [] },  // singleton, id='default', fields: balance
+  favorites: {
+    keyPath: 'id',
+    indexes: [
+      { name: 'sessionId', keyPath: 'sessionId' },
+      { name: 'savedAt',   keyPath: 'savedAt' },
+    ],
+  },
+  // Schedule entries — events for user or specific characters. Injected into
+  // system prompt's 当前状态 layer when temporally near current time.
+  schedule: {
+    keyPath: 'id',
+    indexes: [
+      { name: 'startTs',     keyPath: 'startTs' },
+      { name: 'characterId', keyPath: 'characterId' },
+    ],
+  },
+  // User-placed decoration widgets on the home screen (images, notes).
+  homeWidgets: {
+    keyPath: 'id',
+    indexes: [
+      { name: 'createdAt', keyPath: 'createdAt' },
+    ],
+  },
 };
 
 let _db = null;

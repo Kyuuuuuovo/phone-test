@@ -51,6 +51,7 @@ export async function mountCharacterDetail(container, params, router) {
             <div class="label-text">备注(只给你自己看,不进 prompt)</div>
             <textarea name="notes" rows="3">${esc(character.notes)}</textarea>
           </label>
+
           <div class="label-text">挂载世界书</div>
           <div class="wb-mount-list">
             ${worldbooks.length === 0
@@ -101,6 +102,8 @@ export async function mountCharacterDetail(container, params, router) {
 
   async function saveFromForm() {
     const fd = new FormData(form);
+    // Note: chatBackground / chatFontSize live on the character but are edited
+    // in chat-beautify, not here — preserve whatever values are already set.
     const c = {
       ...character,
       name:    String(fd.get('name')    || '').trim() || '(未命名)',

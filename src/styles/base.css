@@ -1,4 +1,5 @@
-/* Theme variables. Single light theme for now; theme-switching infra here. */
+/* Theme variables. Default values; the theme editor writes runtime overrides
+   onto :root via core/theme.js → applyTheme(). */
 :root {
   --outside-bg: #c7c7cc;
   --bg:       #f5f5f7;
@@ -16,22 +17,157 @@
   --bg-pinned:        #ebebef;
   --radius-md: 10px;
   --radius-lg: 16px;
+  --font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-size: 15px;
+  --surface-alpha: 1;
+  --gradient-from: #f5f5f7;
+  --gradient-to:   #cce4ff;
 }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; height: 100%; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  font-size: 15px;
+  font-family: var(--font-family);
+  font-size: var(--font-size);
   background: var(--outside-bg);
   color: var(--fg);
 }
 
-#app { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+/* ── Effects: gated by body[data-fx-*] attributes set by applyTheme() ────── */
 
-/* Phone frame — caps width on desktop so the app always looks like a phone. */
+/* 渐变 — the phone-frame background switches to a soft gradient */
+body[data-fx-gradient="on"] .phone-frame,
+body[data-fx-gradient="on"] .page {
+  background: linear-gradient(135deg, var(--gradient-from), var(--gradient-to));
+}
+
+/* 聊天背景遮罩 — the chat page's bg color overlays the per-character
+   chatBackground image at the strength set by transparency (0-100). The
+   actual layering happens in chat.js (computed rgba via multi-bg) so the
+   overlay sits inside background-image and stays anchored to the visible
+   area (won't scroll with messages like an ::before would in an overflow
+   container). The list rows and other surfaces stay fully opaque. */
+
+/* Glass surfaces share a common selector list; each tier tunes blur + bg + sheen. */
+body[data-fx-glass="frosted"] .page-header,
+body[data-fx-glass="frosted"] .messaging-tabs,
+body[data-fx-glass="frosted"] .home-dock,
+body[data-fx-glass="frosted"] .chat-input,
+body[data-fx-glass="frosted"] .attach-panel,
+body[data-fx-glass="frosted"] .more-menu,
+body[data-fx-glass="frosted"] .bubble-menu {
+  background-color: color-mix(in srgb, var(--surface) 60%, transparent);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+/* Liquid glass — iOS 26-ish refracted glass. Applies to *all* glass-y surfaces
+   including app-icon, widgets, and list rows; differs from frosted in three
+   visible ways:
+     1. Two-stop vertical gradient bg (top brighter, bottom darker) — looks
+        like light refracting through curved glass
+     2. Stronger backdrop blur + saturate
+     3. Inset highlights: white 1px line on top edge, subtle dark 1px on bottom
+     4. Hover lifts the surface and amps the highlight (interactive feel) */
+body[data-fx-glass="liquid"] .page-header,
+body[data-fx-glass="liquid"] .messaging-tabs,
+body[data-fx-glass="liquid"] .home-dock,
+body[data-fx-glass="liquid"] .chat-input,
+body[data-fx-glass="liquid"] .attach-panel,
+body[data-fx-glass="liquid"] .bubble-menu,
+body[data-fx-glass="liquid"] .app-icon .icon,
+body[data-fx-glass="liquid"] .widget,
+body[data-fx-glass="liquid"] .modal {
+  background-image: linear-gradient(
+    155deg,
+    color-mix(in srgb, white 28%, transparent) 0%,
+    color-mix(in srgb, var(--surface) 65%, transparent) 45%,
+    color-mix(in srgb, var(--surface) 35%, transparent) 100%
+  );
+  background-color: transparent;
+  backdrop-filter: blur(32px) saturate(220%) brightness(1.05);
+  -webkit-backdrop-filter: blur(32px) saturate(220%) brightness(1.05);
+  /* Glass edge: bright top + soft dark bottom, like a refracted bevel */
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, white 75%, transparent),
+    inset 0 -1px 0 0 color-mix(in srgb, black 12%, transparent),
+    0 6px 24px rgba(0, 0, 0, 0.08);
+  position: relative;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Top sheen — a narrow gradient line that catches the light */
+body[data-fx-glass="liquid"] .page-header::after,
+body[data-fx-glass="liquid"] .messaging-tabs::after,
+body[data-fx-glass="liquid"] .home-dock::after,
+body[data-fx-glass="liquid"] .chat-input::after,
+body[data-fx-glass="liquid"] .attach-panel::after,
+body[data-fx-glass="liquid"] .app-icon .icon::after,
+body[data-fx-glass="liquid"] .widget::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 30%;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, white 38%, transparent),
+    transparent);
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* Hover/active interactivity for liquid surfaces — wobble + brighten */
+body[data-fx-glass="liquid"] .app-icon:hover .icon,
+body[data-fx-glass="liquid"] .widget:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, white 90%, transparent),
+    inset 0 -1px 0 0 color-mix(in srgb, black 10%, transparent),
+    0 10px 28px rgba(0, 0, 0, 0.14);
+}
+body[data-fx-glass="liquid"] .app-icon:active .icon,
+body[data-fx-glass="liquid"] .widget:active {
+  transform: translateY(0) scale(0.97);
+  transition-duration: 0.08s;
+}
+
+/* Bubbles get a subtle liquid treatment too */
+body[data-fx-glass="liquid"] .bubble.char {
+  background-image: linear-gradient(180deg,
+    color-mix(in srgb, var(--bubble-char) 92%, transparent),
+    color-mix(in srgb, var(--bubble-char) 70%, transparent));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: inset 0 1px 0 0 color-mix(in srgb, white 35%, transparent);
+}
+
+/* 纹理 — soft overlay patterns on the page background */
+body[data-fx-texture="dots"] .page::before,
+body[data-fx-texture="grid"] .page::before,
+body[data-fx-texture="lines"] .page::before,
+body[data-fx-texture="noise"] .page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  z-index: 0;
+}
+body[data-fx-texture="dots"]  .page::before { background-image: radial-gradient(rgba(0,0,0,0.08) 1px, transparent 1px); background-size: 16px 16px; }
+body[data-fx-texture="grid"]  .page::before { background-image: linear-gradient(rgba(0,0,0,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.06) 1px, transparent 1px); background-size: 18px 18px; }
+body[data-fx-texture="lines"] .page::before { background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.05) 0 1px, transparent 1px 8px); }
+body[data-fx-texture="noise"] .page::before { background-image: radial-gradient(rgba(0,0,0,0.05) 50%, transparent 51%); background-size: 4px 4px; opacity: 0.35; }
+body[data-fx-texture]:not([data-fx-texture="none"]) .page { position: relative; }
+body[data-fx-texture]:not([data-fx-texture="none"]) .page > * { position: relative; z-index: 1; }
+
+#app { height: 100%; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
+
+/* Phone frame — caps width on desktop so the app always looks like a phone.
+   clamp(min, preferred, max): min(400px) guards against the aspect formula
+   making the frame too narrow on short windows; preferred lets the frame
+   shrink toward 9:19.5 when window height is short; max(480px) is the
+   absolute cap. Mobile viewports (full width) just take 100% within bounds. */
 .phone-frame {
-  max-width: 480px;
+  max-width: clamp(400px, calc((100vh - 24px) * 9 / 19.5), 480px);
   width: 100%;
   margin: 0 auto;
   height: 100%;
@@ -69,6 +205,7 @@ body {
 }
 .status-bar .battery-pct { font-size: 12px; }
 .status-bar .battery-icon { display: block; }
+.status-bar .signal-icon { display: block; }
 
 #page-container {
   flex: 1;
@@ -190,7 +327,12 @@ label .label-text {
   flex: 0 0 100%;
   scroll-snap-align: start;
   padding: 24px 16px;
-  overflow-y: auto;
+  /* No vertical scroll — desktop should stay one-screen. Widgets cap their
+     own height to fit. */
+  overflow-y: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .home-pager {
   flex: 0 0 auto;
@@ -227,6 +369,173 @@ label .label-text {
   gap: 32px;
 }
 
+/* Home widget row — grid-based so small widgets sit side-by-side and
+   medium/large take the full width. */
+.widget-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.widget-row.below-row { margin: 18px 0 0; }
+.widget.size-small  { grid-column: span 1; }
+.widget.size-medium,
+.widget.size-large,
+.widget-empty,
+.widget-favorites,
+.widget-add { grid-column: span 2; }
+/* Override default heights when size is small/large */
+.widget.size-small.widget-image { height: 90px; }
+.widget.size-large.widget-image { height: 180px; }
+.widget.size-small.widget-note  { max-height: 90px; }
+.widget.size-large.widget-note  { max-height: 200px; }
+.widget {
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface) 65%, transparent);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid color-mix(in srgb, white 40%, transparent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  color: var(--fg);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.widget:hover { transform: translateY(-2px); }
+.widget:active { transform: translateY(0); }
+.widget-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.widget-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.widget-count {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.widget-quote {
+  font-size: 14px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.widget-from {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+}
+.widget-empty .widget-empty-msg {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* User-added widgets — image + note */
+.widget.user-widget {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+}
+.widget.user-widget .widget-del {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+}
+.widget.user-widget:hover .widget-del { opacity: 1; }
+.widget.widget-image {
+  height: 120px;  /* fixed height — keeps the home page one-screen */
+}
+.widget.widget-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.widget.widget-note {
+  padding: 14px 16px;
+  max-height: 120px;
+  overflow: hidden;
+}
+.widget.widget-note .widget-note-text {
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Add-widget button — dashed-border placeholder slot */
+.widget-add {
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface) 40%, transparent);
+  border: 1.5px dashed color-mix(in srgb, var(--fg) 25%, transparent);
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+}
+.widget-add:hover {
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+
+/* Type picker (in the add modal) */
+.widget-type-picker {
+  display: flex;
+  gap: 12px;
+  margin: 8px 0 12px;
+}
+.widget-type-btn {
+  flex: 1;
+  padding: 18px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  font: inherit;
+  color: var(--fg);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.widget-type-btn:hover { background: var(--bubble-char); }
+.widget-type-btn .type-icon { font-size: 28px; }
+.widget-type-btn .type-hint {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 /* Home page app grid */
 .app-grid {
   display: grid;
@@ -247,19 +556,40 @@ label .label-text {
   width: 56px;
   height: 56px;
   border-radius: var(--radius-lg);
-  background: var(--surface);
-  border: 1px solid var(--border);
+  /* Glass tile — semi-transparent surface + backdrop blur. On the home page
+     with a wallpaper set, the wallpaper shows through; on plain bg it just
+     looks slightly frosted (still nicer than a flat color). */
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid color-mix(in srgb, white 35%, transparent);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--accent);
+  transition: transform 0.15s ease;
 }
 .app-icon .icon svg { width: 30px; height: 30px; display: block; }
-.app-icon .label { font-size: 12px; color: var(--muted); }
-.app-icon:hover .icon { background: var(--bubble-char); }
+.app-icon .label {
+  font-size: 12px;
+  color: var(--fg);
+  text-shadow: 0 1px 2px color-mix(in srgb, var(--surface) 60%, transparent);
+}
+.app-icon:hover .icon { transform: scale(1.04); }
+.app-icon:active .icon { transform: scale(0.95); }
 
-/* Settings list (iOS-style menu rows) */
-.settings-list { display: flex; flex-direction: column; }
+/* Settings list (iOS-style menu rows) — whole list is a single rounded card
+   so the inner rows pick up the theme's radius without their own borders. */
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.settings-list .settings-item:last-child { border-bottom: none; }
 .settings-item {
   display: flex;
   align-items: center;
@@ -277,14 +607,87 @@ label .label-text {
 .settings-item:hover { background: var(--bubble-char); }
 .settings-item.danger { color: var(--danger); }
 .settings-item .settings-chevron { color: var(--muted); font-size: 18px; }
+.settings-item.toggle-row { cursor: default; margin-bottom: 0; }
+.settings-item.toggle-row:hover { background: var(--surface); }
+.settings-item.toggle-row input[type=checkbox] { width: auto; cursor: pointer; }
 
-/* Theme picker rows */
-.theme-row { align-items: center; }
-.theme-row .settings-label { display: flex; flex-direction: column; gap: 2px; }
-.theme-row .theme-desc { font-size: 12px; color: var(--muted); font-weight: normal; }
-.theme-row .theme-check { color: transparent; display: flex; align-items: center; }
-.theme-row .theme-check svg { width: 18px; height: 18px; display: block; }
-.theme-row .theme-check.active { color: var(--accent); }
+/* Theme editor */
+.theme-editor-page .page-header .reset-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+.theme-editor-page .section-title {
+  margin: 18px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.theme-preview {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.theme-preview-bubble {
+  max-width: 75%;
+  padding: 7px 11px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.theme-preview-bubble.user {
+  align-self: flex-end;
+  background: var(--bubble-user);
+  color: var(--bubble-user-fg);
+  border-bottom-right-radius: 4px;
+}
+.theme-preview-bubble.char {
+  align-self: flex-start;
+  background: var(--bubble-char);
+  color: var(--bubble-char-fg);
+  border-bottom-left-radius: 4px;
+}
+.theme-preview-meta {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+.color-row { margin-bottom: 10px; }
+.color-row-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.color-row-controls input[type=color] {
+  width: 44px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+.color-row-controls input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+.color-row-controls input[type=color]::-webkit-color-swatch { border: none; border-radius: 6px; }
+.color-row-controls input[type=color]::-moz-color-swatch { border: none; border-radius: 6px; }
+.color-row-controls input[type=text] {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+.color-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.color-pair > .color-row { margin-bottom: 0; }
 
 /* API list rows */
 .api-row .settings-label { display: flex; flex-direction: column; gap: 2px; }
@@ -394,6 +797,49 @@ label .label-text {
   line-height: 1.6;
   margin: 0 0 16px;
 }
+.hint code, code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bubble-char);
+  color: var(--fg);
+}
+.preset-picker { margin: 4px 0 14px; }
+.preset-chip { padding: 6px 12px; font-size: 13px; }
+.preset-scroll {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 8px;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+.preset-scroll::-webkit-scrollbar { display: none; }
+.preset-chip-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+.preset-chip-wrap .preset-chip { white-space: nowrap; }
+.preset-delete {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.preset-chip-wrap:hover .preset-delete { opacity: 1; }
+.preset-save-current { flex: 0 0 auto; border-style: dashed !important; }
 .hint.danger-hint {
   background: rgba(255, 59, 48, 0.08);
   color: var(--danger);
@@ -410,7 +856,7 @@ label .label-text {
 .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 
 /* Chat list */
-.chat-list-body { padding: 0; }
+.chat-list-body { padding: 0; position: relative; }
 .session-list { display: flex; flex-direction: column; }
 
 /* Swipe wrapper — holds the item (slides) + the hidden action stack (revealed underneath). */
@@ -504,6 +950,23 @@ label .label-text {
   padding: 0 4px;
 }
 
+/* Attach-modal — slides up from bottom for the WeChat-style attach inputs */
+.attach-modal-backdrop {
+  align-items: flex-end !important;
+  padding: 0 !important;
+}
+.attach-modal {
+  max-width: 100% !important;
+  width: 100% !important;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
+  animation: attachSlideUp 0.18s ease-out;
+}
+@keyframes attachSlideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+.attach-modal-form .label-text { margin-bottom: 4px; }
+
 /* Modal (scoped to phone-frame via absolute on #page-container) */
 .modal-backdrop {
   position: absolute;
@@ -526,6 +989,298 @@ label .label-text {
 .modal-header { font-size: 17px; font-weight: 600; margin-bottom: 12px; }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
 
+/* Messaging shell — header + content + bottom tab bar */
+.messaging-page { background: var(--bg); }
+.messaging-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.messaging-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 6px 0 max(6px, env(safe-area-inset-bottom));
+}
+.messaging-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+}
+.messaging-tab .tab-icon svg {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+.messaging-tab .tab-label { font-size: 11px; }
+.messaging-tab.active { color: var(--accent); }
+
+/* Contacts tab */
+.contacts-body { padding: 0; }
+.contacts-group {
+  background: var(--surface);
+}
+.contacts-letter {
+  padding: 6px 16px;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--bg);
+  font-weight: 500;
+}
+.contact-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+}
+.contact-row:hover { background: var(--bubble-char); }
+.contact-row.blocked { opacity: 0.55; }
+.contact-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--bubble-char);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--fg);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.contact-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.contact-name { flex: 1; min-width: 0; font-size: 15px; }
+
+/* Schedule list */
+.schedule-bucket-title {
+  margin: 18px 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+.schedule-list { display: flex; flex-direction: column; gap: 8px; }
+.schedule-entry {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.schedule-entry:hover { background: var(--bubble-char); }
+.schedule-entry .entry-time {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  min-width: 60px;
+}
+.schedule-entry .entry-body { flex: 1; min-width: 0; }
+.schedule-entry .entry-title { font-size: 14px; }
+.schedule-entry .entry-who {
+  font-size: 11px;
+  background: var(--bubble-char);
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-right: 6px;
+  color: var(--muted);
+}
+.schedule-entry .entry-desc {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.schedule-entry .entry-del {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.schedule-entry .entry-del:hover { color: var(--danger); }
+.schedule-form .char-pick[hidden] { display: none; }
+.schedule-page .actions { display: flex; gap: 4px; }
+.schedule-page .actions .ai-gen {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.schedule-page .actions .ai-gen:hover { filter: brightness(1.05); }
+
+/* Favorites list */
+.favorite-list { display: flex; flex-direction: column; gap: 8px; }
+.favorite-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.favorite-row:hover { background: var(--bubble-char); }
+.favorite-info { flex: 1; min-width: 0; }
+.favorite-from { font-size: 13px; color: var(--muted); }
+.favorite-stale { color: var(--danger); font-size: 11px; }
+.favorite-preview {
+  margin-top: 2px;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.favorite-when { margin-top: 4px; font-size: 11px; color: var(--muted); }
+.favorite-del {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 8px;
+}
+.favorite-del:hover { color: var(--danger); }
+
+/* Wallet page — balance hero card + transaction list */
+.wallet-balance-card {
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 70%, black));
+  color: #fff;
+  border-radius: var(--radius-lg);
+  padding: 20px 18px;
+  margin-bottom: 16px;
+}
+.wallet-balance-label { font-size: 12px; opacity: 0.85; }
+.wallet-balance-amount {
+  font-size: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin: 4px 0 14px;
+}
+.wallet-actions { display: flex; gap: 8px; }
+.wallet-actions .btn { background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.4); color: #fff; }
+.wallet-actions .btn.secondary { background: transparent; }
+.wallet-section-title {
+  margin: 8px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.wallet-txn-list { display: flex; flex-direction: column; }
+.wallet-txn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.wallet-txn:first-child { border-top-left-radius: var(--radius-md); border-top-right-radius: var(--radius-md); }
+.wallet-txn:last-child  { border-bottom: none; border-bottom-left-radius: var(--radius-md); border-bottom-right-radius: var(--radius-md); }
+.wallet-txn .txn-info { flex: 1; min-width: 0; }
+.wallet-txn .txn-title { font-size: 14px; font-weight: 500; }
+.wallet-txn .txn-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wallet-txn .txn-amount {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+}
+.wallet-txn.in .txn-amount  { color: var(--success); }
+.wallet-txn.out .txn-amount { color: var(--fg); }
+
+/* Me tab — profile card + settings-list */
+.me-body { padding: 0; }
+.me-profile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.me-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: var(--bubble-char);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  color: var(--fg);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.me-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.me-profile-text { flex: 1; min-width: 0; }
+.me-name { font-size: 17px; font-weight: 600; }
+.me-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.me-list .me-row-value {
+  color: var(--muted);
+  font-size: 13px;
+  margin-right: 6px;
+}
+
+/* Moments tab — placeholder */
+.moments-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.moments-cover {
+  height: 120px;
+  background: linear-gradient(135deg, #4c8bf5, #6a4cf5);
+}
+.moments-empty { padding: 40px 24px; }
+
 /* Chat page */
 .chat-page { background: var(--bg); }
 .chat-stream {
@@ -534,25 +1289,76 @@ label .label-text {
   padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
+
+/* Message row wraps avatar + bubble stack */
+.msg-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  max-width: 100%;
+}
+.msg-row.user { flex-direction: row-reverse; }
+.msg-row .msg-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  max-width: calc(100% - 52px);
+}
+.msg-row.user .msg-actions { align-items: flex-end; }
+.msg-row.char .msg-actions { align-items: flex-start; }
+.msg-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--bubble-char);
+  color: var(--fg);
+  font-size: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.msg-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Time separator between message groups */
+.time-separator {
+  align-self: center;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 6px 12px;
+  margin: 4px 0;
+}
+
+/* Read receipt mark */
+.read-mark {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 2px 4px 0;
+}
+
 .bubble {
-  max-width: 72%;
+  max-width: 100%;
   padding: 8px 12px;
   border-radius: 16px;
   word-wrap: break-word;
   white-space: pre-wrap;
   line-height: 1.4;
-  font-size: 15px;
+  font-size: inherit;  /* picks up per-character override on .chat-stream */
+  /* Suppress iOS native long-press menu so our bubble-menu wins on touch */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .bubble.user {
-  align-self: flex-end;
   background: var(--bubble-user);
   color: var(--bubble-user-fg);
   border-bottom-right-radius: 4px;
 }
 .bubble.char {
-  align-self: flex-start;
   background: var(--bubble-char);
   color: var(--bubble-char-fg);
   border-bottom-left-radius: 4px;
@@ -563,7 +1369,153 @@ label .label-text {
   font-size: 12px;
   padding: 4px 8px;
 }
-.bubble-voice, .bubble-image, .bubble-reply { font-style: italic; opacity: 0.92; }
+.bubble-image, .bubble-reply { font-style: italic; opacity: 0.92; }
+
+/* Voice bubble — WeChat-style play bar; click to reveal transcript */
+.bubble.bubble-voice { padding: 6px 10px; cursor: pointer; }
+.bubble-voice .voice-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: var(--voice-w, 100px);
+  user-select: none;
+}
+.bubble-voice .voice-icon { font-size: 13px; }
+.bubble-voice .voice-waves {
+  flex: 1;
+  height: 8px;
+  background: repeating-linear-gradient(
+    90deg,
+    currentColor 0 2px,
+    transparent 2px 6px
+  );
+  opacity: 0.4;
+  border-radius: 2px;
+}
+.bubble-voice .voice-dur { font-size: 12px; opacity: 0.85; font-variant-numeric: tabular-nums; }
+.bubble-voice .voice-text {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid currentColor;
+  border-color: color-mix(in srgb, currentColor 25%, transparent);
+  font-size: 13px;
+  font-style: italic;
+  opacity: 0.92;
+  user-select: text;
+}
+
+/* Red packet / transfer — wide-and-short WeChat-style card.
+   Layout: top row (icon | title+message | amount), bottom strip (state hint).
+   Whole card is the click target when .claimable; no nested button. */
+.bubble-money {
+  width: 240px;
+  max-width: 75%;
+  padding: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  color: #fff;
+  background: linear-gradient(135deg, #ff6a3d, #ff3b30);
+  display: flex;
+  flex-direction: column;
+}
+.bubble-money.bubble-transfer {
+  background: linear-gradient(135deg, #4cb6ff, #007aff);
+}
+.bubble-money.claimable { cursor: pointer; }
+.bubble-money.claimable:hover { filter: brightness(1.06); }
+.bubble-money.claimed { opacity: 0.55; }
+
+.bubble-money .money-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+.bubble-money .money-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.bubble-money .money-icon svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+.bubble-money .money-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.bubble-money .money-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.bubble-money .money-msg {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.88;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bubble-money .money-amount {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.bubble-money .money-state {
+  font-size: 11px;
+  padding: 4px 12px;
+  background: rgba(0, 0, 0, 0.16);
+  text-align: right;
+  opacity: 0.92;
+}
+
+/* Attach panel accent backgrounds for redpacket / transfer / location */
+.attach-item .icon-bg.redpacket-bg { background: #ff3b30; color: #fff; border-color: transparent; }
+.attach-item .icon-bg.transfer-bg  { background: #007aff; color: #fff; border-color: transparent; }
+.attach-item .icon-bg.location-bg  { background: #34c759; color: #fff; border-color: transparent; }
+
+/* Location bubble — pin icon + name + optional address */
+.bubble-location {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  max-width: 75%;
+}
+.bubble-location .location-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #34c759;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.bubble-location .location-icon svg { width: 20px; height: 20px; }
+.bubble-location .location-body { flex: 1; min-width: 0; }
+.bubble-location .location-name { font-weight: 600; font-size: 14px; }
+.bubble-location .location-desc {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
 
 /* unblock_request bubble — special inline UI that lets user accept */
 .bubble-unblock-request {
@@ -616,6 +1568,24 @@ label .label-text {
   min-height: 36px;
   max-height: 120px;
   border-radius: 18px;
+  /* Hide scrollbar — content still scrollable, just visually clean */
+  scrollbar-width: none;
+}
+.chat-input .text-input::-webkit-scrollbar { display: none; }
+
+/* Sleek, almost-invisible scrollbar in the chat stream (immersive mode) */
+.chat-stream {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--fg) 20%, transparent) transparent;
+}
+.chat-stream::-webkit-scrollbar { width: 4px; }
+.chat-stream::-webkit-scrollbar-track { background: transparent; }
+.chat-stream::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--fg) 15%, transparent);
+  border-radius: 4px;
+}
+.chat-stream::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--fg) 30%, transparent);
 }
 
 /* Round icon-only buttons used in chat input */
@@ -694,33 +1664,98 @@ label .label-text {
 }
 .chat-page .page-header .icon-btn svg { width: 22px; height: 22px; }
 
-/* Header dropdown menu */
-.more-menu {
-  position: absolute;
-  top: 52px;
-  right: 8px;
+/* Memory manage page — list of summaries + style override editor */
+.memory-manage-page .section-title {
+  margin: 18px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.memory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.memory-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 4px 0;
-  min-width: 160px;
-  z-index: 60;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
+  padding: 10px 12px;
 }
-.more-menu[hidden] { display: none; }
-.more-menu button {
-  display: block;
-  width: 100%;
-  padding: 10px 16px;
+.memory-card .memory-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.memory-card .memory-delete {
   background: none;
   border: none;
-  text-align: left;
+  font-size: 16px;
+  color: var(--muted);
   cursor: pointer;
-  font: inherit;
-  color: var(--fg);
+  padding: 0 6px;
+  line-height: 1;
 }
-.more-menu button:hover { background: var(--bubble-char); }
-.more-menu button.danger { color: var(--danger); }
+.memory-card .memory-delete:hover { color: var(--danger); }
+.memory-card .memory-summary {
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.default-prompt-details {
+  margin: 8px 0 4px;
+  font-size: 13px;
+}
+.default-prompt-details summary {
+  color: var(--accent);
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 0;
+}
+.default-prompt-text {
+  margin: 6px 0 0;
+  padding: 8px 12px;
+  background: var(--bg-pinned);
+  border-radius: var(--radius-md);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Chat info page — header card with avatar + name above the menu */
+.chat-info-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  margin: -16px -16px 16px;
+}
+.chat-info-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: var(--bubble-char);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: var(--fg);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.chat-info-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.chat-info-name { font-size: 17px; font-weight: 600; }
 
 /* Bubble context menu (long-press / right-click) */
 .bubble-menu {
@@ -805,6 +1840,33 @@ label .label-text {
   max-width: 240px;
 }
 .bubble-reply .reply-content { font-style: normal; opacity: 1; }
+
+/* Session right-click context menu */
+.session-context-menu {
+  position: absolute;
+  z-index: 80;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 4px 0;
+  min-width: 150px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
+}
+.session-context-menu[hidden] { display: none; }
+.session-context-menu button {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  color: var(--fg);
+}
+.session-context-menu button:hover { background: var(--bubble-char); }
+.session-context-menu button.danger { color: var(--danger); }
 
 /* Pinned chat-list rows — slightly darker background, no emoji */
 .session-row.pinned { background: var(--bg-pinned); }
@@ -928,6 +1990,20 @@ label .label-text {
   display: block;
 }
 .avatar-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Chat background preview is rectangular (16:9-ish), not a circle */
+.avatar-uploader.chat-bg-uploader .avatar-preview.chatbg-preview,
+.avatar-uploader.wallpaper-uploader .avatar-preview.wallpaper-preview {
+  width: 96px;
+  height: 64px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.avatar-uploader.chat-bg-uploader .avatar-preview.chatbg-preview img,
+.avatar-uploader.wallpaper-uploader .avatar-preview.wallpaper-preview img {
+  border-radius: 8px;
+}
 
 /* Worldbook mount checkbox list */
 .wb-mount-list {

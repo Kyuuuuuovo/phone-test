@@ -22,7 +22,7 @@ export async function mountChatSettings(container, params, router) {
   }
   const character = await db.get('characters', session.characterId);
   const settings = await db.get('settings', 'default');
-  const hasWeatherKey = !!settings?.weatherApi?.apiKey;
+  const hasWeatherKey = !!settings?.weatherApi?.urlTemplate;
 
   // Defaults for fields that may not exist on older sessions.
   const get = (k, d) => session[k] !== undefined ? session[k] : d;
@@ -30,6 +30,7 @@ export async function mountChatSettings(container, params, router) {
     char: {
       tz:      get('charTzEnabled', false),
       weather: get('charWeatherEnabled', false),
+      loc:     get('charLocEnabled', false),
       mode:    get('charCityMode', 'preset'),
       key:     get('charCityKey', ''),
       label:   get('charCityLabel', ''),
@@ -37,6 +38,7 @@ export async function mountChatSettings(container, params, router) {
     user: {
       tz:      get('userTzEnabled', false),
       weather: get('userWeatherEnabled', false),
+      loc:     get('userLocEnabled', false),
       mode:    get('userCityMode', 'preset'),
       key:     get('userCityKey', ''),
       label:   get('userCityLabel', ''),
@@ -59,7 +61,11 @@ export async function mountChatSettings(container, params, router) {
         </label>
         <label class="checkbox-row">
           <input type="checkbox" data-key="${who}-weather"${init.weather ? ' checked' : ''}${hasWeatherKey ? '' : ' disabled'}>
-          <span>AI 可读${label}所在地天气${hasWeatherKey ? '' : '<span class="muted-hint">(先去 设置 → 天气 API 填 key)</span>'}</span>
+          <span>AI 可读${label}所在地天气${hasWeatherKey ? '' : '<span class="muted-hint">(先去 设置 → 天气 API 填 URL 模板)</span>'}</span>
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" data-key="${who}-loc"${init.loc ? ' checked' : ''}>
+          <span>AI 可读${label}所在地名(只是城市名,不查 API)</span>
         </label>
         <div class="city-picker" data-who="${who}">
           <div class="label-text">${label}所在地</div>
@@ -129,6 +135,7 @@ export async function mountChatSettings(container, params, router) {
   function gather(who) {
     const tz      = form.querySelector(`[data-key="${who}-tz"]`).checked;
     const weather = form.querySelector(`[data-key="${who}-weather"]`).checked;
+    const loc     = form.querySelector(`[data-key="${who}-loc"]`).checked;
     const mode    = form.querySelector(`input[name="${who}-mode"]:checked`)?.value || 'preset';
     let key = '', label = '';
     if (mode === 'preset') {
@@ -139,7 +146,7 @@ export async function mountChatSettings(container, params, router) {
       key = form.querySelector(`[data-key="${who}-custom-mapping"]`).value;
       label = form.querySelector(`[data-key="${who}-custom-label"]`).value.trim();
     }
-    return { tz, weather, mode, key, label };
+    return { tz, weather, loc, mode, key, label };
   }
 
   const onBack = () => router.back();
@@ -173,11 +180,13 @@ export async function mountChatSettings(container, params, router) {
     Object.assign(session, {
       charTzEnabled:      c.tz,
       charWeatherEnabled: c.weather,
+      charLocEnabled:     c.loc,
       charCityMode:       c.mode,
       charCityKey:        c.key,
       charCityLabel:      c.label,
       userTzEnabled:      u.tz,
       userWeatherEnabled: u.weather,
+      userLocEnabled:     u.loc,
       userCityMode:       u.mode,
       userCityKey:        u.key,
       userCityLabel:      u.label,

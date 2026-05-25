@@ -122,6 +122,26 @@ function buildToolsForSession(session) {
       },
     });
   }
+  const locEnums = [];
+  if (session.charLocEnabled) locEnums.push('character');
+  if (session.userLocEnabled) locEnums.push('user');
+  if (locEnums.length > 0) {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'get_location',
+        description: '获取当前所在地名(只是城市/地名,不查任何 API)。返回 { city }。who=character 是角色所在地,who=user 是玩家所在地。',
+        parameters: {
+          type: 'object',
+          properties: {
+            who: { type: 'string', enum: locEnums, description: 'character 或 user' },
+          },
+          required: ['who'],
+        },
+      },
+    });
+  }
+
   const wxEnums = [];
   if (session.charWeatherEnabled) wxEnums.push('character');
   if (session.userWeatherEnabled) wxEnums.push('user');
@@ -130,7 +150,7 @@ function buildToolsForSession(session) {
       type: 'function',
       function: {
         name: 'get_weather',
-        description: '获取当前天气。返回 { city, tempC, summary }。who=character 是角色所在城市,who=user 是玩家所在城市。',
+        description: '获取当前天气。返回 { city, response },response 是用户在「设置 → 天气 API」配置的接口的原始响应文本(JSON 字符串),你需要自己解析里面的温度 / 天气描述等字段。who=character 是角色所在城市,who=user 是玩家所在城市。',
         parameters: {
           type: 'object',
           properties: {
@@ -174,13 +194,23 @@ async function getWeatherFor(session, who) {
   if (!c) return JSON.stringify({ error: `${who} 的城市未配置` });
   const sett = await db.get('settings', 'default');
   const wcfg = sett?.weatherApi;
-  if (!wcfg?.apiKey) return JSON.stringify({ error: '天气 API 未配置 key,去 设置 → 天气 API' });
+  if (!wcfg?.urlTemplate) return JSON.stringify({ error: '天气未配置 URL 模板,去 设置 → 天气 API' });
   try {
-    const w = await fetchWeather({ lat: c.lat, lon: c.lon, provider: wcfg.provider, apiKey: wcfg.apiKey });
-    return JSON.stringify({ city: label || c.name, tempC: w.tempC, summary: w.summary });
+    const raw = await fetchWeather({
+      lat: c.lat, lon: c.lon,
+      urlTemplate: wcfg.urlTemplate, apiKey: wcfg.apiKey,
+    });
+    // Raw response straight from the user's chosen endpoint — let the AI parse it.
+    return JSON.stringify({ city: label || c.name, response: raw });
   } catch (e) {
     return JSON.stringify({ error: String(e).slice(0, 200) });
   }
+}
+
+function getLocationFor(session, who) {
+  const { key, label } = pickWhoFields(session, who);
+  if (!key && !label) return JSON.stringify({ error: `${who} 的所在地未配置` });
+  return JSON.stringify({ city: label || key });
 }
 
 async function executeToolCall(tc, session) {
@@ -190,6 +220,7 @@ async function executeToolCall(tc, session) {
   const who = args.who;
   if (fn === 'get_current_time') return getCurrentTimeFor(session, who);
   if (fn === 'get_weather')      return await getWeatherFor(session, who);
+  if (fn === 'get_location')     return getLocationFor(session, who);
   return JSON.stringify({ error: `unknown tool: ${fn}` });
 }
 
@@ -258,6 +289,16 @@ export async function requestReply(sessionId, { featureContext } = {}) {
   }
 
   await dispatchActions(actions, { sessionId, messageId });
+
+  // Long-conversation memory compression — wired here so it actually runs
+  // (the function has existed since the first commit but was never called).
+  // Run after the reply is persisted so the compressed summary covers turns
+  // before this one; failures must not break the reply flow.
+  try {
+    await context.maybeCompressMemory(sessionId);
+  } catch (e) {
+    console.warn('[ai] memory compression failed (non-fatal):', e);
+  }
 
   return { messageId, actions, rawText };
 }

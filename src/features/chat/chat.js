@@ -12,7 +12,8 @@ const SVG = {
   voice: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1-3.29-2.5-4.03v8.06c1.5-.74 2.5-2.26 2.5-4.03z"/></svg>`,
   image: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z"/></svg>`,
   pin:   `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>`,
-  file:  `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20a2 2 0 0 0 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>`,
+  redpacket: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 3h12a2 2 0 0 1 2 2v3H4V5a2 2 0 0 1 2-2zm-2 7h16v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-9zm8 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>`,
+  transfer:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9.5h.01M18 14.5h.01"/></svg>`,
 };
 
 export async function mountChat(container, params, router) {
@@ -38,12 +39,6 @@ export async function mountChat(container, params, router) {
         <button class="icon-btn more-btn" title="更多">${SVG.more}</button>
       </header>
       ${isBlocked ? `<div class="blocked-banner">这个角色已被你拉黑。AI 知情,会按角色人设决定怎么反应。解除拉黑的权利只在你手里。</div>` : ''}
-      <div class="more-menu" hidden>
-        <button data-action="pin"      class="pin-item">${session.isPinned ? '取消置顶' : '置顶聊天'}</button>
-        <button data-action="settings">会话设置</button>
-        <button data-action="clear">清空聊天记录</button>
-        <button data-action="block"    class="block-item${isBlocked ? '' : ' danger'}">${isBlocked ? '解除拉黑' : '加入黑名单'}</button>
-      </div>
       <div class="chat-stream"></div>
       <div class="reply-preview" hidden>
         <div class="reply-preview-content">
@@ -67,37 +62,59 @@ export async function mountChat(container, params, router) {
           <div class="icon-bg">${SVG.image}</div>
           <div class="label">图片</div>
         </button>
-        <button class="attach-item disabled" data-kind="location" disabled>
-          <div class="icon-bg">${SVG.pin}</div>
-          <div class="label">位置</div>
+        <button class="attach-item" data-kind="red_packet">
+          <div class="icon-bg redpacket-bg">${SVG.redpacket}</div>
+          <div class="label">红包</div>
         </button>
-        <button class="attach-item disabled" data-kind="file" disabled>
-          <div class="icon-bg">${SVG.file}</div>
-          <div class="label">文件</div>
+        <button class="attach-item" data-kind="transfer">
+          <div class="icon-bg transfer-bg">${SVG.transfer}</div>
+          <div class="label">转账</div>
+        </button>
+        <button class="attach-item" data-kind="location">
+          <div class="icon-bg location-bg">${SVG.pin}</div>
+          <div class="label">位置</div>
         </button>
       </div>
       <div class="bubble-menu" hidden>
         <button data-action="quote">引用</button>
         <button data-action="copy">复制</button>
+        <button data-action="favorite">收藏</button>
         <button data-action="delete" class="danger">删除</button>
       </div>
     </div>
   `;
 
   const stream      = container.querySelector('.chat-stream');
+
+  // Per-character chat appearance overrides — read once on mount. Edits to the
+  // character require navigating back into chat (chat-info → 聊天美化 → 保存),
+  // which re-mounts this page, so we don't need live-watch here.
+  if (character?.chatBackground) {
+    // Layer a flat color overlay on top of the image so 「聊天背景遮罩」
+    // (settings → 外观 → 透明度) can dim the wallpaper for legibility.
+    const overlayPct = await readOverlayPct();
+    const rgba = await readBgRgba(overlayPct);
+    stream.style.backgroundImage = `linear-gradient(${rgba}, ${rgba}), url(${cssUrl(character.chatBackground)})`;
+    stream.style.backgroundSize = 'cover, cover';
+    stream.style.backgroundPosition = 'center, center';
+    // 'scroll' (default) keeps the wallpaper anchored to the visible area
+    // rather than scrolling with messages.
+    stream.style.backgroundRepeat = 'no-repeat, no-repeat';
+  }
+  if (character?.chatFontSize) {
+    stream.style.fontSize = `${character.chatFontSize}px`;
+  }
   const input       = container.querySelector('.text-input');
   const sendBtn     = container.querySelector('.send-btn');
   const aiBtn       = container.querySelector('.ai-btn');
   const plusBtn     = container.querySelector('.plus-btn');
   const moreBtn     = container.querySelector('.more-btn');
   const panel       = container.querySelector('.attach-panel');
-  const moreMenu    = container.querySelector('.more-menu');
   const bubbleMenu  = container.querySelector('.bubble-menu');
   const replyBar    = container.querySelector('.reply-preview');
   const replyText   = container.querySelector('.reply-preview-text');
   const replyCancel = container.querySelector('.reply-cancel');
   const backBtn     = container.querySelector('.back');
-  const pinItem     = container.querySelector('.pin-item');
   const chatPage    = container.querySelector('.chat-page');
 
   // Per-render preview map: msgId -> first-action text (for inline quote rendering)
@@ -110,12 +127,51 @@ export async function mountChat(container, params, router) {
     const msgs = await db.query('chatMessages', 'sessionId', sessionId);
     msgs.sort((a, b) => a.createdAt - b.createdAt);
     previewMap = new Map(msgs.map(m => [m.id, firstActionText(m)]));
-    // Re-read character so unblock_request buttons reflect current state after toggles.
-    const cur = await db.get('characters', session.characterId);
-    stream.innerHTML = msgs.map(m => renderMessage(m, previewMap, cur)).join('');
+    // Re-read character + session every refresh — pin / read receipt / blocked
+    // can change behind the scenes.
+    const cur     = await db.get('characters', session.characterId);
+    const freshS  = await db.get('chatSessions', sessionId) || session;
+    const persona = freshS.personaId ? await db.get('personas', freshS.personaId) : null;
+    Object.assign(session, freshS);
+
+    const showReceipts = freshS.showReadReceipts !== false;  // default on
+    const readUpTo     = Number(freshS.readReceiptUpToTs || 0);
+
+    const ctx = { previewMap, character: cur, persona, showReceipts, readUpTo };
+
+    const parts = [];
+    let prevTs = null;
+    for (const m of msgs) {
+      const sep = timeSeparator(m.createdAt, prevTs);
+      if (sep) parts.push(`<div class="time-separator">${esc(sep)}</div>`);
+      parts.push(renderMessageRow(m, ctx));
+      prevTs = m.createdAt;
+    }
+    stream.innerHTML = parts.join('');
     stream.scrollTop = stream.scrollHeight;
   }
   await refresh();
+
+  // Wallet helpers — gate user-initiated transfers/red_packets on balance.
+  // tryDeductWallet returns false if balance insufficient (user notified).
+  async function tryDeductWallet(amount, kindLabel) {
+    const w = (await db.get('wallet', 'default')) || { id: 'default', balance: 0 };
+    const balance = Number(w.balance || 0);
+    if (balance < amount) {
+      alert(`余额不足 — 当前 ¥${balance.toFixed(2)},${kindLabel}需 ¥${amount.toFixed(2)}。去「我 → 钱包」充值。`);
+      return false;
+    }
+    w.balance = Number((balance - amount).toFixed(2));
+    await db.set('wallet', w);
+    console.log(`[wallet] -${amount} (${kindLabel}); balance: ${w.balance}`);
+    return true;
+  }
+  async function creditWallet(amount, kindType) {
+    const w = (await db.get('wallet', 'default')) || { id: 'default', balance: 0 };
+    w.balance = Number((Number(w.balance || 0) + amount).toFixed(2));
+    await db.set('wallet', w);
+    console.log(`[wallet] +${amount} (${kindType}); balance: ${w.balance}`);
+  }
 
   async function appendUserMessage(actions) {
     const id = db.newId();
@@ -135,8 +191,6 @@ export async function mountChat(container, params, router) {
 
   function closePanel()    { panel.hidden    = true;  plusBtn.classList.remove('active'); }
   function openPanel()     { panel.hidden    = false; plusBtn.classList.add('active'); }
-  function closeMoreMenu() { moreMenu.hidden = true; }
-  function openMoreMenu()  { moreMenu.hidden = false; }
   function closeBubbleMenu() { bubbleMenu.hidden = true; activeBubbleMsgId = null; }
 
   function setReplyTo(msgId) {
@@ -178,7 +232,6 @@ export async function mountChat(container, params, router) {
     input.value = '';
     autosize();
     closePanel();
-    closeMoreMenu();
     closeBubbleMenu();
     const action = quoteId
       ? { type: 'reply', content: text, quoteMsgId: quoteId }
@@ -189,13 +242,14 @@ export async function mountChat(container, params, router) {
 
   const onAI = async () => {
     closePanel();
-    closeMoreMenu();
     closeBubbleMenu();
     aiBtn.disabled = true;
     sendBtn.disabled = true;
     aiBtn.classList.add('loading');
     try {
       await ai.requestReply(sessionId);
+      // After AI replies, all preceding user messages count as 已读.
+      await markReadUpToLatestUserMsg();
       await refresh();
     } catch (e) {
       alert(`AI 回复失败:${String(e).slice(0, 300)}`);
@@ -206,9 +260,21 @@ export async function mountChat(container, params, router) {
     }
   };
 
+  async function markReadUpToLatestUserMsg() {
+    const all = await db.query('chatMessages', 'sessionId', sessionId);
+    const userMsgs = all.filter(m => m.role === 'user');
+    if (userMsgs.length === 0) return;
+    const latestTs = Math.max(...userMsgs.map(m => m.createdAt));
+    const s = await db.get('chatSessions', sessionId);
+    if (!s) return;
+    if ((s.readReceiptUpToTs || 0) >= latestTs) return;
+    s.readReceiptUpToTs = latestTs;
+    await db.set('chatSessions', s);
+    Object.assign(session, s);
+  }
+
   const onPlusToggle = (e) => {
     e.stopPropagation();
-    closeMoreMenu();
     closeBubbleMenu();
     if (panel.hidden) openPanel(); else closePanel();
   };
@@ -216,20 +282,80 @@ export async function mountChat(container, params, router) {
   const onPanelClick = async (e) => {
     const btn = e.target.closest('[data-kind]');
     if (!btn || btn.disabled) return;
+    closePanel();
     if (btn.dataset.kind === 'voice') {
-      const content = prompt('输入语音内容(以语音条形式显示):');
-      if (!content) return;
-      closePanel();
+      const v = await openAttachModal(container, {
+        title: '发送语音',
+        fields: [{ name: 'content', label: '语音内容(会以语音条形式显示)', kind: 'textarea', required: true }],
+        submitLabel: '发送',
+      });
+      if (!v) return;
       await appendUserMessage([{
         type: 'voice',
-        content: content.trim(),
-        duration: Math.max(1, Math.round(content.length / 4)),
+        content: v.content.trim(),
+        duration: Math.max(1, Math.round(v.content.length / 4)),
       }]);
     } else if (btn.dataset.kind === 'image') {
-      const desc = prompt('图片描述(MVP 阶段用文字代替):');
-      if (!desc) return;
-      closePanel();
-      await appendUserMessage([{ type: 'image', description: desc.trim() }]);
+      const v = await openAttachModal(container, {
+        title: '发送图片',
+        fields: [{ name: 'description', label: '图片描述(MVP 阶段用文字代替)', kind: 'textarea', required: true }],
+        submitLabel: '发送',
+      });
+      if (!v) return;
+      await appendUserMessage([{ type: 'image', description: v.description.trim() }]);
+    } else if (btn.dataset.kind === 'red_packet') {
+      const v = await openAttachModal(container, {
+        title: '发红包',
+        fields: [
+          { name: 'amount',  label: '金额 (¥)', kind: 'number', defaultValue: '5.20', required: true, min: 0.01, step: 0.01 },
+          { name: 'message', label: '封皮祝福语(可选)', kind: 'text', defaultValue: '恭喜发财' },
+        ],
+        submitLabel: '塞进红包',
+      });
+      if (!v) return;
+      const amount = parseFloat(v.amount);
+      if (!Number.isFinite(amount) || amount <= 0) return;
+      const rounded = Number(amount.toFixed(2));
+      if (!(await tryDeductWallet(rounded, '红包'))) return;
+      await appendUserMessage([{
+        type: 'red_packet',
+        amount: rounded,
+        message: String(v.message || '').trim(),
+      }]);
+    } else if (btn.dataset.kind === 'location') {
+      const v = await openAttachModal(container, {
+        title: '发送位置',
+        fields: [
+          { name: 'name', label: '地点名', kind: 'text', required: true, defaultValue: '', placeholder: '比如:外滩 / 某某咖啡馆' },
+          { name: 'desc', label: '描述(可选)', kind: 'text' },
+        ],
+        submitLabel: '发送',
+      });
+      if (!v) return;
+      await appendUserMessage([{
+        type: 'location',
+        name: String(v.name || '').trim(),
+        desc: String(v.desc || '').trim(),
+      }]);
+    } else if (btn.dataset.kind === 'transfer') {
+      const v = await openAttachModal(container, {
+        title: '转账',
+        fields: [
+          { name: 'amount',  label: '金额 (¥)', kind: 'number', defaultValue: '100', required: true, min: 0.01, step: 0.01 },
+          { name: 'message', label: '转账说明(可选)', kind: 'text' },
+        ],
+        submitLabel: '确认转账',
+      });
+      if (!v) return;
+      const amount = parseFloat(v.amount);
+      if (!Number.isFinite(amount) || amount <= 0) return;
+      const rounded = Number(amount.toFixed(2));
+      if (!(await tryDeductWallet(rounded, '转账'))) return;
+      await appendUserMessage([{
+        type: 'transfer',
+        amount: rounded,
+        message: String(v.message || '').trim(),
+      }]);
     }
   };
 
@@ -237,37 +363,7 @@ export async function mountChat(container, params, router) {
     e.stopPropagation();
     closePanel();
     closeBubbleMenu();
-    if (moreMenu.hidden) openMoreMenu(); else closeMoreMenu();
-  };
-
-  const onMoreAction = async (e) => {
-    const btn = e.target.closest('[data-action]');
-    if (!btn) return;
-    closeMoreMenu();
-    if (btn.dataset.action === 'pin') {
-      session.isPinned = !session.isPinned;
-      await db.set('chatSessions', session);
-      pinItem.textContent = session.isPinned ? '取消置顶' : '置顶聊天';
-    } else if (btn.dataset.action === 'settings') {
-      await router.navigate('chat-settings', { sessionId });
-    } else if (btn.dataset.action === 'clear') {
-      if (!confirm('清空这个对话的所有消息和记忆?角色保留。')) return;
-      const msgs = await db.query('chatMessages', 'sessionId', sessionId);
-      for (const m of msgs) await db.del('chatMessages', m.id);
-      const mems = await db.query('memories', 'sessionId', sessionId);
-      for (const m of mems) await db.del('memories', m.id);
-      clearReply();
-      await refresh();
-    } else if (btn.dataset.action === 'block') {
-      const fresh = await db.get('characters', session.characterId);
-      if (!fresh) return;
-      const goingToBlock = !fresh.blocked;
-      if (goingToBlock && !confirm(`把「${fresh.name || '这个角色'}」加入黑名单?对话和消息会保留,AI 会通过 system prompt 知道这个状态,你可以随时解除。`)) return;
-      fresh.blocked = goingToBlock;
-      fresh.updatedAt = Date.now();
-      await db.set('characters', fresh);
-      await router.navigate('chat', { sessionId });
-    }
+    router.navigate('chat-info', { sessionId });
   };
 
   // Bubble context-menu open: long-press (touch) + right-click (desktop)
@@ -275,6 +371,34 @@ export async function mountChat(container, params, router) {
   let touchStartXY = null;
 
   const onStreamClick = async (e) => {
+    // Voice bubble — click toggles the spoken-text reveal below the bar.
+    const voiceBar = e.target.closest('.voice-bar');
+    if (voiceBar) {
+      const bubble = voiceBar.closest('.bubble-voice');
+      const text = bubble?.querySelector('.voice-text');
+      if (text) text.hidden = !text.hidden;
+      return;
+    }
+
+    // Claim a red_packet / transfer bubble — the whole .claimable card is the
+    // hit target (WeChat-style: tap anywhere on the envelope to open).
+    const claimable = e.target.closest('.bubble-money.claimable');
+    if (claimable) {
+      const msgId = claimable.dataset.msgId;
+      const idx = Number(claimable.dataset.actionIdx);
+      const msg = await db.get('chatMessages', msgId);
+      if (!msg || !Array.isArray(msg.actions) || !msg.actions[idx]) return;
+      if (msg.actions[idx].claimed) return;
+      msg.actions[idx] = { ...msg.actions[idx], claimed: true, claimedAt: Date.now() };
+      await db.set('chatMessages', msg);
+      // Credit the user's wallet with the claimed amount.
+      const amt = Number(msg.actions[idx].amount || 0);
+      if (amt > 0) await creditWallet(amt, msg.actions[idx].type);
+      await refresh();
+      return;
+    }
+
+    // Unblock request
     const ub = e.target.closest('.unblock-btn');
     if (!ub || ub.disabled) return;
     const fresh = await db.get('characters', session.characterId);
@@ -326,6 +450,8 @@ export async function mountChat(container, params, router) {
     const btn = e.target.closest('[data-action]');
     if (!btn || !activeBubbleMsgId) return;
     const msgId = activeBubbleMsgId;
+    const bubble = stream.querySelector(`.bubble[data-msg-id="${cssEscape(msgId)}"]`);
+    const actionIdx = bubble ? Number(bubble.dataset.actionIdx || 0) : 0;
     closeBubbleMenu();
     if (btn.dataset.action === 'quote') {
       setReplyTo(msgId);
@@ -342,6 +468,23 @@ export async function mountChat(container, params, router) {
         try { document.execCommand('copy'); } catch (_) {}
         document.body.removeChild(ta);
       }
+    } else if (btn.dataset.action === 'favorite') {
+      // De-dup: if this exact (msgId, actionIdx) is already favorited, skip.
+      const existing = await db.query('favorites', 'sessionId', sessionId);
+      const dupe = existing.find(f => f.msgId === msgId && (f.actionIdx ?? 0) === actionIdx);
+      if (dupe) {
+        alert('已经在收藏里了');
+      } else {
+        await db.set('favorites', {
+          id: db.newId(),
+          sessionId,
+          msgId,
+          actionIdx,
+          savedAt: Date.now(),
+        });
+        // Subtle toast: reuse alert for now, polished UI later.
+        // alert('已加入收藏');
+      }
     } else if (btn.dataset.action === 'delete') {
       if (!confirm('删除这条消息?')) return;
       await db.del('chatMessages', msgId);
@@ -355,7 +498,6 @@ export async function mountChat(container, params, router) {
   const onKey = (e) => {
     if (e.key === 'Escape') {
       closePanel();
-      closeMoreMenu();
       closeBubbleMenu();
       return;
     }
@@ -367,9 +509,6 @@ export async function mountChat(container, params, router) {
 
   // Click outside any popup → close them.
   const onDocClick = (e) => {
-    if (!moreMenu.hidden && !e.target.closest('.more-menu') && !e.target.closest('.more-btn')) {
-      closeMoreMenu();
-    }
     if (!bubbleMenu.hidden && !e.target.closest('.bubble-menu') && !e.target.closest('.bubble')) {
       closeBubbleMenu();
     }
@@ -381,7 +520,6 @@ export async function mountChat(container, params, router) {
   plusBtn.addEventListener('click', onPlusToggle);
   panel.addEventListener('click', onPanelClick);
   moreBtn.addEventListener('click', onMoreToggle);
-  moreMenu.addEventListener('click', onMoreAction);
   bubbleMenu.addEventListener('click', onBubbleMenuAction);
   replyCancel.addEventListener('click', onReplyCancel);
   input.addEventListener('keydown', onKey);
@@ -400,7 +538,6 @@ export async function mountChat(container, params, router) {
     plusBtn.removeEventListener('click', onPlusToggle);
     panel.removeEventListener('click', onPanelClick);
     moreBtn.removeEventListener('click', onMoreToggle);
-    moreMenu.removeEventListener('click', onMoreAction);
     bubbleMenu.removeEventListener('click', onBubbleMenuAction);
     replyCancel.removeEventListener('click', onReplyCancel);
     input.removeEventListener('keydown', onKey);
@@ -425,17 +562,61 @@ function firstActionText(msg) {
     case 'voice':  return `[语音] ${a.content || ''}`;
     case 'recall': return '[消息已撤回]';
     case 'unblock_request': return `[请求解除拉黑] ${a.content || ''}`;
+    case 'red_packet': return `[红包 ¥${Number(a.amount).toFixed(2)}] ${a.message || ''}`;
+    case 'transfer':   return `[转账 ¥${Number(a.amount).toFixed(2)}] ${a.message || ''}`;
+    case 'location':   return `[位置] ${a.name || ''}${a.desc ? ' · ' + a.desc : ''}`;
     default:       return `[${a.type}]`;
   }
 }
 
-function renderMessage(msg, previewMap, character) {
+function renderMessageRow(msg, ctx) {
   const side = msg.role === 'user' ? 'user' : 'char';
-  return (msg.actions ?? []).map(a => renderAction(a, side, msg.id, previewMap, character)).join('');
+  // Recall actions render centered; treat them as standalone separator-style rows.
+  const isOnlyRecall = (msg.actions ?? []).every(a => a.type === 'recall');
+  if (isOnlyRecall) {
+    return (msg.actions ?? []).map((a, i) => renderAction(a, side, msg.id, i, ctx.previewMap, ctx.character)).join('');
+  }
+  const bubbles = (msg.actions ?? [])
+    .map((a, i) => renderAction(a, side, msg.id, i, ctx.previewMap, ctx.character))
+    .join('');
+  const who = side === 'user' ? ctx.persona : ctx.character;
+  const avatar = renderRowAvatar(who, side);
+  const showRead = ctx.showReceipts && side === 'user' && msg.createdAt <= ctx.readUpTo;
+  const readMark = showRead ? `<div class="read-mark">已读</div>` : '';
+  return `<div class="msg-row ${side}">${avatar}<div class="msg-actions">${bubbles}${readMark}</div></div>`;
 }
 
-function renderAction(a, side, msgId, previewMap, character) {
-  const attrs = `data-msg-id="${esc(msgId)}"`;
+function renderRowAvatar(who, side) {
+  if (who?.avatar) {
+    return `<div class="msg-avatar ${side}"><img src="${esc(who.avatar)}" alt=""></div>`;
+  }
+  const initial = (who?.name ?? (side === 'user' ? '我' : '?')).slice(0, 1);
+  return `<div class="msg-avatar ${side}">${esc(initial)}</div>`;
+}
+
+// Returns a header string if a separator should be inserted, else null.
+// Rule: first message always; otherwise gap >= 5 minutes.
+function timeSeparator(ts, prevTs) {
+  if (prevTs && (ts - prevTs) < 5 * 60 * 1000) return null;
+  return formatChatTime(ts);
+}
+
+function formatChatTime(ts) {
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+  const isYesterday = d.toDateString() === yesterday.toDateString();
+  const hhmm = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  if (sameDay)      return hhmm;
+  if (isYesterday)  return `昨天 ${hhmm}`;
+  const sameYear = d.getFullYear() === now.getFullYear();
+  if (sameYear)     return `${d.getMonth()+1}月${d.getDate()}日 ${hhmm}`;
+  return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 ${hhmm}`;
+}
+
+function renderAction(a, side, msgId, idx, previewMap, character) {
+  const attrs = `data-msg-id="${esc(msgId)}" data-action-idx="${idx}"`;
   switch (a.type) {
     case 'text':
       return `<div class="bubble ${side}" ${attrs}>${esc(a.content || '')}</div>`;
@@ -448,8 +629,19 @@ function renderAction(a, side, msgId, previewMap, character) {
     }
     case 'image':
       return `<div class="bubble ${side} bubble-image" ${attrs}>[图片] ${esc(a.description || a.src || '')}</div>`;
-    case 'voice':
-      return `<div class="bubble ${side} bubble-voice" ${attrs}>▶ ${esc(a.content || '')} · ${Number(a.duration) || 0}″</div>`;
+    case 'voice': {
+      const dur = Number(a.duration) || Math.max(1, Math.round((a.content || '').length / 4));
+      // Visual width hints at voice length, like WeChat: 1s -> ~70px, 30s -> ~220px
+      const widthPx = Math.min(220, 70 + Math.min(30, dur) * 5);
+      return `<div class="bubble ${side} bubble-voice" ${attrs}>
+        <div class="voice-bar" style="--voice-w:${widthPx}px">
+          <span class="voice-icon">▶</span>
+          <span class="voice-waves"></span>
+          <span class="voice-dur">${dur}″</span>
+        </div>
+        <div class="voice-text" hidden>${esc(a.content || '')}</div>
+      </div>`;
+    }
     case 'recall':
       return `<div class="bubble-recall">[消息已撤回]</div>`;
     case 'unblock_request': {
@@ -462,11 +654,162 @@ function renderAction(a, side, msgId, previewMap, character) {
         <button class="btn unblock-btn"${dis}>${label}</button>
       </div>`;
     }
+    case 'red_packet':
+      return renderMoneyBubble({ kind: 'red_packet', a, side, attrs, label: '红包', verb: '领取', verbDone: '已领取' });
+    case 'transfer':
+      return renderMoneyBubble({ kind: 'transfer', a, side, attrs, label: '转账', verb: '接收', verbDone: '已接收' });
+    case 'location':
+      return `<div class="bubble ${side} bubble-location" ${attrs}>
+        <div class="location-icon">${SVG.pin}</div>
+        <div class="location-body">
+          <div class="location-name">${esc(a.name || '(未指明)')}</div>
+          ${a.desc ? `<div class="location-desc">${esc(a.desc)}</div>` : ''}
+        </div>
+      </div>`;
     default:
       return `<div class="bubble ${side} bubble-unknown" ${attrs}>[${esc(a.type)}]</div>`;
   }
 }
 
+// Shared rendering for red_packet + transfer cards. Wide-and-short WeChat
+// style: icon on the left, label + message in the middle, amount on the right;
+// state hint (领取/已领取/等待对方领取) on a thin footer strip.
+//
+// The whole card is the clickable target when the user can claim — no nested
+// button, simpler hit area and matches WeChat's actual interaction.
+function renderMoneyBubble({ kind, a, side, attrs, label, verb, verbDone }) {
+  const claimed = !!a.claimed;
+  const amount = Number(a.amount || 0).toFixed(2);
+  const userIsReceiver = side === 'char';
+  const claimable = !claimed && userIsReceiver;
+  const stateLabel = claimed ? verbDone
+    : claimable ? `点击${verb}`
+    : `等待对方${verb}`;
+  const icon = kind === 'red_packet' ? SVG.redpacket : SVG.transfer;
+  const claimAttr = claimable ? ' data-claim-kind="' + kind + '"' : '';
+  return `<div class="bubble ${side} bubble-money bubble-${kind}${claimed ? ' claimed' : ''}${claimable ? ' claimable' : ''}" ${attrs}${claimAttr}>
+    <div class="money-top">
+      <div class="money-icon">${icon}</div>
+      <div class="money-body">
+        <div class="money-title">${label}${a.message ? '<span class="money-msg">' + esc(a.message) + '</span>' : ''}</div>
+        <div class="money-amount">¥${amount}</div>
+      </div>
+    </div>
+    <div class="money-state">${stateLabel}</div>
+  </div>`;
+}
+
 function esc(s) {
   return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }
+
+// Escape a URL for use inside CSS url(...). Wrap in quotes and escape inner quotes.
+function cssUrl(s) {
+  return `"${String(s).replace(/"/g, '\\"')}"`;
+}
+
+async function readOverlayPct() {
+  const settings = await db.get('settings', 'default');
+  const t = settings?.theme?.effects;
+  const v = Number(t?.transparency ?? 0);
+  return Math.max(0, Math.min(100, v));
+}
+
+async function readBgRgba(overlayPct) {
+  const settings = await db.get('settings', 'default');
+  const bgHex = settings?.theme?.bg || '#f5f5f7';
+  const { r, g, b } = hexToRgb(bgHex);
+  const a = overlayPct / 100;
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+function hexToRgb(hex) {
+  let h = hex.replace('#', '');
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  const n = parseInt(h, 16);
+  return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
+}
+
+// In-frame attach modal — replaces window.prompt() for voice / image / red_packet
+// / transfer inputs. Returns a Promise<object|null>: keys map to field.name,
+// values are strings. Null = user cancelled.
+function openAttachModal(container, { title, fields, submitLabel = '确认' }) {
+  return new Promise((resolve) => {
+    const modal = document.createElement('div');
+    modal.className = 'modal-backdrop attach-modal-backdrop';
+    modal.innerHTML = `
+      <div class="modal attach-modal">
+        <div class="modal-header">${esc(title)}</div>
+        <form class="attach-modal-form" autocomplete="off">
+          ${fields.map(f => renderAttachField(f)).join('')}
+          <div class="modal-actions">
+            <button type="button" class="btn secondary cancel-btn">取消</button>
+            <button type="submit" class="btn">${esc(submitLabel)}</button>
+          </div>
+        </form>
+      </div>
+    `;
+    container.appendChild(modal);
+
+    const form = modal.querySelector('form');
+    const firstInput = form.querySelector('input, textarea');
+    setTimeout(() => firstInput?.focus(), 0);
+
+    const cleanup = () => modal.remove();
+
+    modal.querySelector('.cancel-btn').addEventListener('click', () => {
+      cleanup();
+      resolve(null);
+    });
+    modal.addEventListener('click', (e) => {
+      // Click outside the .modal box but inside the backdrop — dismiss.
+      if (e.target === modal) {
+        cleanup();
+        resolve(null);
+      }
+    });
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const out = {};
+      for (const f of fields) {
+        const el = form.querySelector(`[name="${cssEscape(f.name)}"]`);
+        out[f.name] = el?.value ?? '';
+      }
+      // Light validation: required fields must be non-empty.
+      for (const f of fields) {
+        if (f.required && !String(out[f.name] ?? '').trim()) {
+          form.querySelector(`[name="${cssEscape(f.name)}"]`)?.focus();
+          return;
+        }
+      }
+      cleanup();
+      resolve(out);
+    });
+  });
+}
+
+function renderAttachField(f) {
+  const id   = `attach-${f.name}`;
+  const def  = f.defaultValue ?? '';
+  if (f.kind === 'textarea') {
+    return `
+      <label for="${id}">
+        <div class="label-text">${esc(f.label)}</div>
+        <textarea id="${id}" name="${esc(f.name)}" rows="4"${f.required ? ' required' : ''}>${esc(def)}</textarea>
+      </label>
+    `;
+  }
+  const type = f.kind === 'number' ? 'number' : 'text';
+  const extra = [];
+  if (f.required) extra.push('required');
+  if (f.min != null)  extra.push(`min="${f.min}"`);
+  if (f.step != null) extra.push(`step="${f.step}"`);
+  return `
+    <label for="${id}">
+      <div class="label-text">${esc(f.label)}</div>
+      <input id="${id}" type="${type}" name="${esc(f.name)}" value="${esc(def)}" ${extra.join(' ')}>
+    </label>
+  `;
+}
+
+function cssEscape(s) { return s.replace(/"/g, '\\"'); }
