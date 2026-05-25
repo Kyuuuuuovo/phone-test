@@ -87,6 +87,11 @@ body[data-fx-glass="liquid"] .modal {
   background-color: transparent;
   backdrop-filter: blur(32px) saturate(220%) brightness(1.05);
   -webkit-backdrop-filter: blur(32px) saturate(220%) brightness(1.05);
+  /* Wipe the default solid border — defaults like
+     `.widget { border: 1px solid white(40%) }` would otherwise stack on top
+     of our inset-shadow glass bevel and look like a double frame around the
+     card. The inset shadow IS the bevel here. */
+  border-color: transparent;
   /* Glass edge: bright top + soft dark bottom, like a refracted bevel */
   box-shadow:
     inset 0 1px 0 0 color-mix(in srgb, white 75%, transparent),
@@ -358,10 +363,14 @@ label .label-text {
 .home-dock {
   flex: 0 0 auto;
   padding: 10px 12px max(10px, env(safe-area-inset-bottom));
-  background: rgba(255, 255, 255, 0.65);
+  /* Translucent so the home wallpaper actually shows through to the dock —
+     was a hardcoded `rgba(255,255,255,0.65)` which became a bright white slab
+     on dark wallpapers and broke the visual continuity. Now follows the
+     theme surface + lets ~60% of the wallpaper through. */
+  background: color-mix(in srgb, var(--surface) 40%, transparent);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-top: 1px solid var(--border);
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
 }
 .dock-grid {
   grid-template-columns: repeat(2, max-content) !important;
