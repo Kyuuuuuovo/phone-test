@@ -58,19 +58,21 @@ const DOCK = [
   { id: 'settings',  label: '设置', icon: SVG.gear },
 ];
 
-// Built-in widgets shown above the app grid. User-added widgets from
-// homeWidgets store are appended after these.
-const BUILTIN_WIDGETS = [
-  { type: 'favorites' },
-];
-
-async function renderFavoritesWidget() {
+// Favorites used to be a permanent builtin pinned above the app grid.
+// It's now a user-addable widget like image / note / polaroid / anniversary:
+// users add it via the picker, can drag / delete / reorder it. Existing
+// users get an auto-migration on first home mount so they don't lose their
+// favorites pin (see migrateFavoritesWidget in mountHome).
+async function renderFavoritesWidget(w) {
+  const id = w?.id || '';
+  const size = w?.size || 'small';
   const favs = await db.getAll('favorites');
   if (favs.length === 0) {
     return `
-      <div class="widget widget-empty" data-target="favorites-list">
-        <div class="widget-title">收藏</div>
-        <div class="widget-empty-msg">还没有收藏 — 长按消息添加</div>
+      <div class="widget widget-favorites user-widget size-${size} empty" data-widget-id="${escHtml(id)}" data-target="favorites-list">
+        <div class="widget-head"><span class="widget-title">收藏</span></div>
+        <div class="widget-empty-msg">还没有收藏</div>
+        <button class="widget-del" title="删除">×</button>
       </div>
     `;
   }
@@ -82,12 +84,13 @@ async function renderFavoritesWidget() {
   const character = session ? await db.get('characters', session.characterId) : null;
   const text = action ? actionPreviewForWidget(action) : '(原消息已删除)';
   return `
-    <div class="widget widget-favorites" data-target="favorites-list">
+    <div class="widget widget-favorites user-widget size-${size}" data-widget-id="${escHtml(id)}" data-target="favorites-list">
       <div class="widget-head">
         <span class="widget-title">收藏</span>
       </div>
       <div class="widget-quote">${escHtml(text)}</div>
       <div class="widget-from">— ${escHtml(character?.name || '(未知)')}</div>
+      <button class="widget-del" title="删除">×</button>
     </div>
   `;
 }
@@ -105,11 +108,11 @@ function actionPreviewForWidget(a) {
 }
 
 async function renderWidget(w) {
-  if (w.type === 'favorites')   return await renderFavoritesWidget();
+  if (w.type === 'favorites')   return await renderFavoritesWidget(w);
   if (w.type === 'image')       return renderImageWidget(w);
   if (w.type === 'note')        return renderNoteWidget(w);
   if (w.type === 'polaroid')    return renderPolaroidWidget(w);
-  if (w.type === 'anniversary') return renderAnniversaryWidget(w);
+  if (w.type === 'anniversary') return await renderAnniversaryWidget(w);
   return '';
 }
 
@@ -138,8 +141,12 @@ function renderNoteWidget(w) {
 // data-polaroid-idx and rewrites w.data.stackOrder so the visual change
 // persists on next refresh. data shape:
 //   { photos: [base64, base64, base64], stackOrder: [<bottom>, <mid>, <top>] }
+// Size: small (1 widget-col = ~2 app widths). The widget itself is
+// transparent (no card background) so only the photos read as floating
+// polaroids on the wallpaper.
 function renderPolaroidWidget(w) {
   const photos = Array.isArray(w.data?.photos) ? w.data.photos.slice(0, 3) : [];
+  const size = w?.size || 'small';
   // stackOrder defaults to [0, 1, 2] — third index (last) is the front.
   // We pad/truncate so length matches photos length.
   let stackOrder = Array.isArray(w.data?.stackOrder) ? [...w.data.stackOrder] : [];
@@ -149,7 +156,7 @@ function renderPolaroidWidget(w) {
   }
   if (photos.length === 0) {
     return `
-      <div class="widget widget-polaroid user-widget size-large empty" data-widget-id="${escHtml(w.id)}">
+      <div class="widget widget-polaroid user-widget size-${size} empty" data-widget-id="${escHtml(w.id)}">
         <div class="widget-polaroid-empty">未上传照片</div>
         <button class="widget-del" title="删除">×</button>
       </div>
@@ -158,15 +165,15 @@ function renderPolaroidWidget(w) {
   // Visual: render in stack order, where stackPos 0 = bottom (most rotated),
   // last position = front (no rotation). Rotation/offset depends on count.
   const transforms = [
-    { rot: -8, x: -16, y:  4 },
-    { rot:  6, x:  12, y:  2 },
+    { rot: -8, x: -14, y:  4 },
+    { rot:  6, x:  10, y:  2 },
     { rot:  0, x:   0, y:  0 },
   ];
   // If fewer than 3 photos, use the tail of transforms (so single photo
   // sits centered, two photos still fan out).
   const tStart = transforms.length - photos.length;
   return `
-    <div class="widget widget-polaroid user-widget size-large" data-widget-id="${escHtml(w.id)}">
+    <div class="widget widget-polaroid user-widget size-${size}" data-widget-id="${escHtml(w.id)}">
       ${stackOrder.map((photoIdx, stackPos) => {
         const t = transforms[tStart + stackPos];
         return `
@@ -182,16 +189,25 @@ function renderPolaroidWidget(w) {
   `;
 }
 
-// Anniversary — "遇见 XXX 已经 N 天". data: { name, startTs }.
-function renderAnniversaryWidget(w) {
-  const name = String(w.data?.name || '').trim();
+// Anniversary — "遇见 XXX 已经 N 天". data: { name?, characterId?, startTs }.
+// When characterId is set we look up the character at render time so the
+// display name follows the character's current name (rename in 角色管理
+// will reflect here automatically). When only `name` is set it's a custom
+// label the user typed (e.g. "小猫"). characterId takes precedence.
+async function renderAnniversaryWidget(w) {
+  const size = w?.size || 'small';
   const startTs = Number(w.data?.startTs);
   const days = Number.isFinite(startTs)
     ? Math.max(0, Math.floor((Date.now() - startTs) / 86400000))
     : 0;
+  let displayName = String(w.data?.name || '').trim();
+  if (w.data?.characterId) {
+    const c = await db.get('characters', w.data.characterId);
+    if (c?.name) displayName = c.name;
+  }
   return `
-    <div class="widget widget-anniversary user-widget size-medium" data-widget-id="${escHtml(w.id)}">
-      <div class="anniv-label">遇见 ${escHtml(name || '__')} 已经</div>
+    <div class="widget widget-anniversary user-widget size-${size}" data-widget-id="${escHtml(w.id)}">
+      <div class="anniv-label">遇见 ${escHtml(displayName || '__')} 已经</div>
       <div class="anniv-days"><span class="anniv-count">${days}</span><span class="anniv-unit">天</span></div>
       <button class="widget-del" title="删除">×</button>
     </div>
@@ -224,6 +240,11 @@ async function openAddWidgetModal(container, router) {
     <div class="modal">
       <div class="modal-header">添加桌面装饰</div>
       <div class="widget-type-picker">
+        <button type="button" class="widget-type-btn" data-type="favorites">
+          <div class="type-icon">⭐</div>
+          <div>收藏</div>
+          <div class="type-hint">随机抽一条收藏的消息显示</div>
+        </button>
         <button type="button" class="widget-type-btn" data-type="image">
           <div class="type-icon">🖼</div>
           <div>图片</div>
@@ -258,7 +279,21 @@ async function openAddWidgetModal(container, router) {
   modal.querySelectorAll('[data-type]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const type = btn.dataset.type;
-      if (type === 'image') {
+      if (type === 'favorites') {
+        modal.remove();
+        // No content to gather — favorites widget renders dynamically
+        // from the favorites store. Just ask for placement.
+        const placement = await askPlacementOnly(container);
+        if (!placement) return;
+        await db.set('homeWidgets', {
+          id: db.newId(),
+          type: 'favorites',
+          placement,
+          size: 'small',
+          createdAt: Date.now(),
+        });
+        await router.navigate('home');
+      } else if (type === 'image') {
         modal.remove();
         await pickImageAndSave(container, router);
       } else if (type === 'note') {
@@ -390,25 +425,51 @@ async function pickPolaroidPhotosAndSave(container, router) {
     id: db.newId(),
     type: 'polaroid',
     data: { photos, stackOrder: photos.map((_, i) => i) },
-    size: 'large',
+    size: 'small',
     placement,
     createdAt: Date.now(),
   });
   await router.navigate('home');
 }
 
-// Anniversary editor: name + start date inputs.
-function renderAnniversaryEditor(modal, container, router) {
-  // Default to today so the user gets a "0 天" preview if they don't change it
+// Anniversary editor: subject (custom name OR existing character) + start
+// date inputs. Two radios switch between a text input and a character
+// dropdown; the form only submits the matching field. characterId is
+// preferred at render time so renaming the character later auto-updates
+// the widget's display text.
+async function renderAnniversaryEditor(modal, container, router) {
+  // Exclude __bear__ (the desk pet) so it doesn't pollute the picker.
+  const chars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
   const today = new Date();
   const defaultDate = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  // Default to character mode iff there's at least one character.
+  const defaultMode = chars.length > 0 ? 'character' : 'custom';
   modal.innerHTML = `
     <div class="modal">
       <div class="modal-header">纪念日</div>
       <form class="anniv-form">
         <label>
+          <div class="label-text">对象</div>
+          <div class="anniv-mode-row">
+            <label class="radio-inline">
+              <input type="radio" name="mode" value="character"${defaultMode === 'character' ? ' checked' : ''}${chars.length === 0 ? ' disabled' : ''}>
+              <span>角色</span>
+            </label>
+            <label class="radio-inline">
+              <input type="radio" name="mode" value="custom"${defaultMode === 'custom' ? ' checked' : ''}>
+              <span>自定义</span>
+            </label>
+          </div>
+        </label>
+        <label class="anniv-char-block"${defaultMode === 'character' ? '' : ' hidden'}>
+          <div class="label-text">选哪个角色</div>
+          <select name="characterId">
+            ${chars.map(c => `<option value="${escHtml(c.id)}">${escHtml(c.name || '(未命名)')}</option>`).join('')}
+          </select>
+        </label>
+        <label class="anniv-custom-block"${defaultMode === 'custom' ? '' : ' hidden'}>
           <div class="label-text">叫 ta 什么(比如:小猫 / 阿七)</div>
-          <input type="text" name="name" required maxlength="20" placeholder="名字 / 昵称">
+          <input type="text" name="name" maxlength="20" placeholder="名字 / 昵称">
         </label>
         <label>
           <div class="label-text">从哪天开始算</div>
@@ -429,20 +490,37 @@ function renderAnniversaryEditor(modal, container, router) {
     </div>
   `;
   modal.querySelector('.cancel-btn').addEventListener('click', () => modal.remove());
+  // Toggle the visible field based on the picked mode.
+  modal.querySelectorAll('input[name="mode"]').forEach(r => {
+    r.addEventListener('change', () => {
+      const mode = modal.querySelector('input[name="mode"]:checked').value;
+      modal.querySelector('.anniv-char-block').hidden   = (mode !== 'character');
+      modal.querySelector('.anniv-custom-block').hidden = (mode !== 'custom');
+    });
+  });
   modal.querySelector('form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(modal.querySelector('form'));
-    const name = String(fd.get('name') || '').trim();
+    const mode = String(fd.get('mode') || 'custom');
     const startDateStr = String(fd.get('startDate') || '').trim();
-    if (!name || !startDateStr) return;
-    // Use local-noon to dodge timezone fence-posting on day-count math
+    if (!startDateStr) return;
     const startTs = new Date(`${startDateStr}T12:00:00`).getTime();
     if (!Number.isFinite(startTs)) return;
+    const data = { startTs };
+    if (mode === 'character') {
+      const cid = String(fd.get('characterId') || '');
+      if (!cid) return;
+      data.characterId = cid;
+    } else {
+      const name = String(fd.get('name') || '').trim();
+      if (!name) return;
+      data.name = name;
+    }
     await db.set('homeWidgets', {
       id: db.newId(),
       type: 'anniversary',
-      data: { name, startTs },
-      size: 'medium',
+      data,
+      size: 'small',
       placement: String(fd.get('placement') || 'above'),
       createdAt: Date.now(),
     });
@@ -577,6 +655,25 @@ export async function mountHome(container, params, router) {
     }
   }
   const tileOrder = Array.isArray(settings?.tileOrder) ? settings.tileOrder : [];
+  // Soft migration: 收藏 was a permanent builtin before this release. Seed
+  // a user-owned favorites widget on first visit so existing users don't
+  // suddenly find their pinned favorites gone. Once the flag is set the
+  // migration never runs again, so deleting the seeded widget is OK.
+  if (!settings?.favoritesMigratedV1) {
+    const allWidgets = await db.getAll('homeWidgets');
+    const hasFavorites = allWidgets.some(w => w.type === 'favorites');
+    if (!hasFavorites) {
+      await db.set('homeWidgets', {
+        id: db.newId(),
+        type: 'favorites',
+        placement: 'above',
+        size: 'small',
+        order: 1,
+        createdAt: Date.now(),
+      });
+    }
+    await db.updateSettings(s => { s.favoritesMigratedV1 = true; });
+  }
   const userWidgets = await db.getAll('homeWidgets');
   // Order by explicit `order` if set (assigned during edit-mode drag);
   // fallback to createdAt for widgets that have never been reordered.
@@ -585,8 +682,8 @@ export async function mountHome(container, params, router) {
     const bo = b.order ?? b.createdAt ?? 0;
     return ao - bo;
   });
-  // Split user widgets by placement; builtin favorites always stays above.
-  const above = [...BUILTIN_WIDGETS, ...userWidgets.filter(w => (w.placement || 'above') === 'above')];
+  // Split user widgets by placement.
+  const above = userWidgets.filter(w => (w.placement || 'above') === 'above');
   const below = userWidgets.filter(w => w.placement === 'below');
   const aboveHtmls = (await Promise.all(above.map(renderWidget))).filter(Boolean).join('');
   const belowHtmls = (await Promise.all(below.map(renderWidget))).filter(Boolean).join('');
@@ -670,6 +767,7 @@ export async function mountHome(container, params, router) {
     }
     try { el.releasePointerCapture(pointerId); } catch (_) {}
     dragging = null;
+    homeEl.classList.remove('dragging-widget');
   }
 
   function setActiveDot() {
@@ -733,6 +831,11 @@ export async function mountHome(container, params, router) {
           offsetY: e.clientY - rect.top,
           placeholder,
         };
+        // Light up cross-row widget drop zones only while a widget is
+        // actively being dragged — keeps the empty below-row dashed
+        // outline from being visible at all times in edit mode (the
+        // user found that floating box confusing).
+        if (!isTile) homeEl.classList.add('dragging-widget');
         try { targetEl.setPointerCapture(e.pointerId); } catch (_) {}
       }
       return;  // no page scroll while editing

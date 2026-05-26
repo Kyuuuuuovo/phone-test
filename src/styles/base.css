@@ -641,11 +641,12 @@ label .label-text {
 }
 .widget-row.below-row { margin: 18px 0 0; }
 /* Below-row is always rendered (so users can cross-row-drag widgets from
-   above to below). Hide it when empty + not editing so the home page
-   stays compact. In editing mode, render the empty below-row as a dashed
-   drop zone so the user can see where to drop. */
-.page.home:not(.editing) .widget-row.below-row:empty { display: none; }
-.page.home.editing .widget-row.below-row:empty {
+   above to below). It's hidden when empty by default. The dashed drop
+   zone only shows while a widget is actively being dragged — that way
+   the empty box doesn't float there in plain edit mode and confuse the
+   user with an unexplained outline. */
+.widget-row.below-row:empty { display: none; }
+.page.home.dragging-widget .widget-row.below-row:empty {
   display: block;
   min-height: 56px;
   margin: 18px 0 0;
@@ -655,9 +656,12 @@ label .label-text {
 .widget.size-small  { grid-column: span 1; }
 .widget.size-medium,
 .widget.size-large,
-.widget-empty,
-.widget-favorites,
 .widget-add { grid-column: span 2; }
+/* Favorites and the empty-state of any widget default to full-row unless
+   an explicit size class overrides them. The user-addable favorites
+   widget carries size-small so it follows the .size-small rule above. */
+.widget-favorites:not(.size-small),
+.widget-empty:not(.size-small) { grid-column: span 2; }
 /* Override default heights when size is small/large */
 .widget.size-small.widget-image { height: 90px; }
 .widget.size-large.widget-image { height: 180px; }
@@ -769,32 +773,40 @@ label .label-text {
 /* Polaroid stack — 3 photos overlaid with slight rotation. Each .polaroid-
    photo is absolutely positioned at the center; the inline transform
    (set in renderPolaroidWidget) carries the per-photo rotation + offset.
-   Background, border, and shadow mimic a real polaroid card. Click target
-   is the whole image (the widget click handler reads data-polaroid-idx). */
+   The widget container is fully transparent (no card bg, no border, no
+   shadow) so only the white-bordered photos read as floating polaroids
+   on the wallpaper. The drag visual is also stripped — the default
+   .user-widget.dragging shadow would draw a phantom rectangle since
+   the surrounding container is invisible. */
 .widget.widget-polaroid {
   position: relative;
-  height: 160px;
+  height: 120px;
   padding: 0;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   overflow: visible;
   display: flex;
   align-items: center;
   justify-content: center;
 }
+.widget.widget-polaroid.dragging {
+  opacity: 0.92;
+  box-shadow: none !important;
+  background: transparent !important;
+}
 .widget.widget-polaroid .polaroid-photo {
   position: absolute;
-  width: 110px;
-  height: 130px;
+  width: 78px;
+  height: 92px;
   object-fit: cover;
   background: #fff;
-  border: 6px solid #fff;
-  border-bottom-width: 22px;  /* extra padding bottom — polaroid signature */
+  border: 4px solid #fff;
+  border-bottom-width: 14px;
   border-radius: 2px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18);
   cursor: pointer;
   transition: transform 0.25s ease, box-shadow 0.2s ease;
 }
@@ -802,31 +814,33 @@ label .label-text {
   filter: brightness(1.03);
 }
 .widget.widget-polaroid.empty {
-  background: color-mix(in srgb, var(--surface) 65%, transparent);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  border: 1px solid color-mix(in srgb, white 40%, transparent);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  background: color-mix(in srgb, var(--surface) 65%, transparent) !important;
+  backdrop-filter: blur(20px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+  border: 1px solid color-mix(in srgb, white 40%, transparent) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
 }
 .widget.widget-polaroid .widget-polaroid-empty {
   color: var(--muted);
   font-size: 13px;
 }
 
-/* Anniversary — "遇见 XXX 已经 N 天". Two-line layout, big number
-   leading-tight + label above. */
+/* Anniversary — "遇见 XXX 已经 N 天". Size-small (1 widget-col); fits the
+   label + the big day count comfortably. Height matches the 120px the
+   other small user widgets (favorites / polaroid) use so they line up. */
 .widget.widget-anniversary {
-  padding: 14px 16px;
+  padding: 12px 14px;
+  height: 120px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 4px;
-  min-height: 90px;
 }
 .widget.widget-anniversary .anniv-label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
+  line-height: 1.3;
 }
 .widget.widget-anniversary .anniv-days {
   display: flex;
@@ -835,15 +849,45 @@ label .label-text {
   color: var(--accent);
 }
 .widget.widget-anniversary .anniv-count {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 .widget.widget-anniversary .anniv-unit {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
 }
+
+/* Favorites widget — unified 120px height so it stacks neatly next to
+   polaroid / anniversary. Truncate quote to 2 lines max so the height
+   doesn't blow out when a long memo got pinned. */
+.widget.widget-favorites {
+  height: 120px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.widget.widget-favorites .widget-quote {
+  -webkit-line-clamp: 2;
+}
+
+/* Anniversary radio-row + conditional inputs (in the add-widget modal). */
+.anniv-mode-row {
+  display: flex;
+  gap: 16px;
+  padding-top: 4px;
+}
+.anniv-mode-row .radio-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  margin-bottom: 0;
+}
+.anniv-mode-row .radio-inline input { width: auto; cursor: pointer; }
+.anniv-char-block[hidden],
+.anniv-custom-block[hidden] { display: none; }
 
 /* Add-widget button — dashed-border placeholder slot */
 .widget-add {
