@@ -22,7 +22,7 @@ import * as db from '../../core/db.js';
 import { openConfirm, openModal } from '../../core/modal.js';
 import {
   DEFAULT_THEME, FONT_OPTIONS, TEXTURE_OPTIONS, GLASS_OPTIONS, THEME_PRESETS,
-  normalizeTheme, applyTheme, applyWallpaper,
+  normalizeTheme, applyTheme,
 } from '../../core/theme.js';
 
 export async function mountTheme(container, params, router) {
@@ -59,7 +59,7 @@ export async function mountTheme(container, params, router) {
           <button class="theme-tab${activeTab === 'preset'    ? ' active' : ''}" data-tab="preset">预设</button>
           <button class="theme-tab${activeTab === 'color'     ? ' active' : ''}" data-tab="color">颜色</button>
           <button class="theme-tab${activeTab === 'font'      ? ' active' : ''}" data-tab="font">字体</button>
-          <button class="theme-tab${activeTab === 'effect'    ? ' active' : ''}" data-tab="effect">玻璃</button>
+          <button class="theme-tab${activeTab === 'effect'    ? ' active' : ''}" data-tab="effect">特效</button>
           <button class="theme-tab${activeTab === 'wallpaper' ? ' active' : ''}" data-tab="wallpaper">壁纸</button>
         </div>
         <div class="page-body theme-tab-body">
@@ -394,9 +394,8 @@ export async function mountTheme(container, params, router) {
       reader.onload = async () => {
         currentWallpaper = reader.result;
         await db.updateSettings(s => { s.wallpaper = currentWallpaper; });
-        applyWallpaper(currentWallpaper);  // live-apply so wallpaper persists across pages
         render();
-        status('壁纸已保存(整个 app 都能看到)', 'success');
+        status('壁纸已保存(回首页查看)', 'success');
       };
       reader.onerror = () => status('读取图片失败', 'error');
       reader.readAsDataURL(file);
@@ -404,7 +403,6 @@ export async function mountTheme(container, params, router) {
     clearBtn.addEventListener('click', async () => {
       currentWallpaper = null;
       await db.updateSettings(s => { s.wallpaper = null; });
-      applyWallpaper(null);
       render();
       status('壁纸已清除', 'success');
     });

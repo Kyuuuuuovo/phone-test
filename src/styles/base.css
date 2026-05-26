@@ -40,8 +40,13 @@ body {
 
 /* ── Effects: gated by body[data-fx-*] attributes set by applyTheme() ────── */
 
-/* 渐变 — the phone-frame background switches to a soft gradient */
-body[data-fx-gradient="on"] .phone-frame,
+/* 渐变 — soft gradient as the page background. Originally targeted both
+   .phone-frame and .page, but using the `background` shorthand on
+   .phone-frame reset background-image and erased the wallpaper (set inline
+   by home.js when entering home). We now apply gradient ONLY to .page so
+   the wallpaper stays intact. On home (.page.home is transparent in
+   base.css below) gradient has no visible effect — wallpaper takes the
+   slot. On other pages with no wallpaper, gradient is the visible bg. */
 body[data-fx-gradient="on"] .page {
   background: linear-gradient(135deg, var(--gradient-from), var(--gradient-to));
 }
@@ -749,6 +754,85 @@ label .label-text {
   -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* Polaroid stack — 3 photos overlaid with slight rotation. Each .polaroid-
+   photo is absolutely positioned at the center; the inline transform
+   (set in renderPolaroidWidget) carries the per-photo rotation + offset.
+   Background, border, and shadow mimic a real polaroid card. Click target
+   is the whole image (the widget click handler reads data-polaroid-idx). */
+.widget.widget-polaroid {
+  position: relative;
+  height: 160px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  overflow: visible;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.widget.widget-polaroid .polaroid-photo {
+  position: absolute;
+  width: 110px;
+  height: 130px;
+  object-fit: cover;
+  background: #fff;
+  border: 6px solid #fff;
+  border-bottom-width: 22px;  /* extra padding bottom — polaroid signature */
+  border-radius: 2px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  transition: transform 0.25s ease, box-shadow 0.2s ease;
+}
+.widget.widget-polaroid .polaroid-photo:hover {
+  filter: brightness(1.03);
+}
+.widget.widget-polaroid.empty {
+  background: color-mix(in srgb, var(--surface) 65%, transparent);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid color-mix(in srgb, white 40%, transparent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+.widget.widget-polaroid .widget-polaroid-empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Anniversary — "遇见 XXX 已经 N 天". Two-line layout, big number
+   leading-tight + label above. */
+.widget.widget-anniversary {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-height: 90px;
+}
+.widget.widget-anniversary .anniv-label {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+}
+.widget.widget-anniversary .anniv-days {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  color: var(--accent);
+}
+.widget.widget-anniversary .anniv-count {
+  font-size: 32px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.widget.widget-anniversary .anniv-unit {
+  font-size: 14px;
+  font-weight: 500;
 }
 
 /* Add-widget button — dashed-border placeholder slot */

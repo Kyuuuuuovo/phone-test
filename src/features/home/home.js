@@ -105,9 +105,11 @@ function actionPreviewForWidget(a) {
 }
 
 async function renderWidget(w) {
-  if (w.type === 'favorites') return await renderFavoritesWidget();
-  if (w.type === 'image')     return renderImageWidget(w);
-  if (w.type === 'note')      return renderNoteWidget(w);
+  if (w.type === 'favorites')   return await renderFavoritesWidget();
+  if (w.type === 'image')       return renderImageWidget(w);
+  if (w.type === 'note')        return renderNoteWidget(w);
+  if (w.type === 'polaroid')    return renderPolaroidWidget(w);
+  if (w.type === 'anniversary') return renderAnniversaryWidget(w);
   return '';
 }
 
@@ -125,6 +127,72 @@ function renderNoteWidget(w) {
   return `
     <div class="widget widget-note user-widget size-${size}" data-widget-id="${escHtml(w.id)}">
       <div class="widget-note-text">${escHtml(w.data || '')}</div>
+      <button class="widget-del" title="删除">×</button>
+    </div>
+  `;
+}
+
+// Polaroid stack — 3 user-uploaded photos rendered as overlapping polaroid
+// cards (white border, drop shadow, slight rotation on the back two). Click
+// any photo to bring it to the front; the click handler in mountHome reads
+// data-polaroid-idx and rewrites w.data.stackOrder so the visual change
+// persists on next refresh. data shape:
+//   { photos: [base64, base64, base64], stackOrder: [<bottom>, <mid>, <top>] }
+function renderPolaroidWidget(w) {
+  const photos = Array.isArray(w.data?.photos) ? w.data.photos.slice(0, 3) : [];
+  // stackOrder defaults to [0, 1, 2] — third index (last) is the front.
+  // We pad/truncate so length matches photos length.
+  let stackOrder = Array.isArray(w.data?.stackOrder) ? [...w.data.stackOrder] : [];
+  stackOrder = stackOrder.filter(i => Number.isInteger(i) && i >= 0 && i < photos.length);
+  for (let i = 0; i < photos.length; i++) {
+    if (!stackOrder.includes(i)) stackOrder.push(i);
+  }
+  if (photos.length === 0) {
+    return `
+      <div class="widget widget-polaroid user-widget size-large empty" data-widget-id="${escHtml(w.id)}">
+        <div class="widget-polaroid-empty">未上传照片</div>
+        <button class="widget-del" title="删除">×</button>
+      </div>
+    `;
+  }
+  // Visual: render in stack order, where stackPos 0 = bottom (most rotated),
+  // last position = front (no rotation). Rotation/offset depends on count.
+  const transforms = [
+    { rot: -8, x: -16, y:  4 },
+    { rot:  6, x:  12, y:  2 },
+    { rot:  0, x:   0, y:  0 },
+  ];
+  // If fewer than 3 photos, use the tail of transforms (so single photo
+  // sits centered, two photos still fan out).
+  const tStart = transforms.length - photos.length;
+  return `
+    <div class="widget widget-polaroid user-widget size-large" data-widget-id="${escHtml(w.id)}">
+      ${stackOrder.map((photoIdx, stackPos) => {
+        const t = transforms[tStart + stackPos];
+        return `
+          <img class="polaroid-photo"
+               data-polaroid-idx="${photoIdx}"
+               src="${escHtml(photos[photoIdx] || '')}"
+               style="transform: translate(${t.x}px, ${t.y}px) rotate(${t.rot}deg); z-index: ${stackPos + 1};"
+               alt="">
+        `;
+      }).join('')}
+      <button class="widget-del" title="删除">×</button>
+    </div>
+  `;
+}
+
+// Anniversary — "遇见 XXX 已经 N 天". data: { name, startTs }.
+function renderAnniversaryWidget(w) {
+  const name = String(w.data?.name || '').trim();
+  const startTs = Number(w.data?.startTs);
+  const days = Number.isFinite(startTs)
+    ? Math.max(0, Math.floor((Date.now() - startTs) / 86400000))
+    : 0;
+  return `
+    <div class="widget widget-anniversary user-widget size-medium" data-widget-id="${escHtml(w.id)}">
+      <div class="anniv-label">遇见 ${escHtml(name || '__')} 已经</div>
+      <div class="anniv-days"><span class="anniv-count">${days}</span><span class="anniv-unit">天</span></div>
       <button class="widget-del" title="删除">×</button>
     </div>
   `;
@@ -166,6 +234,16 @@ async function openAddWidgetModal(container, router) {
           <div>便签</div>
           <div class="type-hint">写几个字贴到桌面</div>
         </button>
+        <button type="button" class="widget-type-btn" data-type="polaroid">
+          <div class="type-icon">📸</div>
+          <div>拍立得堆叠</div>
+          <div class="type-hint">上传 3 张照片堆成一摞,点哪张哪张到最上面</div>
+        </button>
+        <button type="button" class="widget-type-btn" data-type="anniversary">
+          <div class="type-icon">💗</div>
+          <div>纪念日</div>
+          <div class="type-hint">「遇见 XXX 已经 N 天」自动算到今天</div>
+        </button>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn secondary cancel-btn">取消</button>
@@ -185,6 +263,11 @@ async function openAddWidgetModal(container, router) {
         await pickImageAndSave(container, router);
       } else if (type === 'note') {
         renderNoteEditor(modal, container, router);
+      } else if (type === 'polaroid') {
+        modal.remove();
+        await pickPolaroidPhotosAndSave(container, router);
+      } else if (type === 'anniversary') {
+        renderAnniversaryEditor(modal, container, router);
       }
     });
   });
@@ -273,6 +356,137 @@ function renderNoteEditor(modal, container, router) {
   });
 }
 
+// Polaroid: upload up to 3 photos, then ask placement (size is fixed large).
+// Single file input with `multiple` so the user picks all 3 in one go; we
+// take the first 3 to keep the stack predictable.
+async function pickPolaroidPhotosAndSave(container, router) {
+  const files = await new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.multiple = true;
+    input.onchange = () => resolve([...(input.files || [])]);
+    input.click();
+  });
+  if (!files || files.length === 0) return;
+  if (files.length > 3) files.length = 3;
+  // Validate sizes up-front so we fail loudly instead of half-loading.
+  for (const f of files) {
+    if (f.size > 4 * 1024 * 1024) {
+      await openAlert(document.body, { title: '图片太大', message: `${f.name}: ${(f.size/1024/1024).toFixed(1)} MB,建议每张 < 4 MB。`, danger: true });
+      return;
+    }
+  }
+  const photos = await Promise.all(files.map(f => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(f);
+  })));
+  // Ask placement only — polaroid widget is fixed at size-large
+  const placement = await askPlacementOnly(container);
+  if (!placement) return;
+  await db.set('homeWidgets', {
+    id: db.newId(),
+    type: 'polaroid',
+    data: { photos, stackOrder: photos.map((_, i) => i) },
+    size: 'large',
+    placement,
+    createdAt: Date.now(),
+  });
+  await router.navigate('home');
+}
+
+// Anniversary editor: name + start date inputs.
+function renderAnniversaryEditor(modal, container, router) {
+  // Default to today so the user gets a "0 天" preview if they don't change it
+  const today = new Date();
+  const defaultDate = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-header">纪念日</div>
+      <form class="anniv-form">
+        <label>
+          <div class="label-text">叫 ta 什么(比如:小猫 / 阿七)</div>
+          <input type="text" name="name" required maxlength="20" placeholder="名字 / 昵称">
+        </label>
+        <label>
+          <div class="label-text">从哪天开始算</div>
+          <input type="date" name="startDate" required value="${defaultDate}">
+        </label>
+        <label>
+          <div class="label-text">位置</div>
+          <select name="placement">
+            <option value="above" selected>app 上方</option>
+            <option value="below">app 下方</option>
+          </select>
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary cancel-btn">取消</button>
+          <button type="submit" class="btn">添加</button>
+        </div>
+      </form>
+    </div>
+  `;
+  modal.querySelector('.cancel-btn').addEventListener('click', () => modal.remove());
+  modal.querySelector('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(modal.querySelector('form'));
+    const name = String(fd.get('name') || '').trim();
+    const startDateStr = String(fd.get('startDate') || '').trim();
+    if (!name || !startDateStr) return;
+    // Use local-noon to dodge timezone fence-posting on day-count math
+    const startTs = new Date(`${startDateStr}T12:00:00`).getTime();
+    if (!Number.isFinite(startTs)) return;
+    await db.set('homeWidgets', {
+      id: db.newId(),
+      type: 'anniversary',
+      data: { name, startTs },
+      size: 'medium',
+      placement: String(fd.get('placement') || 'above'),
+      createdAt: Date.now(),
+    });
+    modal.remove();
+    await router.navigate('home');
+  });
+}
+
+// Subset of askSizeAndPlacement — placement only, for widgets whose size
+// is fixed by design (polaroid is always size-large).
+function askPlacementOnly(container) {
+  return new Promise((resolve) => {
+    const modal = document.createElement('div');
+    modal.className = 'modal-backdrop';
+    modal.innerHTML = `
+      <div class="modal">
+        <div class="modal-header">放哪里</div>
+        <form class="size-form">
+          <label>
+            <div class="label-text">位置</div>
+            <select name="placement">
+              <option value="above" selected>app 上方</option>
+              <option value="below">app 下方</option>
+            </select>
+          </label>
+          <div class="modal-actions">
+            <button type="button" class="btn secondary cancel-btn">取消</button>
+            <button type="submit" class="btn">添加</button>
+          </div>
+        </form>
+      </div>
+    `;
+    container.appendChild(modal);
+    const close = () => modal.remove();
+    modal.querySelector('.cancel-btn').addEventListener('click', () => { close(); resolve(null); });
+    modal.querySelector('form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const fd = new FormData(modal.querySelector('form'));
+      close();
+      resolve(String(fd.get('placement') || 'above'));
+    });
+  });
+}
+
 // Mini-modal to ask size + placement after a file is already picked.
 // Resolves to { size, placement } or null.
 function askSizeAndPlacement(container) {
@@ -344,11 +558,24 @@ function resolveTilesForPage(pageIdx, tileOrder) {
 
 export async function mountHome(container, params, router) {
   const showPager = PAGES.length > 1;
-  // Wallpaper used to live here but moved to applyWallpaper() in main.js —
-  // it's now set once at boot on .phone-frame and persists across all
-  // pages, so leaving home no longer hides it. The page-level transparency
-  // (effects.surfaceAlpha) decides how much of it shows through.
+  // Wallpaper is owned by home — applied on mount and cleared on teardown
+  // (the cleanup at the bottom of this function). This keeps the wallpaper
+  // limited to the home screen; opening an app shows the app's own bg.
+  // settings.wallpaper holds a base64 data URL.
   const settings = await db.get('settings', 'default');
+  const wallpaper = settings?.wallpaper || null;
+  const phoneFrame = container.closest('.phone-frame');
+  if (phoneFrame) {
+    if (wallpaper) {
+      phoneFrame.style.backgroundImage    = `url("${wallpaper}")`;
+      phoneFrame.style.backgroundSize     = 'cover';
+      phoneFrame.style.backgroundPosition = 'center';
+    } else {
+      phoneFrame.style.backgroundImage    = '';
+      phoneFrame.style.backgroundSize     = '';
+      phoneFrame.style.backgroundPosition = '';
+    }
+  }
   const tileOrder = Array.isArray(settings?.tileOrder) ? settings.tileOrder : [];
   const userWidgets = await db.getAll('homeWidgets');
   // Order by explicit `order` if set (assigned during edit-mode drag);
@@ -694,6 +921,29 @@ export async function mountHome(container, params, router) {
       await openAddWidgetModal(container, router);
       return;
     }
+    // Polaroid: clicking a photo brings it to the front of the stack.
+    // Only when NOT in edit mode (edit mode dragging takes priority via
+    // the pointer handler above; in edit mode the click should just exit).
+    const polaroid = e.target.closest('.polaroid-photo');
+    if (polaroid && !editMode) {
+      e.stopPropagation();
+      const wrap = polaroid.closest('[data-widget-id]');
+      if (!wrap) return;
+      const clickedIdx = Number(polaroid.dataset.polaroidIdx);
+      const w = await db.get('homeWidgets', wrap.dataset.widgetId);
+      if (!w || w.type !== 'polaroid') return;
+      const photoCount = Array.isArray(w.data?.photos) ? w.data.photos.length : 0;
+      // Rebuild stack: clicked goes to the front (last position).
+      let order = Array.isArray(w.data?.stackOrder)
+        ? w.data.stackOrder.filter(i => Number.isInteger(i) && i >= 0 && i < photoCount)
+        : Array.from({ length: photoCount }, (_, i) => i);
+      order = order.filter(i => i !== clickedIdx);
+      order.push(clickedIdx);
+      w.data = { ...w.data, stackOrder: order };
+      await db.set('homeWidgets', w);
+      await router.navigate('home');
+      return;
+    }
     // In edit mode: app-icon clicks and empty-area clicks just exit edit
     // mode — don't launch apps or change pages.
     if (editMode) {
@@ -741,5 +991,12 @@ export async function mountHome(container, params, router) {
     pagesEl.removeEventListener('pointercancel', onPointerEnd);
     homeEl.removeEventListener('contextmenu', onContextMenu);
     container.removeEventListener('click', onClick);
+    // Clear the wallpaper so leaving home hides it — other pages keep
+    // their own bg untouched.
+    if (phoneFrame) {
+      phoneFrame.style.backgroundImage    = '';
+      phoneFrame.style.backgroundSize     = '';
+      phoneFrame.style.backgroundPosition = '';
+    }
   };
 }

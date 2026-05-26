@@ -4,7 +4,7 @@ import * as db from './core/db.js';
 import * as router from './core/router.js';
 import * as ai from './core/ai.js';
 import * as context from './core/context.js';
-import { applyTheme as applyThemeObj, applyWallpaper } from './core/theme.js';
+import { applyTheme as applyThemeObj } from './core/theme.js';
 import { mountHome }        from './features/home/home.js';
 import { mountSettings }    from './features/settings/settings.js';
 import { mountApiSettings } from './features/settings/api-settings.js';
@@ -126,11 +126,11 @@ async function startBattery() {
 async function applyTheme() {
   const settings = await db.get('settings', 'default');
   applyThemeObj(settings?.theme);
-  // Wallpaper used to live in home.js mount/teardown so it only appeared
-  // on the home page. With surfaceAlpha letting any page fade its bg
-  // toward transparent, the wallpaper should persist app-wide — apply
-  // here so it's set up before the first router.navigate.
-  applyWallpaper(settings?.wallpaper || null);
+  // Wallpaper is intentionally NOT applied here — it only shows on home.
+  // home.js owns the lifecycle (apply on mount, clear on teardown) so when
+  // the user opens an app, the wallpaper is hidden and they see the app's
+  // own bg instead. Previous globally-applied attempt leaked the wallpaper
+  // into every page including settings, which the user found distracting.
 }
 
 async function boot() {
