@@ -18,6 +18,13 @@ import { openConfirm, openAlert } from '../../core/modal.js';
 
 let preserveEditModeOnMount = false;
 
+// Cross-page drag (B#5) reinstated: after a drop that landed on a different
+// page, persistMove writes to that page's tileOrder and router.navigate('home')
+// re-mounts the page with .home-pages.scrollLeft = 0 (so user visually sees
+// "弹回 page 0"). Fix: stash the destination page index here before navigate,
+// read it in mountHome after re-render and scrollTo there.
+let _restoreScrollToPage = null;
+
 // Music widget lyric-cycle timers. One interval per music widget; cleared
 // on every re-render and on home teardown so old timers don't keep firing
 // against dead DOM nodes.
@@ -265,9 +272,12 @@ async function renderAnniversaryWidget(w, gs) {
     }
   } else {
     const startTs = Number(w.data?.startTs);
-    count = Number.isFinite(startTs)
+    const daysRaw = Number.isFinite(startTs)
       ? Math.max(0, Math.floor((Date.now() - startTs) / 86400000))
       : 0;
+    const fmt = formatDaysWithYears(daysRaw);
+    count = fmt.count;
+    unit = fmt.unit;
     let displayName = String(w.data?.name || '').trim();
     if (w.data?.characterId) {
       const c = await db.get('characters', w.data.characterId);
@@ -310,9 +320,26 @@ function computeMilestoneDisplay(m) {
 
   const target = new Date(y, mo - 1, d);
   const diff = Math.round((target.getTime() - today.getTime()) / MS);
-  if (diff > 0)  return { label: `距 ${title} 还有`, count: diff, unit: '天' };
+  if (diff > 0) {
+    const fmt = formatDaysWithYears(diff);
+    return { label: `距 ${title} 还有`, count: fmt.count, unit: fmt.unit };
+  }
   if (diff === 0) return { label: title, count: '今天', unit: '' };
-  return { label: `${title} 已`, count: Math.abs(diff), unit: '天' };
+  const fmt = formatDaysWithYears(Math.abs(diff));
+  return { label: `${title} 已`, count: fmt.count, unit: fmt.unit };
+}
+
+// Days → display { count, unit } with years collapsed when applicable.
+// 365 day groupings are an approximation (no leap years tracked) — for
+// "Y 年 N 天" countdowns this is OK; user-facing relative time, not legal
+// date math. < 365 stays in days. exact multiples of 365 show as "Y 周年"
+// (changes the unit too so the visual feels different from a day count).
+function formatDaysWithYears(n) {
+  if (!Number.isFinite(n) || n < 365) return { count: n, unit: '天' };
+  const years = Math.floor(n / 365);
+  const rest  = n % 365;
+  if (rest === 0) return { count: years, unit: '周年' };
+  return { count: `${years}年${rest}`, unit: '天' };
 }
 
 // Music widget — port of phone-app-demos/01-music-widget.html. Two avatar
@@ -659,6 +686,30 @@ async function updateWidget(id, patch, router) {
   await router.navigate('home');
 }
 
+// Helpers — extracted so renderImageEditor / renderPolaroidEditor can pick a
+// new file in-place without going through the add-flow (which writes a new
+// widget row instead of patching the existing one).
+async function pickImageFile(maxMB = 4) {
+  const file = await new Promise(resolve => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = () => resolve(input.files?.[0] || null);
+    input.click();
+  });
+  if (!file) return null;
+  if (file.size > maxMB * 1024 * 1024) {
+    await openAlert(document.body, { title: '图片太大', message: `${(file.size/1024/1024).toFixed(1)} MB,建议 < ${maxMB} MB,IndexedDB 容易满。`, danger: true });
+    return null;
+  }
+  return await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(file);
+  });
+}
+
 async function pickImageAndSave(container, router) {
   const file = await new Promise((resolve) => {
     const input = document.createElement('input');
@@ -753,6 +804,137 @@ async function pickPolaroidPhotosAndSave(container, router) {
     ...opts.span,
     transparency: opts.transparency,
   }, router);
+}
+
+// Editor for an existing image widget — shows current pic + "换图" button +
+// size/transparency. New image is loaded into a closure variable; not
+// persisted until submit (so cancelling cleanly throws away the picked file).
+async function renderImageEditor(modal, container, router, existing) {
+  let imageData = existing?.data || null;
+  const initSpan = existing ? widgetSpan(existing) : null;
+  const initAlpha = existing?.transparency;
+
+  function render() {
+    modal.innerHTML = `
+      <div class="modal">
+        <div class="modal-header">编辑图片</div>
+        <form class="image-form">
+          <label>
+            <div class="label-text">图片</div>
+            <div class="image-edit-preview">
+              ${imageData ? `<img src="${escAttr(imageData)}" alt="">` : '<div class="image-edit-empty">(空)</div>'}
+            </div>
+            <div class="image-edit-controls">
+              <button type="button" class="btn secondary swap-image">换图</button>
+            </div>
+          </label>
+          ${sizeSelectHtml(initSpan?.colSpan, initSpan?.rowSpan, '4x2')}
+          ${transparencyFieldHtml(initAlpha)}
+          <div class="modal-actions">
+            <button type="button" class="btn secondary cancel-btn">取消</button>
+            <button type="submit" class="btn">保存</button>
+          </div>
+        </form>
+      </div>
+    `;
+    wireTransparencyReadout(modal);
+    modal.querySelector('.cancel-btn').addEventListener('click', () => modal.remove());
+    modal.querySelector('.swap-image').addEventListener('click', async () => {
+      const data = await pickImageFile();
+      if (data) { imageData = data; render(); }
+    });
+    modal.querySelector('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(modal.querySelector('form'));
+      const span = parseSizePreset(fd.get('sizePreset')) || { colSpan: 4, rowSpan: 2 };
+      const transparency = Number(fd.get('transparency')) || 100;
+      modal.remove();
+      await updateWidget(existing.id, { data: imageData, ...span, transparency }, router);
+    });
+  }
+  render();
+}
+
+// Editor for an existing polaroid widget — 3 photo slots, each with 换/删
+// buttons; empty slots get "+ 加". Photos stored in `pendingPhotos` closure,
+// only persisted on submit. stackOrder is recalculated to match the new
+// photo array.
+async function renderPolaroidEditor(modal, container, router, existing) {
+  let pendingPhotos = Array.isArray(existing?.data?.photos) ? [...existing.data.photos].slice(0, 3) : [];
+  const initSpan = existing ? widgetSpan(existing) : null;
+  const initAlpha = existing?.transparency;
+
+  function render() {
+    const slots = Array.from({ length: 3 }, (_, i) => pendingPhotos[i] || null);
+    modal.innerHTML = `
+      <div class="modal">
+        <div class="modal-header">编辑拍立得</div>
+        <form class="polaroid-form">
+          <label>
+            <div class="label-text">三张照片(最多 3 张)</div>
+            <div class="polaroid-edit-slots">
+              ${slots.map((p, i) => `
+                <div class="polaroid-edit-slot${p ? '' : ' empty'}" data-slot-idx="${i}">
+                  ${p ? `<img src="${escAttr(p)}" alt="">` : '<div class="polaroid-edit-plus">+</div>'}
+                  <div class="polaroid-edit-slot-btns">
+                    ${p
+                      ? `<button type="button" class="btn-mini swap" data-slot-idx="${i}">换</button>
+                         <button type="button" class="btn-mini del" data-slot-idx="${i}">删</button>`
+                      : `<button type="button" class="btn-mini add" data-slot-idx="${i}">加</button>`}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </label>
+          ${sizeSelectHtml(initSpan?.colSpan, initSpan?.rowSpan, '2x2')}
+          ${transparencyFieldHtml(initAlpha)}
+          <div class="modal-actions">
+            <button type="button" class="btn secondary cancel-btn">取消</button>
+            <button type="submit" class="btn">保存</button>
+          </div>
+        </form>
+      </div>
+    `;
+    wireTransparencyReadout(modal);
+    modal.querySelector('.cancel-btn').addEventListener('click', () => modal.remove());
+
+    // 槽位按钮 — swap/del/add 都改 pendingPhotos 再 re-render。
+    modal.querySelectorAll('.polaroid-edit-slot-btns button').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const idx = Number(btn.dataset.slotIdx);
+        if (btn.classList.contains('del')) {
+          pendingPhotos.splice(idx, 1);
+          render();
+        } else if (btn.classList.contains('swap') || btn.classList.contains('add')) {
+          const data = await pickImageFile();
+          if (!data) return;
+          if (btn.classList.contains('swap')) {
+            pendingPhotos[idx] = data;
+          } else {
+            pendingPhotos.push(data);
+          }
+          render();
+        }
+      });
+    });
+
+    modal.querySelector('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(modal.querySelector('form'));
+      const span = parseSizePreset(fd.get('sizePreset')) || { colSpan: 2, rowSpan: 2 };
+      const transparency = Number(fd.get('transparency')) || 100;
+      modal.remove();
+      // stackOrder 重置成 [0..n-1] —— 改照片后老的 stackOrder 索引可能指向
+      // 不存在的位置。点击交互重新累积 stackOrder。
+      const photos = pendingPhotos.filter(Boolean);
+      await updateWidget(existing.id, {
+        data: { photos, stackOrder: photos.map((_, i) => i) },
+        ...span,
+        transparency,
+      }, router);
+    });
+  }
+  render();
 }
 
 async function renderAnniversaryEditor(modal, container, router, existing) {
@@ -1090,11 +1272,11 @@ function askSizeAndTransparency(container, defaultPreset, existingSpan, existing
 // to the same editor function used for new-widget creation (each one accepts
 // an optional `existing` parameter and pre-fills its fields).
 async function openEditWidgetModal(container, router, widget) {
-  // For favorites / image / polaroid — these have no per-widget content
-  // editor (image data isn't re-pickable in-place, favorites pulls live
-  // from the favorites store), so they only get the size + transparency
-  // controls via askSizeAndTransparency.
-  if (widget.type === 'favorites' || widget.type === 'image' || widget.type === 'polaroid') {
+  // favorites widget 没有可编辑 content(数据是来自 favorites store 的活的
+  // 引用),所以只给 size + transparency。其他 widget 类型都有专属编辑器:
+  //  - image / polaroid: 换图 / 换照片(本批新加)
+  //  - note / anniversary / music: 内容编辑
+  if (widget.type === 'favorites') {
     const span = widgetSpan(widget);
     const opts = await askSizeAndTransparency(container, null, span, widget.transparency);
     if (!opts) return;
@@ -1106,6 +1288,8 @@ async function openEditWidgetModal(container, router, widget) {
   modal.className = 'modal-backdrop';
   container.appendChild(modal);
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  if (widget.type === 'image')       await renderImageEditor(modal, container, router, widget);
+  if (widget.type === 'polaroid')    await renderPolaroidEditor(modal, container, router, widget);
   if (widget.type === 'note')        renderNoteEditor(modal, container, router, widget);
   if (widget.type === 'anniversary') await renderAnniversaryEditor(modal, container, router, widget);
   if (widget.type === 'music')       await renderMusicEditor(modal, container, router, widget);
@@ -1557,28 +1741,18 @@ export async function mountHome(container, params, router) {
         const originPage = gridEl.dataset.gridPage === 'dock'
           ? 'dock'
           : Number(gridEl.dataset.gridPage ?? 0);
-        // Snapshot the origin grid + (if applicable) the dock —— 用户可以
-        // 把 app 从 page 拖进 dock 或反过来(B#6),但 app 跨 page 已经移除
-        // (B#5 撤销:体验上 drop 后 router.navigate 把 scrollLeft 复位到
-        // page 0,user 视觉上看到「app 被弹回 page 1」)。所以这里不再 snapshot
-        // 全部 page,只装 originPage + dock。
-        const pageSnapshots = {};
-        pageSnapshots[originPage] = { gridEl, items: snapshotItems(gridEl) };
+        // 全 surface 预 snap:numbered pages + dock。跨页拖(B#5)重新启用 —
+        // pointermove 会根据 scrollLeft / pointer Y 切 dragging.gridPage 到
+        // 对应 snapshot。drop 后 persistMove 写 destPage 的 tileOrder;
+        // navigate 前 _restoreScrollToPage = destPage,re-mount 后 scrollTo
+        // 回到目标页,user 视觉上 app 「留在 page 2」不再弹回。
         const widgetBeingDragged = !!widgetEl;
-        if (!widgetBeingDragged) {
-          // widget 不能进 dock,所以拖 widget 时不需要 snapshot dock
-          const dockGrid = container.querySelector('[data-grid-page="dock"]');
-          if (dockGrid && originPage !== 'dock') {
-            pageSnapshots['dock'] = { gridEl: dockGrid, items: snapshotItems(dockGrid) };
-          } else if (originPage === 'dock') {
-            // 反向:dock app 可以拖到当前可见的 page。当前 page 由 .home-pages
-            // scrollLeft 决定 —— 起手时记一次就够,中途不允许换 page。
-            const currentPage = pagesEl.clientWidth > 0
-              ? Math.round(pagesEl.scrollLeft / pagesEl.clientWidth)
-              : 0;
-            const pageGrid = container.querySelector(`[data-grid-page="${currentPage}"]`);
-            if (pageGrid) pageSnapshots[currentPage] = { gridEl: pageGrid, items: snapshotItems(pageGrid) };
-          }
+        const pageSnapshots = {};
+        for (const g of container.querySelectorAll('.app-grid[data-grid-page]')) {
+          const key = g.dataset.gridPage === 'dock' ? 'dock' : Number(g.dataset.gridPage);
+          // widget 不能进 dock(只装 apps),所以拖 widget 时跳过 dock snapshot
+          if (widgetBeingDragged && key === 'dock') continue;
+          pageSnapshots[key] = { gridEl: g, items: snapshotItems(g) };
         }
         const items = pageSnapshots[originPage].items;
         const meEntry = items.find(it => it.el === targetEl);
@@ -1607,6 +1781,7 @@ export async function mountHome(container, params, router) {
           el: targetEl, gridEl, items, me: meEntry, geom,
           pageSnapshots, gridPage: originPage, originPage,
           lastScrollLeft: pagesEl.scrollLeft,
+          lastAutoScrollAt: 0,
           pointerId: e.pointerId,
           offsetX: e.clientX - rect.left,
           offsetY: e.clientY - rect.top,
@@ -1666,34 +1841,55 @@ export async function mountHome(container, params, router) {
     if (dragging && e.pointerId === dragging.pointerId) {
       e.preventDefault();
 
-      // B#6: dock ↔ origin page swap.
-      // 跨 page 拖 (B#5) 已经撤销 —— drop 后 re-mount 把 scrollLeft 复位,
-      // 用户视觉看到 app「弹回」原 page,不直观。这里只允许 dock ↔ originPage
-      // 互拖。pointer 在 dock 区域 → 切到 dock surface;离开 → 切回 origin。
+      // B#5 + B#6: cross-surface drag (page ↔ page, page ↔ dock).
+      // 1) pointer 在 dock 区域 → 切到 dock surface
+      // 2) 否则 pointer 在 pages — 用 .home-pages scrollLeft 算当前是哪页
+      // 3) Recompute geom if scrollLeft / surface 变了(viewport-relative
+      //    bbox 跟 .home-pages scrollLeft 走)
+      // 4) pointer 靠近 pages 左右 40px 边缘 → smooth scroll 到邻页(throttled
+      //    ≥ 600ms)
+      const sl = pagesEl.scrollLeft;
+      const w = pagesEl.clientWidth;
       const dockSnap = dragging.pageSnapshots.dock;
       const dockRect = dockSnap?.gridEl.getBoundingClientRect();
       const overDock = dockRect && e.clientY >= dockRect.top && e.clientY <= dockRect.bottom;
-      const targetSurface = overDock && dockSnap ? 'dock' : dragging.originPage;
+      const currentSurface = overDock
+        ? 'dock'
+        : (w > 0 ? Math.round(sl / w) : dragging.gridPage);
       let needGeomRefresh = false;
-      if (targetSurface !== dragging.gridPage && dragging.pageSnapshots[targetSurface]) {
-        const snap = dragging.pageSnapshots[targetSurface];
+      if (currentSurface !== dragging.gridPage && dragging.pageSnapshots[currentSurface]) {
+        // Hop to new surface
+        const snap = dragging.pageSnapshots[currentSurface];
         dragging.gridEl = snap.gridEl;
         dragging.items  = snap.items;
-        dragging.gridPage = targetSurface;
+        dragging.gridPage = currentSurface;
         if (dragging.placeholder && dragging.placeholder.parentNode !== snap.gridEl) {
           snap.gridEl.appendChild(dragging.placeholder);
         }
         needGeomRefresh = true;
       }
-      // Scroll-position change shouldn't really happen now (no auto-scroll),
-      // but if the user manually swipes pages during a drag we still want
-      // geom to track. Cheap check.
-      const sl = pagesEl.scrollLeft;
       if (sl !== dragging.lastScrollLeft) {
         needGeomRefresh = true;
         dragging.lastScrollLeft = sl;
       }
       if (needGeomRefresh) dragging.geom = gridGeometry(dragging.gridEl);
+
+      // Edge auto-scroll: pointer 在 .home-pages 内且靠近左/右 40px → scroll
+      // 邻页。dock 区域不触发(已经离开 .home-pages 垂直范围)。≥ 600ms throttle
+      // 防止飞速翻页。
+      const pagesRect = pagesEl.getBoundingClientRect();
+      const edge = 40;
+      const now = Date.now();
+      const inPagesV = e.clientY >= pagesRect.top && e.clientY <= pagesRect.bottom;
+      if (inPagesV && currentSurface !== 'dock' && now - dragging.lastAutoScrollAt > 600) {
+        if (e.clientX < pagesRect.left + edge && currentSurface > 0) {
+          pagesEl.scrollTo({ left: (currentSurface - 1) * w, behavior: 'smooth' });
+          dragging.lastAutoScrollAt = now;
+        } else if (e.clientX > pagesRect.right - edge && currentSurface < PAGES.length - 1) {
+          pagesEl.scrollTo({ left: (currentSurface + 1) * w, behavior: 'smooth' });
+          dragging.lastAutoScrollAt = now;
+        }
+      }
 
       // Compute target cell from pointer position — we snap the dragging
       // item TO that cell (not to the pointer), so user sees the item lock
@@ -1789,10 +1985,12 @@ export async function mountHome(container, params, router) {
       const acted = validDrop && (pageChanged || targetCell.row !== me.row || targetCell.col !== me.col);
       dragging = null;
       if (acted) {
-        // Persist the move (and swap, if any). For apps, write to
-        // settings.tileOrder[pageIdx]; for widgets, write to homeWidgets.
-        // 跨页时 originPage ≠ destPage,persistMove 会负责从 origin 的 tileOrder
-        // 摘掉原条目(避免一个 app 同时在两页里出现)。
+        // 跨页时 originPage ≠ destPage,persistMove 会负责从 origin 的
+        // tileOrder 摘掉原条目(避免一个 app 同时在两页里出现)。
+        // _restoreScrollToPage:re-mount 时 mountHome 末尾会 scrollTo 这一页,
+        // 否则 router.navigate 默认让 .home-pages 复位 page 0,user 看到
+        // app「弹回」原页(实际数据没问题)。dock 不算 page,跳过。
+        if (typeof destPage === 'number') _restoreScrollToPage = destPage;
         await persistMove({
           movedEl: el,
           movedFrom: { row: me.row, col: me.col },
@@ -1921,6 +2119,20 @@ export async function mountHome(container, params, router) {
   if (preserveEditModeOnMount) {
     preserveEditModeOnMount = false;
     setEditMode(true);
+  }
+
+  // Cross-page drag scroll restore (B#5 reinstated). 上一次 drop 跨到了
+  // page N → onPointerEnd 在 navigate 前 _restoreScrollToPage = N → 这里
+  // mount 后 scroll 回去。`behavior: 'auto'` 直接跳不要动画(scroll-snap
+  // 会让 smooth 动画看起来怪),requestAnimationFrame 等 .home-pages 真的
+  // 拿到 clientWidth(home-page 第一次 layout 还没完成时 clientWidth 是 0)。
+  if (_restoreScrollToPage !== null) {
+    const target = _restoreScrollToPage;
+    _restoreScrollToPage = null;
+    requestAnimationFrame(() => {
+      const w = pagesEl.clientWidth;
+      if (w > 0) pagesEl.scrollTo({ left: target * w, behavior: 'auto' });
+    });
   }
 
   return () => {

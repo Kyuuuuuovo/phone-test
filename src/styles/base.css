@@ -1225,6 +1225,89 @@ body[data-fx-glass="metal"] .widget.widget-music::after { display: none; }
 }
 .cover-controls .btn { padding: 6px 10px; font-size: 12px; }
 
+/* Image widget editor — preview the current image full-width above 换图 btn. */
+.image-edit-preview {
+  width: 100%;
+  max-height: 200px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+.image-edit-preview img {
+  width: 100%;
+  height: auto;
+  max-height: 200px;
+  object-fit: contain;
+  display: block;
+}
+.image-edit-empty {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 24px;
+}
+.image-edit-controls {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.image-edit-controls .btn { padding: 6px 12px; font-size: 13px; }
+
+/* Polaroid editor — 3-slot grid, each slot has photo + 换/删 OR + 加. */
+.polaroid-edit-slots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.polaroid-edit-slot {
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.polaroid-edit-slot.empty {
+  border-style: dashed;
+  color: var(--muted);
+}
+.polaroid-edit-slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.polaroid-edit-plus {
+  font-size: 28px;
+  color: var(--muted);
+}
+.polaroid-edit-slot-btns {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+}
+.btn-mini {
+  padding: 3px 8px;
+  font-size: 11px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: pointer;
+}
+.btn-mini:hover { background: rgba(0, 0, 0, 0.7); }
+
 /* Favorites widget — full-row strip (4×1 in the unified grid). Two-line
    layout (quote + name) auto-centers in the 90px slot via flex. */
 .widget.widget-favorites {

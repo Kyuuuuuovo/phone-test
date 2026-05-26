@@ -187,6 +187,30 @@ export const THEME_PRESETS = [
     },
   },
   {
+    id: 'mono',
+    label: '黑白灰',
+    theme: {
+      notch: false,
+      bg:           '#F4F4F5',
+      fg:           '#1A1A1A',
+      surface:      '#FFFFFF',
+      accent:       '#3A3A3A',
+      muted:        '#8A8A8A',
+      border:       '#D6D6D6',
+      bubbleUser:   '#2C2C2C',
+      bubbleUserFg: '#F5F5F5',
+      bubbleChar:   '#ECECEC',
+      bubbleCharFg: '#1A1A1A',
+      outsideBg:    '#D6D6D6',
+      bgPinned:     '#EDEDED',
+      fontFamily:   'system',
+      fontSize:     15,
+      radius:       10,
+      // glass: 'none' 避免 frosted/liquid/metal 出彩色高光 — 黑白灰要纯粹。
+      effects: { glass: 'none', gradient: false, gradientTo: '#E8E8E8', texture: 'none', transparency: 0 },
+    },
+  },
+  {
     id: 'pink-metal',
     label: '嫩粉液态金属',
     theme: {
