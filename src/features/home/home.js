@@ -320,28 +320,36 @@ function askSizeAndPlacement(container) {
   });
 }
 
-export async function mountHome(container, params, router) {
-  const showPager = PAGES.length > 1;
-  // Read wallpaper from settings. We mount it on .phone-frame (not on
-  // .page.home) so it extends *behind* the status bar and the dock — the
-  // status bar is already transparent and the dock is translucent + blurred,
-  // so both naturally show the wallpaper through. base64 lives on
-  // settings.wallpaper. Cleanup on unmount clears the frame style so leaving
-  // home (to chat-list / settings / etc.) hides the wallpaper.
-  const settings = await db.get('settings', 'default');
-  const wallpaper = settings?.wallpaper || null;
-  const phoneFrame = container.closest('.phone-frame');
-  if (phoneFrame) {
-    if (wallpaper) {
-      phoneFrame.style.backgroundImage = `url("${wallpaper}")`;
-      phoneFrame.style.backgroundSize = 'cover';
-      phoneFrame.style.backgroundPosition = 'center';
-    } else {
-      phoneFrame.style.backgroundImage = '';
-      phoneFrame.style.backgroundSize = '';
-      phoneFrame.style.backgroundPosition = '';
+// Resolve the tiles for one PAGES page using the user's tileOrder.
+// settings.tileOrder = [[<tile id>, ...], [...]] — one array per home page.
+// Tiles not in the saved order (new ones added by a release after the user
+// reordered) get appended to the end so they're never lost. Tiles in the
+// saved order but no longer in PAGES (removed by an update) silently drop.
+function resolveTilesForPage(pageIdx, tileOrder) {
+  const basePage = PAGES[pageIdx] || [];
+  const userOrder = tileOrder?.[pageIdx];
+  if (!Array.isArray(userOrder) || userOrder.length === 0) return basePage;
+  const byId = new Map(basePage.map(t => [t.id, t]));
+  const out = [];
+  for (const id of userOrder) {
+    const t = byId.get(id);
+    if (t) {
+      out.push(t);
+      byId.delete(id);
     }
   }
+  for (const t of byId.values()) out.push(t);
+  return out;
+}
+
+export async function mountHome(container, params, router) {
+  const showPager = PAGES.length > 1;
+  // Wallpaper used to live here but moved to applyWallpaper() in main.js —
+  // it's now set once at boot on .phone-frame and persists across all
+  // pages, so leaving home no longer hides it. The page-level transparency
+  // (effects.surfaceAlpha) decides how much of it shows through.
+  const settings = await db.get('settings', 'default');
+  const tileOrder = Array.isArray(settings?.tileOrder) ? settings.tileOrder : [];
   const userWidgets = await db.getAll('homeWidgets');
   // Order by explicit `order` if set (assigned during edit-mode drag);
   // fallback to createdAt for widgets that have never been reordered.
@@ -367,13 +375,16 @@ export async function mountHome(container, params, router) {
     <div class="page home${hasNoUserWidgets ? ' no-user-widgets' : ''}">
       <button class="edit-done" type="button">完成</button>
       <div class="home-pages">
-        ${PAGES.map((page, i) => `
-          <div class="home-page">
-            ${i === 0 ? `<div class="widget-row above-row">${aboveBlock}</div>` : ''}
-            <div class="app-grid">${page.map(tileHtml).join('')}</div>
-            ${i === 0 && belowHtmls ? `<div class="widget-row below-row">${belowHtmls}</div>` : ''}
-          </div>
-        `).join('')}
+        ${PAGES.map((_, i) => {
+          const tiles = resolveTilesForPage(i, tileOrder);
+          return `
+            <div class="home-page" data-page-idx="${i}">
+              ${i === 0 ? `<div class="widget-row above-row">${aboveBlock}</div>` : ''}
+              <div class="app-grid" data-grid-page="${i}">${tiles.map(tileHtml).join('')}</div>
+              ${i === 0 && belowHtmls ? `<div class="widget-row below-row">${belowHtmls}</div>` : ''}
+            </div>
+          `;
+        }).join('')}
       </div>
       <div class="home-pager${showPager ? '' : ' single'}">
         ${PAGES.map((_, i) => `<button class="dot${i === 0 ? ' active' : ''}" data-page="${i}" aria-label="第 ${i+1} 页"></button>`).join('')}
@@ -450,37 +461,52 @@ export async function mountHome(container, params, router) {
   //   3. Mouse drag-to-scroll between home pages (default in normal mode).
   let drag = null;
   const onPointerDown = (e) => {
-    // 1. Edit mode: pressing on a user-widget begins a drag.
+    // 1. Edit mode: pressing on a user-widget or .app-icon (in a page grid,
+    //    NOT the dock) begins a drag. Dock tiles stay fixed — they're the
+    //    always-visible quick launchers, reordering them is rare and
+    //    confusing on a 2-slot dock.
     if (editMode) {
       const widgetEl = e.target.closest('.user-widget');
-      if (widgetEl && !e.target.closest('.widget-del')) {
+      const tileEl = !widgetEl
+        ? e.target.closest('.app-grid:not(.dock-grid) .app-icon')
+        : null;
+      const targetEl = widgetEl || tileEl;
+      if (targetEl && !e.target.closest('.widget-del')) {
         e.preventDefault();
-        const rect = widgetEl.getBoundingClientRect();
-        // Drop a same-size placeholder where the widget sat. Copy the grid
-        // sizing class so it occupies the right number of columns.
+        const isTile = !!tileEl;
+        const rect = targetEl.getBoundingClientRect();
+        // Placeholder: widgets reuse size-* class so the grid keeps the
+        // right column span; tiles always occupy one grid cell.
         const placeholder = document.createElement('div');
-        placeholder.className = 'widget-placeholder';
-        const sizeClass = [...widgetEl.classList].find(c => c.startsWith('size-')) || 'size-medium';
-        placeholder.classList.add(sizeClass);
-        placeholder.style.height = rect.height + 'px';
-        widgetEl.parentNode.insertBefore(placeholder, widgetEl);
-        // Lift the widget out of the grid.
-        widgetEl.style.position = 'fixed';
-        widgetEl.style.left = rect.left + 'px';
-        widgetEl.style.top  = rect.top + 'px';
-        widgetEl.style.width  = rect.width + 'px';
-        widgetEl.style.height = rect.height + 'px';
-        widgetEl.style.zIndex = '100';
-        widgetEl.style.pointerEvents = 'none';
-        widgetEl.classList.add('dragging');
+        if (isTile) {
+          placeholder.className = 'tile-placeholder';
+          placeholder.style.width  = rect.width + 'px';
+          placeholder.style.height = rect.height + 'px';
+        } else {
+          placeholder.className = 'widget-placeholder';
+          const sizeClass = [...targetEl.classList].find(c => c.startsWith('size-')) || 'size-medium';
+          placeholder.classList.add(sizeClass);
+          placeholder.style.height = rect.height + 'px';
+        }
+        targetEl.parentNode.insertBefore(placeholder, targetEl);
+        // Lift the element out of the flow so it follows the pointer.
+        targetEl.style.position = 'fixed';
+        targetEl.style.left = rect.left + 'px';
+        targetEl.style.top  = rect.top + 'px';
+        targetEl.style.width  = rect.width + 'px';
+        targetEl.style.height = rect.height + 'px';
+        targetEl.style.zIndex = '100';
+        targetEl.style.pointerEvents = 'none';
+        targetEl.classList.add('dragging');
         dragging = {
-          el: widgetEl,
+          el: targetEl,
+          kind: isTile ? 'tile' : 'widget',
           pointerId: e.pointerId,
           offsetX: e.clientX - rect.left,
           offsetY: e.clientY - rect.top,
           placeholder,
         };
-        try { widgetEl.setPointerCapture(e.pointerId); } catch (_) {}
+        try { targetEl.setPointerCapture(e.pointerId); } catch (_) {}
       }
       return;  // no page scroll while editing
     }
@@ -514,37 +540,55 @@ export async function mountHome(container, params, router) {
       const dy = e.clientY - pressStart.y;
       if (dx * dx + dy * dy > 64) clearPressTimer();
     }
-    // Edit-mode drag: widget follows the pointer (position:fixed + left/top).
+    // Edit-mode drag: element follows the pointer (position:fixed + left/top).
     // For the placeholder, we *don't* require the pointer to land exactly on
-    // another widget — we look at the pointer's Y and find the right slot
-    // among the row's remaining widgets. This way the placeholder follows
-    // smoothly even when the pointer is in a gap or off the widgets.
+    // another sibling — we look at pointer position and find the right slot
+    // among the row's remaining items. For widgets (vertical-stack), use Y;
+    // for tiles (4-col grid), use a combined X+Y comparison so dragging
+    // sideways across the grid feels right.
     if (dragging && e.pointerId === dragging.pointerId) {
       e.preventDefault();
       dragging.el.style.left = (e.clientX - dragging.offsetX) + 'px';
       dragging.el.style.top  = (e.clientY - dragging.offsetY) + 'px';
       const row = dragging.placeholder.parentNode;
-      const siblings = [...row.querySelectorAll('.user-widget')].filter(el => el !== dragging.el);
+      const siblingSel = dragging.kind === 'tile' ? '.app-icon' : '.user-widget';
+      const siblings = [...row.querySelectorAll(siblingSel)].filter(el => el !== dragging.el);
       let insertBefore = null;
       for (const sib of siblings) {
         const r = sib.getBoundingClientRect();
-        // Pointer above the vertical midpoint of this sibling → insert here.
-        if (e.clientY < r.top + r.height / 2) {
-          insertBefore = sib;
-          break;
+        // Tiles flow in a 4-col grid → reading order is left-to-right then
+        // top-to-bottom. "Before sib" if pointer is above its row, OR in
+        // the same row but to the left of its horizontal midpoint.
+        if (dragging.kind === 'tile') {
+          const sameRow = e.clientY >= r.top && e.clientY <= r.bottom;
+          if (e.clientY < r.top || (sameRow && e.clientX < r.left + r.width / 2)) {
+            insertBefore = sib;
+            break;
+          }
+        } else {
+          // Widgets stack vertically → simple Y midpoint compare.
+          if (e.clientY < r.top + r.height / 2) {
+            insertBefore = sib;
+            break;
+          }
         }
       }
       if (insertBefore) {
         if (dragging.placeholder.nextSibling !== insertBefore) {
           row.insertBefore(dragging.placeholder, insertBefore);
         }
-      } else {
-        // Pointer below all siblings → end of the widget area, but stay
+      } else if (dragging.kind === 'widget') {
+        // Pointer past all widgets → end of the widget area, but stay
         // before the add-widget button if it's in this row.
         const addBtn = row.querySelector('.widget-add');
         const endTarget = addBtn || null;
         if (dragging.placeholder.nextSibling !== endTarget) {
           row.insertBefore(dragging.placeholder, endTarget);
+        }
+      } else {
+        // Tile: pointer past all tiles → append to end of grid.
+        if (dragging.placeholder.nextSibling !== null) {
+          row.appendChild(dragging.placeholder);
         }
       }
       return;
@@ -563,22 +607,33 @@ export async function mountHome(container, params, router) {
 
   const onPointerEnd = async (e) => {
     clearPressTimer();
-    // Edit-mode drag finish: snap widget back into the grid at the
-    // placeholder's final position, then persist new row order.
+    // Edit-mode drag finish: snap element back into the grid at the
+    // placeholder's final position, then persist new order.
     if (dragging && e.pointerId === dragging.pointerId) {
       const row = dragging.placeholder.parentNode;
+      const kind = dragging.kind;
       // cancelDrag re-inserts dragging.el before the placeholder, so the
-      // widget lands wherever the placeholder ended up.
+      // element lands wherever the placeholder ended up.
       cancelDrag();
-      // Renumber the row 1..N. Above and below stay independent
-      // (placement field still splits them); builtin widgets without a
-      // widgetId are skipped, keeping them at the start of the above row.
-      const ids = [...row.querySelectorAll('.user-widget')].map(el => el.dataset.widgetId).filter(Boolean);
-      for (let i = 0; i < ids.length; i++) {
-        const w = await db.get('homeWidgets', ids[i]);
-        if (w) {
-          w.order = i + 1;
-          await db.set('homeWidgets', w);
+      if (kind === 'tile') {
+        // Persist this grid's tile order to settings.tileOrder[pageIdx].
+        const pageIdx = Number(row.dataset.gridPage ?? 0);
+        const ids = [...row.querySelectorAll('.app-icon')].map(el => el.dataset.target);
+        await db.updateSettings(s => {
+          if (!Array.isArray(s.tileOrder)) s.tileOrder = [];
+          s.tileOrder[pageIdx] = ids;
+        });
+      } else {
+        // Renumber widgets in the row 1..N. Above and below stay independent
+        // (placement field still splits them); builtin widgets without a
+        // widgetId are skipped, keeping them at the start of the above row.
+        const ids = [...row.querySelectorAll('.user-widget')].map(el => el.dataset.widgetId).filter(Boolean);
+        for (let i = 0; i < ids.length; i++) {
+          const w = await db.get('homeWidgets', ids[i]);
+          if (w) {
+            w.order = i + 1;
+            await db.set('homeWidgets', w);
+          }
         }
       }
       return;
@@ -686,10 +741,5 @@ export async function mountHome(container, params, router) {
     pagesEl.removeEventListener('pointercancel', onPointerEnd);
     homeEl.removeEventListener('contextmenu', onContextMenu);
     container.removeEventListener('click', onClick);
-    if (phoneFrame) {
-      phoneFrame.style.backgroundImage = '';
-      phoneFrame.style.backgroundSize = '';
-      phoneFrame.style.backgroundPosition = '';
-    }
   };
 }

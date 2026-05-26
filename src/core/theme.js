@@ -60,11 +60,13 @@ export const DEFAULT_THEME = Object.freeze({
   customFontImportUrl: '',
   radius:       10,   // border-radius for cards/bubbles in px
   effects: {
-    glass:        'none',
-    gradient:     false,
-    gradientTo:   '#cce4ff',
-    texture:      'none',
-    transparency: 0,
+    glass:         'none',
+    glassIntensity: 100,  // 0-100, multiplies blur/saturate/brightness of the chosen tier
+    gradient:      false,
+    gradientTo:    '#cce4ff',
+    texture:       'none',
+    transparency:  0,
+    surfaceAlpha:  0,     // 0-100, fade .page bg toward transparent → wallpaper shows through
   },
 });
 
@@ -206,6 +208,13 @@ export function applyTheme(theme) {
   applyCustomFontImport(t.fontFamily === 'custom' ? t.customFontImportUrl : '');
   const r = document.documentElement;
   const fontStack = resolveFontStack(t);
+  // Glass intensity defaults to 100 if missing — keeps old themes / presets
+  // looking identical to before this slider existed. Normalize to 0..1 so
+  // CSS rules can multiply blur/saturate/brightness by var(--glass-strength).
+  const glassStrength = Math.max(0, Math.min(100, t.effects.glassIntensity ?? 100)) / 100;
+  // surfaceAlpha defaults to 0 (no transparency) — same reason as above.
+  // 0..1 scales how transparent .page becomes so wallpaper bleeds through.
+  const surfaceAlpha   = Math.max(0, Math.min(100, t.effects.surfaceAlpha ?? 0)) / 100;
   const map = {
     '--bg':            t.bg,
     '--fg':            t.fg,
@@ -228,6 +237,8 @@ export function applyTheme(theme) {
     '--chat-bg-overlay': String((t.effects.transparency || 0) / 100),
     '--gradient-from': t.bg,
     '--gradient-to':   t.effects.gradientTo,
+    '--glass-strength':       String(glassStrength),
+    '--surface-alpha-shift':  String(surfaceAlpha),
   };
   for (const [k, v] of Object.entries(map)) r.style.setProperty(k, v);
 
@@ -249,6 +260,28 @@ function resolveFontStack(t) {
   }
   const found = FONT_OPTIONS.find(f => f.id === t.fontFamily);
   return found?.stack || FONT_OPTIONS[0].stack;
+}
+
+// Apply a wallpaper image to the .phone-frame so it shows through any
+// transparent surfaces (when effects.surfaceAlpha > 0 in particular).
+// Called once at boot from main.js and again whenever the user uploads
+// or clears the wallpaper from the theme editor. Idempotent — passing
+// null / falsy clears the wallpaper. Kept here (not in home.js) so the
+// wallpaper persists across router.navigate() — previously home.js owned
+// the wallpaper and cleared it on teardown, which meant non-home pages
+// never showed it through.
+export function applyWallpaper(url) {
+  const frame = document.querySelector('.phone-frame');
+  if (!frame) return;
+  if (url) {
+    frame.style.backgroundImage    = `url("${url}")`;
+    frame.style.backgroundSize     = 'cover';
+    frame.style.backgroundPosition = 'center';
+  } else {
+    frame.style.backgroundImage    = '';
+    frame.style.backgroundSize     = '';
+    frame.style.backgroundPosition = '';
+  }
 }
 
 // Add or replace the <link> that loads the user's custom font import URL.

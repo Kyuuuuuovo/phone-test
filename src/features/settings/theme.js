@@ -22,7 +22,7 @@ import * as db from '../../core/db.js';
 import { openConfirm, openModal } from '../../core/modal.js';
 import {
   DEFAULT_THEME, FONT_OPTIONS, TEXTURE_OPTIONS, GLASS_OPTIONS, THEME_PRESETS,
-  normalizeTheme, applyTheme,
+  normalizeTheme, applyTheme, applyWallpaper,
 } from '../../core/theme.js';
 
 export async function mountTheme(container, params, router) {
@@ -189,6 +189,14 @@ export async function mountTheme(container, params, router) {
         <select data-fx="glass">
           ${GLASS_OPTIONS.map(g => `<option value="${g.id}"${g.id === draft.effects.glass ? ' selected' : ''}>${g.label}</option>`).join('')}
         </select>
+      </label>
+      <label>
+        <div class="label-text">玻璃程度:<span class="glass-intensity-readout">${draft.effects.glassIntensity ?? 100}</span>%(0 = 没玻璃感、100 = 当前风格满档)</div>
+        <input type="range" min="0" max="100" step="5" data-fx="glassIntensity" value="${draft.effects.glassIntensity ?? 100}">
+      </label>
+      <label>
+        <div class="label-text">壁纸透出:<span class="surface-alpha-readout">${draft.effects.surfaceAlpha ?? 0}</span>%(0 = 看不见壁纸、100 = 页面全透明)</div>
+        <input type="range" min="0" max="100" step="5" data-fx="surfaceAlpha" value="${draft.effects.surfaceAlpha ?? 0}">
       </label>
 
       <h3 class="section-title">渐变 / 纹理</h3>
@@ -386,8 +394,9 @@ export async function mountTheme(container, params, router) {
       reader.onload = async () => {
         currentWallpaper = reader.result;
         await db.updateSettings(s => { s.wallpaper = currentWallpaper; });
+        applyWallpaper(currentWallpaper);  // live-apply so wallpaper persists across pages
         render();
-        status('壁纸已保存(回首页查看)', 'success');
+        status('壁纸已保存(整个 app 都能看到)', 'success');
       };
       reader.onerror = () => status('读取图片失败', 'error');
       reader.readAsDataURL(file);
@@ -395,6 +404,7 @@ export async function mountTheme(container, params, router) {
     clearBtn.addEventListener('click', async () => {
       currentWallpaper = null;
       await db.updateSettings(s => { s.wallpaper = null; });
+      applyWallpaper(null);
       render();
       status('壁纸已清除', 'success');
     });
@@ -441,8 +451,18 @@ export async function mountTheme(container, params, router) {
     else if (el.type === 'range' || el.type === 'number') val = Number(el.value);
     else val = el.value;
     writeKey(draft, key, val);
+    // Live-update the numeric readouts so the user sees the % follow the slider
+    // without waiting for a re-render.
     if (el.dataset.fx === 'transparency') {
       const r = container.querySelector('.transparency-readout');
+      if (r) r.textContent = val;
+    }
+    if (el.dataset.fx === 'glassIntensity') {
+      const r = container.querySelector('.glass-intensity-readout');
+      if (r) r.textContent = val;
+    }
+    if (el.dataset.fx === 'surfaceAlpha') {
+      const r = container.querySelector('.surface-alpha-readout');
       if (r) r.textContent = val;
     }
     applyDraft();
