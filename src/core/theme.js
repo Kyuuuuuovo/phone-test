@@ -119,19 +119,26 @@ const DARK_PALETTE = {
   bgPinned:     '#2C2C2E',
 };
 
+// Tender pink palette tuned down from the first pass — that version had
+// FF6699 accents + saturated #FFE9F0 surfaces and the user found it
+// "太粉" (overwhelmingly pink). This version moves surfaces close to
+// off-white with a barely-pink wash and shifts the accent to a softer
+// rose-gold (#E08AA0). The metal glass tier still adds the specular
+// highlight, which now reads as polished rose-gold on near-white rather
+// than chrome on hot pink.
 const PINK_PALETTE = {
-  bg:           '#FFE9F0',
-  fg:           '#3D1F2E',
-  surface:      '#FFF4F7',
-  accent:       '#FF6699',
-  muted:        '#A07785',
-  border:       '#F0CBD7',
-  bubbleUser:   '#FF7BA3',
+  bg:           '#FFF5F8',
+  fg:           '#3D2530',
+  surface:      '#FFFAFB',
+  accent:       '#E08AA0',
+  muted:        '#B89AA3',
+  border:       '#F5DEE5',
+  bubbleUser:   '#E08AA0',
   bubbleUserFg: '#FFFFFF',
-  bubbleChar:   '#FFE9F0',
-  bubbleCharFg: '#3D1F2E',
-  outsideBg:    '#F0CBD7',
-  bgPinned:     '#FFE0EC',
+  bubbleChar:   '#FFF1F5',
+  bubbleCharFg: '#3D2530',
+  outsideBg:    '#F0D7DF',
+  bgPinned:     '#FFEEF4',
 };
 
 // One-click presets — the editor renders a row of chips at the top that copies
@@ -186,7 +193,10 @@ export const THEME_PRESETS = [
       fontFamily: 'rounded',
       fontSize:   15,
       radius:     18,  // softer corners for rose-gold device feel
-      effects: { glass: 'metal', gradient: true, gradientTo: '#FFD3E0', texture: 'none', transparency: 0 },
+      // Subtler gradient — fade to a barely-pinker tone rather than the
+      // pronounced FFD3E0 of the first pass. Keeps the "rose-gold device"
+      // mood without making the page wash visibly pink.
+      effects: { glass: 'metal', gradient: true, gradientTo: '#FCE6EE', texture: 'none', transparency: 0 },
     },
   },
 ];

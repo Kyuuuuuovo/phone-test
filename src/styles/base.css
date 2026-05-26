@@ -166,8 +166,15 @@ body[data-fx-glass="liquid"] .bubble.char {
 }
 
 /* Liquid metal — same surface model as liquid but tuned for a polished/
-   specular feel: brighter top highlight, taller sheen, higher saturate.
-   Pairs with rose-gold / pink palettes (the 嫩粉液态金属 preset uses it). */
+   specular feel. Originally used height:50% sheen + 88% top highlight +
+   30% inner border, which on rounded icons created a visible hard edge
+   at the sheen's bottom — the top half looked detached from the bottom,
+   like the icon's top was cropped. This pass:
+     - softens the top inset highlight (88→50%) and inner border (30→15%)
+     - stretches the sheen across 65% of the height with multi-stop fade
+       so there's no hard cutoff line in the middle of the surface
+   The polished feel comes from the gradient + saturate rather than from
+   stacked bright bands. */
 body[data-fx-glass="metal"] .page-header,
 body[data-fx-glass="metal"] .messaging-tabs,
 body[data-fx-glass="metal"] .home-dock,
@@ -180,19 +187,19 @@ body[data-fx-glass="metal"] .entity-row,
 body[data-fx-glass="metal"] .modal {
   background-image: linear-gradient(
     180deg,
-    color-mix(in srgb, white 55%, var(--surface)) 0%,
-    color-mix(in srgb, var(--surface) 92%, white 18%) 28%,
-    var(--surface) 60%,
-    color-mix(in srgb, var(--surface) 90%, black 4%) 100%
+    color-mix(in srgb, white 40%, var(--surface)) 0%,
+    color-mix(in srgb, var(--surface) 95%, white 12%) 30%,
+    var(--surface) 65%,
+    color-mix(in srgb, var(--surface) 92%, black 4%) 100%
   );
   background-color: transparent;
-  backdrop-filter: blur(20px) saturate(200%) brightness(1.04);
-  -webkit-backdrop-filter: blur(20px) saturate(200%) brightness(1.04);
+  backdrop-filter: blur(20px) saturate(180%) brightness(1.03);
+  -webkit-backdrop-filter: blur(20px) saturate(180%) brightness(1.03);
   border-color: transparent;
   box-shadow:
-    inset 0 1.5px 0 0 color-mix(in srgb, white 88%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, white 30%, transparent),
-    inset 0 -2px 4px -1px color-mix(in srgb, black 12%, transparent),
+    inset 0 1px 0 0 color-mix(in srgb, white 50%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, white 15%, transparent),
+    inset 0 -2px 4px -1px color-mix(in srgb, black 10%, transparent),
     0 4px 14px rgba(0, 0, 0, 0.10);
   position: relative;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -205,12 +212,14 @@ body[data-fx-glass="metal"] .home-dock,
 body[data-fx-glass="metal"] .chat-input,
 body[data-fx-glass="metal"] .attach-panel {
   box-shadow:
-    inset 0 1.5px 0 0 color-mix(in srgb, white 88%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, white 30%, transparent),
-    inset 0 -2px 4px -1px color-mix(in srgb, black 12%, transparent);
+    inset 0 1px 0 0 color-mix(in srgb, white 50%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, white 15%, transparent),
+    inset 0 -2px 4px -1px color-mix(in srgb, black 10%, transparent);
 }
 
-/* Metal sheen — taller (50%) + sharper specular at the top → more chrome */
+/* Metal sheen — 65% tall, multi-stop fade so the lower edge dissolves
+   smoothly into the surface gradient rather than terminating in a hard
+   horizontal line across the icon. */
 body[data-fx-glass="metal"] .page-header::after,
 body[data-fx-glass="metal"] .messaging-tabs::after,
 body[data-fx-glass="metal"] .home-dock::after,
@@ -222,11 +231,12 @@ body[data-fx-glass="metal"] .entity-row::after {
   content: "";
   position: absolute;
   inset: 0 0 auto 0;
-  height: 50%;
+  height: 65%;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, white 62%, transparent) 0%,
-    color-mix(in srgb, white 20%, transparent) 55%,
+    color-mix(in srgb, white 42%, transparent) 0%,
+    color-mix(in srgb, white 22%, transparent) 28%,
+    color-mix(in srgb, white 8%, transparent) 65%,
     transparent 100%
   );
   pointer-events: none;
@@ -238,8 +248,8 @@ body[data-fx-glass="metal"] .widget:hover,
 body[data-fx-glass="metal"] .entity-row:hover {
   transform: translateY(-2px) scale(1.02);
   box-shadow:
-    inset 0 2px 0 0 color-mix(in srgb, white 95%, transparent),
-    inset 0 0 0 1px color-mix(in srgb, white 42%, transparent),
+    inset 0 1.5px 0 0 color-mix(in srgb, white 62%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, white 22%, transparent),
     inset 0 -2px 4px -1px color-mix(in srgb, black 10%, transparent),
     0 8px 22px rgba(0, 0, 0, 0.14);
 }
