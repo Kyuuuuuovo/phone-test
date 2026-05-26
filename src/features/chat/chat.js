@@ -475,9 +475,13 @@ export async function mountChat(container, params, router) {
       return;
     }
 
-    // Voice bubbles used to need a click to reveal the transcript; that
-    // mechanic is gone (transcript is now inline). Whole-bubble click is
-    // a no-op now.
+    // Voice bubble: tap toggles transcript visibility. Default = capsule
+    // (▶ N″). Click adds .expanded → CSS reveals the inline voice-text.
+    const voice = e.target.closest('.bubble-voice');
+    if (voice) {
+      voice.classList.toggle('expanded');
+      return;
+    }
 
     // Claim a red_packet / transfer bubble — the whole .claimable card is the
     // hit target (WeChat-style: tap anywhere on the envelope to open).
@@ -901,13 +905,13 @@ function renderAction(a, side, msgId, idx, previewMap, character) {
     case 'image':
       return `<div class="bubble ${side} bubble-image" ${attrs}>[图片] ${esc(a.description || a.src || '')}</div>`;
     case 'voice': {
-      // Inline voice bubble: a small "▶ N″" prefix tag + the transcript right
-      // after it, so the bubble width follows content length (just like a
-      // text bubble) and the transcript is visible without an extra tap —
-      // the old click-to-reveal mechanic was unreliable on desktop and the
-      // fixed 220px voice-bar looked oversized next to one-line text bubbles.
+      // Collapsed by default: bubble shows only "▶ N″" so it reads as a voice
+      // capsule (matches the WeChat / iMessage convention — tap to play /
+      // expand). One tap on the bubble toggles .expanded and the transcript
+      // appears inline. The transcript stays in the DOM but hidden via CSS
+      // so existing selectors that look for the text (preview / search) work.
       const dur = Number(a.duration) || Math.max(1, Math.round((a.content || '').length / 4));
-      return `<div class="bubble ${side} bubble-voice" ${attrs}><span class="voice-meta">▶ ${dur}″</span>${esc(a.content || '')}</div>`;
+      return `<div class="bubble ${side} bubble-voice" ${attrs}><span class="voice-meta">▶ ${dur}″</span><span class="voice-text">${esc(a.content || '')}</span></div>`;
     }
     case 'recall':
       return `<div class="bubble-recall">[消息已撤回]</div>`;

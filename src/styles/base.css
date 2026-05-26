@@ -185,6 +185,13 @@ body[data-fx-texture]:not([data-fx-texture="none"]) .page > * { position: relati
   background: var(--bg);
   box-shadow: 0 0 24px rgba(0, 0, 0, 0.15);
   overflow: hidden;
+  /* position: relative so the desk-pet orb (and its bubble) — both
+     position:absolute children of .phone-frame — anchor here instead of
+     climbing to the viewport. Without this, on a desktop wider than the
+     phone-frame the orb's frame-relative coordinates were applied as
+     viewport coordinates, leaving the orb stuck on the left half of the
+     screen and the bubble drifting off the orb. */
+  position: relative;
 }
 @supports (height: 100dvh) {
   .phone-frame {
@@ -1059,6 +1066,19 @@ label .label-text {
   border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
   animation: attachSlideUp 0.18s ease-out;
 }
+/* Native datetime-local on iOS has a chunky min-content width that pushes
+   the input wider than its container if min-width isn't pinned to 0.
+   Constraining max-width + min-width keeps the picker inside the modal/page. */
+.modal input[type="datetime-local"],
+.modal input[type="date"],
+.modal input[type="time"] {
+  max-width: 100%;
+  min-width: 0;
+  /* iOS Safari also draws a non-removable padding around the value text
+     that pushes it wider — explicitly setting font-size matches the
+     base form-control size and discourages the picker from rendering large. */
+  font-size: inherit;
+}
 @keyframes attachSlideUp {
   from { transform: translateY(100%); }
   to   { transform: translateY(0); }
@@ -1487,9 +1507,16 @@ label .label-text {
 }
 .bubble-image, .bubble-reply { font-style: italic; opacity: 0.92; }
 
-/* Voice bubble — inline, behaves like a text bubble. A small "▶ N″" tag
-   sits before the transcript; the whole thing wraps naturally so width =
-   content length and height = a single line when content fits. */
+/* Voice bubble — capsule by default (just ▶ N″). Tap to expand → .voice-text
+   becomes visible inline. The DOM keeps the text either way so search /
+   preview / edit can still see it. */
+.bubble-voice .voice-text { display: none; }
+.bubble-voice.expanded .voice-text {
+  display: inline;
+  margin-left: 6px;
+  opacity: 0.95;
+}
+.bubble-voice { cursor: pointer; }
 .bubble-voice .voice-meta {
   display: inline-flex;
   align-items: center;
