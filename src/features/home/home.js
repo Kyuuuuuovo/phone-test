@@ -134,8 +134,8 @@ async function renderFavoritesWidget(w, gs) {
     return `
       <div class="widget widget-favorites user-widget size-${size} empty" style="${gs}" data-widget-id="${escHtml(id)}" data-target="favorites-list">
         <div class="widget-empty-msg">收藏 · 还没有收藏 — 长按消息添加</div>
-        <button class="widget-edit" title="编辑" aria-label="编辑">⚙</button>
-        <button class="widget-del" title="删除">×</button>
+        <button class="widget-edit" title="编辑" aria-label="编辑"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0 0 13.92 2h-3.84a.49.49 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.73 8.47a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 0 0 7.2z"/></svg></button>
+        <button class="widget-del" title="删除" aria-label="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button>
       </div>
     `;
   }
@@ -150,8 +150,8 @@ async function renderFavoritesWidget(w, gs) {
     <div class="widget widget-favorites user-widget size-${size}" style="${gs}" data-widget-id="${escHtml(id)}" data-target="favorites-list">
       <div class="widget-quote">${escHtml(text)}</div>
       <div class="widget-from">— ${escHtml(character?.name || '(未知)')}</div>
-      <button class="widget-edit" title="编辑" aria-label="编辑">⚙</button>
-      <button class="widget-del" title="删除">×</button>
+      <button class="widget-edit" title="编辑" aria-label="编辑"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0 0 13.92 2h-3.84a.49.49 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.73 8.47a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 0 0 7.2z"/></svg></button>
+      <button class="widget-del" title="删除" aria-label="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button>
     </div>
   `;
 }
@@ -183,8 +183,8 @@ function renderImageWidget(w, gs) {
   return `
     <div class="widget widget-image user-widget size-${size}" style="${gs}" data-widget-id="${escHtml(w.id)}">
       <img src="${escHtml(w.data || '')}" alt="">
-      <button class="widget-edit" title="编辑" aria-label="编辑">⚙</button>
-      <button class="widget-del" title="删除">×</button>
+      <button class="widget-edit" title="编辑" aria-label="编辑"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0 0 13.92 2h-3.84a.49.49 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.73 8.47a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 0 0 7.2z"/></svg></button>
+      <button class="widget-del" title="删除" aria-label="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button>
     </div>
   `;
 }
@@ -193,8 +193,8 @@ function renderNoteWidget(w, gs) {
   return `
     <div class="widget widget-note user-widget size-${size}" style="${gs}" data-widget-id="${escHtml(w.id)}">
       <div class="widget-note-text">${escHtml(w.data || '')}</div>
-      <button class="widget-edit" title="编辑" aria-label="编辑">⚙</button>
-      <button class="widget-del" title="删除">×</button>
+      <button class="widget-edit" title="编辑" aria-label="编辑"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0 0 13.92 2h-3.84a.49.49 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.73 8.47a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 0 0 7.2z"/></svg></button>
+      <button class="widget-del" title="删除" aria-label="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button>
     </div>
   `;
 }
@@ -214,8 +214,8 @@ function renderPolaroidWidget(w, gs) {
     return `
       <div class="widget widget-polaroid user-widget size-small empty" style="${gs}" data-widget-id="${escHtml(w.id)}">
         <div class="widget-polaroid-empty">未上传照片</div>
-        <button class="widget-edit" title="编辑" aria-label="编辑">⚙</button>
-        <button class="widget-del" title="删除">×</button>
+        <button class="widget-edit" title="编辑" aria-label="编辑"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0 0 13.92 2h-3.84a.49.49 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.73 8.47a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 0 0 7.2z"/></svg></button>
+        <button class="widget-del" title="删除" aria-label="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button>
       </div>
     `;
   }
@@ -237,8 +237,8 @@ function renderPolaroidWidget(w, gs) {
                alt="">
         `;
       }).join('')}
-      <button class="widget-edit" title="编辑" aria-label="编辑">⚙</button>
-      <button class="widget-del" title="删除">×</button>
+      <button class="widget-edit" title="编辑" aria-label="编辑"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0 0 13.92 2h-3.84a.49.49 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.73 8.47a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 0 0 7.2z"/></svg></button>
+      <button class="widget-del" title="删除" aria-label="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button>
     </div>
   `;
 }
@@ -280,8 +280,8 @@ async function renderAnniversaryWidget(w, gs) {
     <div class="widget widget-anniversary user-widget" style="${gs}" data-widget-id="${escHtml(w.id)}">
       <div class="anniv-label">${escHtml(label)}</div>
       <div class="anniv-days"><span class="anniv-count">${escHtml(String(count))}</span>${unit ? `<span class="anniv-unit">${escHtml(unit)}</span>` : ''}</div>
-      <button class="widget-edit" title="编辑" aria-label="编辑">⚙</button>
-      <button class="widget-del" title="删除">×</button>
+      <button class="widget-edit" title="编辑" aria-label="编辑"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0 0 13.92 2h-3.84a.49.49 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.73 8.47a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 0 0 7.2z"/></svg></button>
+      <button class="widget-del" title="删除" aria-label="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button>
     </div>
   `;
 }
@@ -425,8 +425,8 @@ async function renderMusicWidget(w, gs) {
           <div class="mp-progress"><div class="mp-progress-fill"></div></div>
         </div>
       </div>
-      <button class="widget-edit" title="编辑" aria-label="编辑">⚙</button>
-      <button class="widget-del" title="删除">×</button>
+      <button class="widget-edit" title="编辑" aria-label="编辑"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0 0 13.92 2h-3.84a.49.49 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.73 8.47a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 0 0 7.2z"/></svg></button>
+      <button class="widget-del" title="删除" aria-label="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button>
     </div>
   `;
 }
@@ -570,7 +570,7 @@ function parseSizePreset(sizeStr) {
   return { colSpan: Number(m[1]), rowSpan: Number(m[2]) };
 }
 
-const ROWS = 6;  // 4 cols × 6 rows — bumped from 5 after move add-widget btn out (B#7)
+const ROWS = 5;  // 4 cols × 5 rows;一度试过 6 行,手机底部装不下被截,回退
 
 // Build a 4×ROWS boolean occupancy grid from page-0 items (widgets + apps).
 // Out-of-bounds cells are treated as occupied so placement clamps inside the
@@ -1521,16 +1521,28 @@ export async function mountHome(container, params, router) {
         const originPage = gridEl.dataset.gridPage === 'dock'
           ? 'dock'
           : Number(gridEl.dataset.gridPage ?? 0);
-        // Pre-snapshot every surface (numbered pages + dock) so we can hop
-        // between them mid-drag without re-querying when the user crosses a
-        // page boundary, auto-scroll fires (B#5), or pointer leaves pages
-        // for the dock (B#6). items snapshot stays valid for the whole drag
-        // — geom needs to be re-snapshotted on scroll change because
-        // viewport-relative bbox moves with .home-pages.scrollLeft.
+        // Snapshot the origin grid + (if applicable) the dock —— 用户可以
+        // 把 app 从 page 拖进 dock 或反过来(B#6),但 app 跨 page 已经移除
+        // (B#5 撤销:体验上 drop 后 router.navigate 把 scrollLeft 复位到
+        // page 0,user 视觉上看到「app 被弹回 page 1」)。所以这里不再 snapshot
+        // 全部 page,只装 originPage + dock。
         const pageSnapshots = {};
-        for (const g of container.querySelectorAll('.app-grid[data-grid-page]')) {
-          const key = g.dataset.gridPage === 'dock' ? 'dock' : Number(g.dataset.gridPage);
-          pageSnapshots[key] = { gridEl: g, items: snapshotItems(g) };
+        pageSnapshots[originPage] = { gridEl, items: snapshotItems(gridEl) };
+        const widgetBeingDragged = !!widgetEl;
+        if (!widgetBeingDragged) {
+          // widget 不能进 dock,所以拖 widget 时不需要 snapshot dock
+          const dockGrid = container.querySelector('[data-grid-page="dock"]');
+          if (dockGrid && originPage !== 'dock') {
+            pageSnapshots['dock'] = { gridEl: dockGrid, items: snapshotItems(dockGrid) };
+          } else if (originPage === 'dock') {
+            // 反向:dock app 可以拖到当前可见的 page。当前 page 由 .home-pages
+            // scrollLeft 决定 —— 起手时记一次就够,中途不允许换 page。
+            const currentPage = pagesEl.clientWidth > 0
+              ? Math.round(pagesEl.scrollLeft / pagesEl.clientWidth)
+              : 0;
+            const pageGrid = container.querySelector(`[data-grid-page="${currentPage}"]`);
+            if (pageGrid) pageSnapshots[currentPage] = { gridEl: pageGrid, items: snapshotItems(pageGrid) };
+          }
         }
         const items = pageSnapshots[originPage].items;
         const meEntry = items.find(it => it.el === targetEl);
@@ -1559,7 +1571,6 @@ export async function mountHome(container, params, router) {
           el: targetEl, gridEl, items, me: meEntry, geom,
           pageSnapshots, gridPage: originPage, originPage,
           lastScrollLeft: pagesEl.scrollLeft,
-          lastAutoScrollAt: 0,
           pointerId: e.pointerId,
           offsetX: e.clientX - rect.left,
           offsetY: e.clientY - rect.top,
@@ -1619,57 +1630,34 @@ export async function mountHome(container, params, router) {
     if (dragging && e.pointerId === dragging.pointerId) {
       e.preventDefault();
 
-      // B#5 + B#6: cross-surface drag (page ↔ page, page ↔ dock).
-      // 1) Pointer is over dock area? → switch to dock surface.
-      // 2) Otherwise pointer is in pages — figure out which page from
-      //    .home-pages scrollLeft. If it changed, swap dragging context.
-      // 3) Recompute geom if scrollLeft changed at all — gridEl.bbox is
-      //    viewport-relative so it moves with scroll, breaking snap math.
-      // 4) If pointer is near .home-pages left/right edge, trigger an
-      //    auto-scroll to the neighbor page (throttled ≥ 600ms apart).
-      const sl = pagesEl.scrollLeft;
-      const w = pagesEl.clientWidth;
+      // B#6: dock ↔ origin page swap.
+      // 跨 page 拖 (B#5) 已经撤销 —— drop 后 re-mount 把 scrollLeft 复位,
+      // 用户视觉看到 app「弹回」原 page,不直观。这里只允许 dock ↔ originPage
+      // 互拖。pointer 在 dock 区域 → 切到 dock surface;离开 → 切回 origin。
       const dockSnap = dragging.pageSnapshots.dock;
       const dockRect = dockSnap?.gridEl.getBoundingClientRect();
       const overDock = dockRect && e.clientY >= dockRect.top && e.clientY <= dockRect.bottom;
-      const currentSurface = overDock
-        ? 'dock'
-        : (w > 0 ? Math.round(sl / w) : dragging.gridPage);
+      const targetSurface = overDock && dockSnap ? 'dock' : dragging.originPage;
       let needGeomRefresh = false;
-      if (currentSurface !== dragging.gridPage && dragging.pageSnapshots[currentSurface]) {
-        // Hop to new surface: swap gridEl / items, and move the placeholder
-        // into the new grid so it shows up where the pointer is.
-        const snap = dragging.pageSnapshots[currentSurface];
+      if (targetSurface !== dragging.gridPage && dragging.pageSnapshots[targetSurface]) {
+        const snap = dragging.pageSnapshots[targetSurface];
         dragging.gridEl = snap.gridEl;
         dragging.items  = snap.items;
-        dragging.gridPage = currentSurface;
+        dragging.gridPage = targetSurface;
         if (dragging.placeholder && dragging.placeholder.parentNode !== snap.gridEl) {
           snap.gridEl.appendChild(dragging.placeholder);
         }
         needGeomRefresh = true;
       }
+      // Scroll-position change shouldn't really happen now (no auto-scroll),
+      // but if the user manually swipes pages during a drag we still want
+      // geom to track. Cheap check.
+      const sl = pagesEl.scrollLeft;
       if (sl !== dragging.lastScrollLeft) {
         needGeomRefresh = true;
         dragging.lastScrollLeft = sl;
       }
       if (needGeomRefresh) dragging.geom = gridGeometry(dragging.gridEl);
-
-      // Auto-scroll: pointer near .home-pages edge → scroll to neighbor.
-      // Only when pointer is inside .home-pages vertically (not when it
-      // dropped into dock area). 40px edge zone, ≥ 600ms apart.
-      const pagesRect = pagesEl.getBoundingClientRect();
-      const edge = 40;
-      const now = Date.now();
-      const inPagesV = e.clientY >= pagesRect.top && e.clientY <= pagesRect.bottom;
-      if (inPagesV && currentSurface !== 'dock' && now - dragging.lastAutoScrollAt > 600) {
-        if (e.clientX < pagesRect.left + edge && currentSurface > 0) {
-          pagesEl.scrollTo({ left: (currentSurface - 1) * w, behavior: 'smooth' });
-          dragging.lastAutoScrollAt = now;
-        } else if (e.clientX > pagesRect.right - edge && currentSurface < PAGES.length - 1) {
-          pagesEl.scrollTo({ left: (currentSurface + 1) * w, behavior: 'smooth' });
-          dragging.lastAutoScrollAt = now;
-        }
-      }
 
       // Compute target cell from pointer position — we snap the dragging
       // item TO that cell (not to the pointer), so user sees the item lock
