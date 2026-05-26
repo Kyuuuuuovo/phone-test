@@ -24,14 +24,18 @@ export const TEXTURE_OPTIONS = [
   { id: 'noise', label: '噪点' },
 ];
 
-// Glass tier: 'none' | 'frosted' | 'liquid'
+// Glass tier: 'none' | 'frosted' | 'liquid' | 'metal'
 //   frosted — classic frosted glass: blur + semi-transparent surfaces
 //   liquid  — Apple-style liquid glass: stronger blur, color-shifting saturate,
 //             gradient sheen on the top edge of surfaces
+//   metal   — liquid + a polished/specular feel: sharper top highlight, deeper
+//             sheen, brighter saturate. Pairs well with rose-gold / chrome
+//             palettes (the pink-metal preset uses it).
 export const GLASS_OPTIONS = [
   { id: 'none',    label: '无' },
   { id: 'frosted', label: '毛玻璃' },
   { id: 'liquid',  label: '液态玻璃' },
+  { id: 'metal',   label: '液态金属' },
 ];
 
 export const DEFAULT_THEME = Object.freeze({
@@ -88,6 +92,48 @@ export function normalizeTheme(stored) {
   return merged;
 }
 
+// Color palettes for the two new presets. Kept as labeled objects rather
+// than inline literals so the values stay easy to tune in one place.
+//
+// Dark — full iOS-style dark inversion. Surfaces get the iOS dark-gray
+// stack (#1c1c1e / #2c2c2e) so secondary surfaces (bubble.char, pinned
+// rows) read distinct from primary surface.
+//
+// Pink — soft 嫩粉 palette tuned for the 液态金属 glass tier. The metal
+// effect lifts a sharp specular highlight off the surface; with a pink
+// palette behind it the result reads as rose-gold chrome (which is what
+// "嫩粉液态金属" maps to in real-world aesthetic terms — pink iPhones,
+// rose-gold MacBooks).
+const DARK_PALETTE = {
+  bg:           '#0F0F12',
+  fg:           '#F5F5F7',
+  surface:      '#1C1C1E',
+  accent:       '#0A84FF',
+  muted:        '#98989D',
+  border:       '#38383A',
+  bubbleUser:   '#0A84FF',
+  bubbleUserFg: '#FFFFFF',
+  bubbleChar:   '#2C2C2E',
+  bubbleCharFg: '#F5F5F7',
+  outsideBg:    '#000000',
+  bgPinned:     '#2C2C2E',
+};
+
+const PINK_PALETTE = {
+  bg:           '#FFE9F0',
+  fg:           '#3D1F2E',
+  surface:      '#FFF4F7',
+  accent:       '#FF6699',
+  muted:        '#A07785',
+  border:       '#F0CBD7',
+  bubbleUser:   '#FF7BA3',
+  bubbleUserFg: '#FFFFFF',
+  bubbleChar:   '#FFE9F0',
+  bubbleCharFg: '#3D1F2E',
+  outsideBg:    '#F0CBD7',
+  bgPinned:     '#FFE0EC',
+};
+
 // One-click presets — the editor renders a row of chips at the top that copies
 // the preset's values into the draft. Users can still tweak after applying.
 export const THEME_PRESETS = [
@@ -117,6 +163,30 @@ export const THEME_PRESETS = [
       fontSize:     18,
       radius:       4,
       effects: { glass: 'frosted', gradient: false, gradientTo: '#cce4ff', texture: 'none', transparency: 0 },
+    },
+  },
+  {
+    id: 'dark',
+    label: '黑色',
+    theme: {
+      notch: false,
+      ...DARK_PALETTE,
+      fontFamily: 'system',
+      fontSize:   15,
+      radius:     12,
+      effects: { glass: 'liquid', gradient: false, gradientTo: '#1C1C1E', texture: 'none', transparency: 0 },
+    },
+  },
+  {
+    id: 'pink-metal',
+    label: '嫩粉液态金属',
+    theme: {
+      notch: false,
+      ...PINK_PALETTE,
+      fontFamily: 'rounded',
+      fontSize:   15,
+      radius:     18,  // softer corners for rose-gold device feel
+      effects: { glass: 'metal', gradient: true, gradientTo: '#FFD3E0', texture: 'none', transparency: 0 },
     },
   },
 ];

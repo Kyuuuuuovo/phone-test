@@ -77,6 +77,7 @@ body[data-fx-glass="liquid"] .attach-panel,
 body[data-fx-glass="liquid"] .bubble-menu,
 body[data-fx-glass="liquid"] .app-icon .icon,
 body[data-fx-glass="liquid"] .widget,
+body[data-fx-glass="liquid"] .entity-row,
 body[data-fx-glass="liquid"] .modal {
   background-image: linear-gradient(
     155deg,
@@ -101,6 +102,23 @@ body[data-fx-glass="liquid"] .modal {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+/* E1 fix — flush-anchored strips (page-header, dock, chat-input, etc.) sit
+   right against .phone-frame's overflow:hidden edge. The default outer drop
+   shadow `0 6px 24px` had nowhere to render cleanly at the top corners and
+   visually stacked against .phone-frame's own outer shadow, producing the
+   "double shadow at the top two corners" the user reported. Cards (app-icon
+   .icon / widget / entity-row) keep the elevation shadow — they're meant
+   to look lifted. */
+body[data-fx-glass="liquid"] .page-header,
+body[data-fx-glass="liquid"] .messaging-tabs,
+body[data-fx-glass="liquid"] .home-dock,
+body[data-fx-glass="liquid"] .chat-input,
+body[data-fx-glass="liquid"] .attach-panel {
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, white 75%, transparent),
+    inset 0 -1px 0 0 color-mix(in srgb, black 12%, transparent);
+}
+
 /* Top sheen — a narrow gradient line that catches the light */
 body[data-fx-glass="liquid"] .page-header::after,
 body[data-fx-glass="liquid"] .messaging-tabs::after,
@@ -108,7 +126,8 @@ body[data-fx-glass="liquid"] .home-dock::after,
 body[data-fx-glass="liquid"] .chat-input::after,
 body[data-fx-glass="liquid"] .attach-panel::after,
 body[data-fx-glass="liquid"] .app-icon .icon::after,
-body[data-fx-glass="liquid"] .widget::after {
+body[data-fx-glass="liquid"] .widget::after,
+body[data-fx-glass="liquid"] .entity-row::after {
   content: "";
   position: absolute;
   inset: 0 0 auto 0;
@@ -122,7 +141,8 @@ body[data-fx-glass="liquid"] .widget::after {
 
 /* Hover/active interactivity for liquid surfaces — wobble + brighten */
 body[data-fx-glass="liquid"] .app-icon:hover .icon,
-body[data-fx-glass="liquid"] .widget:hover {
+body[data-fx-glass="liquid"] .widget:hover,
+body[data-fx-glass="liquid"] .entity-row:hover {
   transform: translateY(-2px) scale(1.02);
   box-shadow:
     inset 0 1px 0 0 color-mix(in srgb, white 90%, transparent),
@@ -143,6 +163,99 @@ body[data-fx-glass="liquid"] .bubble.char {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   box-shadow: inset 0 1px 0 0 color-mix(in srgb, white 35%, transparent);
+}
+
+/* Liquid metal — same surface model as liquid but tuned for a polished/
+   specular feel: brighter top highlight, taller sheen, higher saturate.
+   Pairs with rose-gold / pink palettes (the 嫩粉液态金属 preset uses it). */
+body[data-fx-glass="metal"] .page-header,
+body[data-fx-glass="metal"] .messaging-tabs,
+body[data-fx-glass="metal"] .home-dock,
+body[data-fx-glass="metal"] .chat-input,
+body[data-fx-glass="metal"] .attach-panel,
+body[data-fx-glass="metal"] .bubble-menu,
+body[data-fx-glass="metal"] .app-icon .icon,
+body[data-fx-glass="metal"] .widget,
+body[data-fx-glass="metal"] .entity-row,
+body[data-fx-glass="metal"] .modal {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, white 55%, var(--surface)) 0%,
+    color-mix(in srgb, var(--surface) 92%, white 18%) 28%,
+    var(--surface) 60%,
+    color-mix(in srgb, var(--surface) 90%, black 4%) 100%
+  );
+  background-color: transparent;
+  backdrop-filter: blur(20px) saturate(200%) brightness(1.04);
+  -webkit-backdrop-filter: blur(20px) saturate(200%) brightness(1.04);
+  border-color: transparent;
+  box-shadow:
+    inset 0 1.5px 0 0 color-mix(in srgb, white 88%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, white 30%, transparent),
+    inset 0 -2px 4px -1px color-mix(in srgb, black 12%, transparent),
+    0 4px 14px rgba(0, 0, 0, 0.10);
+  position: relative;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Metal strip override — same E1 reasoning as liquid: drop outer elevation. */
+body[data-fx-glass="metal"] .page-header,
+body[data-fx-glass="metal"] .messaging-tabs,
+body[data-fx-glass="metal"] .home-dock,
+body[data-fx-glass="metal"] .chat-input,
+body[data-fx-glass="metal"] .attach-panel {
+  box-shadow:
+    inset 0 1.5px 0 0 color-mix(in srgb, white 88%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, white 30%, transparent),
+    inset 0 -2px 4px -1px color-mix(in srgb, black 12%, transparent);
+}
+
+/* Metal sheen — taller (50%) + sharper specular at the top → more chrome */
+body[data-fx-glass="metal"] .page-header::after,
+body[data-fx-glass="metal"] .messaging-tabs::after,
+body[data-fx-glass="metal"] .home-dock::after,
+body[data-fx-glass="metal"] .chat-input::after,
+body[data-fx-glass="metal"] .attach-panel::after,
+body[data-fx-glass="metal"] .app-icon .icon::after,
+body[data-fx-glass="metal"] .widget::after,
+body[data-fx-glass="metal"] .entity-row::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 50%;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, white 62%, transparent) 0%,
+    color-mix(in srgb, white 20%, transparent) 55%,
+    transparent 100%
+  );
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+body[data-fx-glass="metal"] .app-icon:hover .icon,
+body[data-fx-glass="metal"] .widget:hover,
+body[data-fx-glass="metal"] .entity-row:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow:
+    inset 0 2px 0 0 color-mix(in srgb, white 95%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, white 42%, transparent),
+    inset 0 -2px 4px -1px color-mix(in srgb, black 10%, transparent),
+    0 8px 22px rgba(0, 0, 0, 0.14);
+}
+body[data-fx-glass="metal"] .app-icon:active .icon,
+body[data-fx-glass="metal"] .widget:active {
+  transform: translateY(0) scale(0.97);
+  transition-duration: 0.08s;
+}
+
+body[data-fx-glass="metal"] .bubble.char {
+  background-image: linear-gradient(180deg,
+    color-mix(in srgb, var(--bubble-char) 95%, white 8%),
+    color-mix(in srgb, var(--bubble-char) 78%, transparent));
+  backdrop-filter: blur(10px) saturate(180%);
+  -webkit-backdrop-filter: blur(10px) saturate(180%);
+  box-shadow: inset 0 1px 0 0 color-mix(in srgb, white 55%, transparent);
 }
 
 /* 纹理 — soft overlay patterns on the page background */
@@ -505,6 +618,7 @@ label .label-text {
   color: var(--fg);
   cursor: pointer;
   transition: transform 0.15s ease;
+  overflow: hidden;  /* E1: keep glass mode's ::after sheen clipping clean */
 }
 .widget:hover { transform: translateY(-2px); }
 .widget:active { transform: translateY(0); }
@@ -661,19 +775,27 @@ label .label-text {
   width: 56px;
   height: 56px;
   border-radius: var(--radius-lg);
-  /* Glass tile — semi-transparent surface + backdrop blur. On the home page
-     with a wallpaper set, the wallpaper shows through; on plain bg it just
-     looks slightly frosted (still nicer than a flat color). */
-  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  /* E23 — iOS-style icon: vertical gradient (top lighter, bottom slightly
+     darker) + inset top highlight + soft drop shadow. backdrop-filter still
+     blurs the wallpaper behind, but the gradient gives the icon a "raised
+     plastic" feel even on plain bg (default and frosted modes). Liquid /
+     metal modes override this block entirely with their own surface model. */
+  background-image: linear-gradient(180deg,
+    color-mix(in srgb, var(--surface) 100%, white 14%) 0%,
+    color-mix(in srgb, var(--surface) 100%, transparent) 55%,
+    color-mix(in srgb, var(--surface) 100%, black 4%) 100%);
   backdrop-filter: blur(18px) saturate(160%);
   -webkit-backdrop-filter: blur(18px) saturate(160%);
-  border: 1px solid color-mix(in srgb, white 35%, transparent);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, white 48%, transparent),
+    0 2px 10px rgba(0, 0, 0, 0.08);
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--accent);
-  transition: transform 0.15s ease;
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+  overflow: hidden;
 }
 .app-icon .icon svg { width: 30px; height: 30px; display: block; }
 .app-icon .label {
@@ -2492,24 +2614,39 @@ label .label-text {
   display: block;
 }
 
-/* Generic entity list (characters, worldbooks, personas) */
+/* Generic entity list (characters, worldbooks, personas) — E5 card-ify:
+   rows are stand-alone rounded cards stacked with a small gap, instead
+   of the prior border-bottom-separated flat list. The list container
+   carries the page padding so rows breathe; in glass modes the row also
+   participates in the .entity-row liquid/metal selector list and picks
+   up the same surface gradient + inset bevel as widgets. */
 .entity-list-body { padding: 0; }
-.entity-list { display: flex; flex-direction: column; }
+.entity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
 .entity-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
+  padding: 12px 14px;
   background: var(--surface);
-  border: none;
-  border-bottom: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   cursor: pointer;
   text-align: left;
   width: 100%;
   font: inherit;
   color: inherit;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-.entity-row:hover { background: var(--bubble-char); }
+.entity-row:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
 .entity-row.blocked { opacity: 0.5; }
 .entity-avatar {
   width: 44px;
