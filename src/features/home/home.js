@@ -608,7 +608,7 @@ export async function mountHome(container, params, router) {
             <div class="home-page" data-page-idx="${i}">
               ${i === 0 ? `<div class="widget-row above-row">${aboveBlock}</div>` : ''}
               <div class="app-grid" data-grid-page="${i}">${tiles.map(tileHtml).join('')}</div>
-              ${i === 0 && belowHtmls ? `<div class="widget-row below-row">${belowHtmls}</div>` : ''}
+              ${i === 0 ? `<div class="widget-row below-row">${belowHtmls}</div>` : ''}
             </div>
           `;
         }).join('')}
@@ -773,10 +773,42 @@ export async function mountHome(container, params, router) {
     // among the row's remaining items. For widgets (vertical-stack), use Y;
     // for tiles (4-col grid), use a combined X+Y comparison so dragging
     // sideways across the grid feels right.
+    //
+    // Widgets ALSO support cross-row drag: above-row ↔ below-row. The
+    // placeholder migrates into whichever .widget-row the pointer is
+    // currently over (or the nearest one). placement field gets updated
+    // on drop based on the placeholder's final row.
     if (dragging && e.pointerId === dragging.pointerId) {
       e.preventDefault();
       dragging.el.style.left = (e.clientX - dragging.offsetX) + 'px';
       dragging.el.style.top  = (e.clientY - dragging.offsetY) + 'px';
+
+      // For widget drags, choose target row first (cross-row) — picks the
+      // .widget-row containing pointer Y, or the closest one above/below
+      // the pointer if none contains it.
+      if (dragging.kind === 'widget') {
+        const page = dragging.placeholder.closest('.home-page');
+        const rows = page ? [...page.querySelectorAll('.widget-row')] : [];
+        let targetRow = null;
+        for (const r of rows) {
+          const rect = r.getBoundingClientRect();
+          if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
+            targetRow = r;
+            break;
+          }
+        }
+        if (!targetRow && rows.length > 0) {
+          // Above all rows → first; below all rows → last.
+          const firstRect = rows[0].getBoundingClientRect();
+          targetRow = e.clientY < firstRect.top ? rows[0] : rows[rows.length - 1];
+        }
+        if (targetRow && targetRow !== dragging.placeholder.parentNode) {
+          // Move placeholder into the new row (append; the in-row Y
+          // compare loop below repositions it correctly).
+          targetRow.appendChild(dragging.placeholder);
+        }
+      }
+
       const row = dragging.placeholder.parentNode;
       const siblingSel = dragging.kind === 'tile' ? '.app-icon' : '.user-widget';
       const siblings = [...row.querySelectorAll(siblingSel)].filter(el => el !== dragging.el);
@@ -851,13 +883,18 @@ export async function mountHome(container, params, router) {
           s.tileOrder[pageIdx] = ids;
         });
       } else {
-        // Renumber widgets in the row 1..N. Above and below stay independent
-        // (placement field still splits them); builtin widgets without a
-        // widgetId are skipped, keeping them at the start of the above row.
+        // Widget: renumber the DESTINATION row 1..N + set placement to
+        // match the row the placeholder ended up in. Cross-row drags
+        // (above ↔ below) are handled by the same flow because the row
+        // class determines the placement. Widgets remaining in the source
+        // row keep their existing order (which stays valid — only the
+        // moved widget needed an order assignment).
+        const placement = row.classList.contains('below-row') ? 'below' : 'above';
         const ids = [...row.querySelectorAll('.user-widget')].map(el => el.dataset.widgetId).filter(Boolean);
         for (let i = 0; i < ids.length; i++) {
           const w = await db.get('homeWidgets', ids[i]);
           if (w) {
+            w.placement = placement;
             w.order = i + 1;
             await db.set('homeWidgets', w);
           }

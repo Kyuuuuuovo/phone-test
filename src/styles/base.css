@@ -640,6 +640,18 @@ label .label-text {
   margin-bottom: 18px;
 }
 .widget-row.below-row { margin: 18px 0 0; }
+/* Below-row is always rendered (so users can cross-row-drag widgets from
+   above to below). Hide it when empty + not editing so the home page
+   stays compact. In editing mode, render the empty below-row as a dashed
+   drop zone so the user can see where to drop. */
+.page.home:not(.editing) .widget-row.below-row:empty { display: none; }
+.page.home.editing .widget-row.below-row:empty {
+  display: block;
+  min-height: 56px;
+  margin: 18px 0 0;
+  border: 1.5px dashed color-mix(in srgb, var(--fg) 18%, transparent);
+  border-radius: var(--radius-lg);
+}
 .widget.size-small  { grid-column: span 1; }
 .widget.size-medium,
 .widget.size-large,
