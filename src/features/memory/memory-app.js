@@ -15,11 +15,16 @@
 // buildScheduleLines)。
 
 import * as db from '../../core/db.js';
+import * as timeline from '../../core/timeline.js';
 import { openConfirm } from '../../core/modal.js';
 
 export async function mountMemoryApp(container, params, router) {
   let activeTab = 'calendar';
   let calendarCursor = new Date();  // 1st day of currently-viewed month
+  // Timeline-gen state survives re-render so the user sees button state +
+  // last result text after the gen-driven render() lands.
+  let tlGenBusy = false;
+  let tlStatus = { text: '', cls: '' };
 
   async function render() {
     container.innerHTML = `
@@ -129,11 +134,13 @@ export async function mountMemoryApp(container, params, router) {
 
   // ── Timeline tab (cross-session) ────────────────────────────────────
   async function renderTimeline() {
-    const allTl = (await db.getAll('timeline')).filter(t => !t.mergedInto);
-    allTl.sort((a, b) => (b.dayKey || '').localeCompare(a.dayKey || ''));
-    if (allTl.length === 0) {
-      return `<p class="hint">还没有时间线条目。在某个会话的「记忆」里展开时间线 tab 触发生成。</p>`;
-    }
+    // Pull EVERY row including merged-into ones — we need them as a lookup
+    // for the merged row's <details> expansion. The top-level list still
+    // hides mergedInto rows so they don't show up twice.
+    const allTl = await db.getAll('timeline');
+    const byId = new Map(allTl.map(t => [t.id, t]));
+    const topLevel = allTl.filter(t => !t.mergedInto);
+    topLevel.sort((a, b) => (b.dayKey || '').localeCompare(a.dayKey || ''));
     const sessions = await db.getAll('chatSessions');
     const chars    = await db.getAll('characters');
     const labelFor = (sid) => {
@@ -142,16 +149,89 @@ export async function mountMemoryApp(container, params, router) {
       const c = chars.find(x => x.id === s.characterId);
       return c?.name || s.title || '(未命名)';
     };
-    return `
-      <div class="ma-list">
-        ${allTl.map(t => `
-          <div class="ma-row">
-            <div class="ma-row-meta">${esc(t.dayKey || '')} · ${esc(labelFor(t.sessionId))}${t.mergedFrom ? ` · 合并(${t.mergedFrom.length})` : ''}</div>
-            <div class="ma-row-body">${esc(t.summary || '(空)')}</div>
-          </div>
-        `).join('')}
+    // Header: scan-and-gen button + status. Survives re-render via the
+    // mountMemoryApp closure (tlGenBusy / tlStatus).
+    const head = `
+      <div class="ma-tl-head">
+        <button class="ma-tl-gen btn" type="button"${tlGenBusy ? ' disabled' : ''}>${tlGenBusy ? '生成中…' : '扫描并生成缺失天'}</button>
+        <span class="ma-tl-status${tlStatus.cls || ''}">${esc(tlStatus.text || '')}</span>
       </div>
     `;
+    if (topLevel.length === 0) {
+      return head + `<p class="hint">还没有时间线条目。点击上方按钮扫描各会话的对话历史,自动生成每天的一句话总结(不含今天)。</p>`;
+    }
+    return head + `
+      <div class="ma-list">
+        ${topLevel.map(t => {
+          const mergedDetail = (Array.isArray(t.mergedFrom) && t.mergedFrom.length > 0)
+            ? `<details class="ma-merged-detail">
+                <summary>展开合并前 ${t.mergedFrom.length} 天</summary>
+                ${t.mergedFrom.map(origId => {
+                  const orig = byId.get(origId);
+                  if (!orig) return `<div class="ma-sub-row dim">(原始行已丢失)</div>`;
+                  return `<div class="ma-sub-row"><b>${esc(orig.dayKey)}</b> · ${esc(orig.summary || '(空)')}</div>`;
+                }).join('')}
+              </details>`
+            : '';
+          return `
+            <div class="ma-row${t.mergedFrom ? ' merged-row' : ''}">
+              <div class="ma-row-meta">${esc(t.dayKey || '')} · ${esc(labelFor(t.sessionId))}${t.mergedFrom ? ` · 合并(${t.mergedFrom.length})` : ''}</div>
+              <div class="ma-row-body">${esc(t.summary || '(空)')}</div>
+              ${mergedDetail}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  // Cross-session timeline gen. Iterates sessions serially so we don't
+  // blast the embedding/chat endpoint with parallel calls. onProgress
+  // writes into the live DOM mid-flight; the final outcome lives on the
+  // tlStatus closure so the post-gen re-render shows it.
+  async function runTimelineGen() {
+    if (tlGenBusy) return;
+    tlGenBusy = true;
+    tlStatus = { text: '扫描中…', cls: '' };
+    const btn  = container.querySelector('.ma-tl-gen');
+    const stat = container.querySelector('.ma-tl-status');
+    if (btn)  { btn.disabled = true; btn.textContent = '生成中…'; }
+    if (stat) { stat.textContent = tlStatus.text; stat.className = 'ma-tl-status'; }
+    let totalGen = 0, totalErr = 0;
+    try {
+      const sessions = await db.getAll('chatSessions');
+      const chars    = await db.getAll('characters');
+      const labelOf = (s) => {
+        const c = chars.find(x => x.id === s.characterId);
+        return c?.name || s.title || '(未命名会话)';
+      };
+      for (const s of sessions) {
+        try {
+          const res = await timeline.generateMissingDays(s.id, {
+            onProgress: ({ dayKey, total, done }) => {
+              const live = container.querySelector('.ma-tl-status');
+              if (live) {
+                live.textContent = `${labelOf(s)}: ${done + 1}/${total} ${dayKey}`;
+                live.className = 'ma-tl-status';
+              }
+            },
+          });
+          totalGen += res.generated;
+          totalErr += res.errors;
+        } catch (e) {
+          console.warn('[memory-app] timeline gen failed for', s.id, e);
+          totalErr++;
+        }
+      }
+      tlStatus = (totalGen > 0 || totalErr > 0)
+        ? { text: `共生成 ${totalGen} 条${totalErr ? ` · ${totalErr} 条失败` : ''}`, cls: totalErr ? ' error' : ' success' }
+        : { text: '没有需要生成的(今天不算)', cls: '' };
+    } catch (e) {
+      tlStatus = { text: `失败:${String(e).slice(0, 200)}`, cls: ' error' };
+    } finally {
+      tlGenBusy = false;
+      if (activeTab === 'timeline') await render();
+    }
   }
 
   // ── Milestones tab ──────────────────────────────────────────────────
@@ -245,6 +325,8 @@ export async function mountMemoryApp(container, params, router) {
     container.querySelectorAll('.ma-cell[data-day-key]').forEach(c => {
       c.addEventListener('click', () => openDayModal(c.dataset.dayKey));
     });
+
+    container.querySelector('.ma-tl-gen')?.addEventListener('click', runTimelineGen);
 
     container.querySelector('.ma-ms-new')?.addEventListener('click', () => openMilestoneEditor(null));
     container.querySelectorAll('.ms-row').forEach(r => {

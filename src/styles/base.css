@@ -3001,6 +3001,52 @@ label .label-text {
 .ma-ms-head { margin-bottom: 12px; }
 .ma-ms-new { padding: 8px 14px; font-size: 13px; }
 
+/* Timeline tab header: 扫描并生成缺失天 button + status line */
+.ma-tl-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.ma-tl-gen { padding: 8px 14px; font-size: 13px; }
+.ma-tl-status {
+  font-size: 12px;
+  color: var(--muted);
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+.ma-tl-status.success { color: var(--success); }
+.ma-tl-status.error   { color: var(--danger); }
+
+/* Merged timeline row — <details> reveals the original days that were
+   folded into this row. Indented sub-rows mirror the parent's look but
+   sit on the page bg so the nesting reads clearly. */
+.ma-merged-detail {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+.ma-merged-detail summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 4px 0;
+}
+.ma-merged-detail summary:hover { color: var(--accent); }
+.ma-sub-row {
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 4px 8px;
+  margin-top: 4px;
+  background: var(--bg);
+  border-radius: var(--radius-sm, 6px);
+  word-break: break-word;
+}
+.ma-sub-row.dim { color: var(--muted); font-style: italic; }
+.ma-row.merged-row { border-color: color-mix(in srgb, var(--success) 40%, var(--border)); }
+
 .ma-session-group {
   background: var(--surface);
   border: 1px solid var(--border);

@@ -3,19 +3,21 @@
 // Distinct from `memories` (which feed the AI as L1/L2 summaries):
 //   - timeline is NOT injected into system prompt
 //   - timeline is keyed by calendar day, not by message-count window
-//   - timeline summaries are deliberately tight (≤40 chars / 一句话)
+//   - timeline summaries are deliberately tight (≤50 chars / 一句话)
 //   - users can merge multiple days into a single combined entry, and
 //     undo the merge later
 //
-// Generation is LAZY:
-//   - generateMissingDays(sessionId) runs only when the user opens the
-//     timeline view
+// Generation is LAZY but multi-pronged:
+//   - chat-internal memory-manage's timeline tab has an explicit button
+//   - memory-app's timeline tab also has a「扫描并生成缺失天」button
+//   - context.maybeCompressMemory fires it for the current session after
+//     each successful memory compression (fire-and-forget)
 //   - today is never summarized (the day isn't over)
 //   - each dayKey is summarized at most once; if a row already exists for
 //     a day, that day is skipped — no re-summarization unless the user
 //     deletes the row first
 //
-// The 40-char cap is enforced two ways: prompt instruction + post-trim
+// The 50-char cap is enforced two ways: prompt instruction + post-trim
 // truncation. The truncation is a backstop (cheap) rather than a retry
 // (expensive) — a model that overshoots gets a slightly clipped line
 // with an ellipsis, not another API call.
@@ -25,12 +27,12 @@ import * as ai from './ai.js';
 
 // AUTHOR-LOCKED sys prompt for daily summaries. Edit voice / tone here.
 // Empty string is allowed if you ever want zero guidance (model improvises).
-export const DEFAULT_TIMELINE_SYS = `你是会话日记助手。下面是同一天发生的对话内容。请用不超过 40 字的中文,一句话总结这天里发生的关键事件 / 情感转折 / 重要约定。不分段、不分点、不加引号或前缀,只输出那句话本身。`;
+export const DEFAULT_TIMELINE_SYS = `你是会话日记助手。下面是同一天发生的对话内容。请用不超过 50 字的中文,一句话总结这天里发生的关键事件 / 情感转折 / 重要约定。不分段、不分点、不加引号或前缀,只输出那句话本身。`;
 
 // AUTHOR-LOCKED sys prompt for merging multiple days. Same voice budget.
-export const DEFAULT_TIMELINE_MERGE_SYS = `你是时间线合并助手。下面是同一段关系中连续若干天的一句话总结。请合并成一句不超过 40 字的中文综合总结,聚焦这段时间的关键演变。不分段、不分点、不加引号或前缀,只输出那句话本身。`;
+export const DEFAULT_TIMELINE_MERGE_SYS = `你是时间线合并助手。下面是同一段关系中连续若干天的一句话总结。请合并成一句不超过 50 字的中文综合总结,聚焦这段时间的关键演变。不分段、不分点、不加引号或前缀,只输出那句话本身。`;
 
-export const MAX_SUMMARY_LEN = 40;
+export const MAX_SUMMARY_LEN = 50;
 
 // Local-time YYYY-MM-DD from a timestamp. We use local date so the user's
 // sense of "today" matches the timeline's day boundaries.

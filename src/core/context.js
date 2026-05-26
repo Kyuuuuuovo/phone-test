@@ -5,6 +5,7 @@ import * as ai from './ai.js';
 import { HUMANIZER_PROMPT } from './humanizer.js';
 import { BEHAVIOR_GUIDANCE } from './behavior.js';
 import * as embedding from './embedding.js';
+import * as timeline from './timeline.js';
 
 // Output format constraints — split into two segments so they sit at different
 // positions in the prompt: count + JSON-only rule first (before per-turn data),
@@ -226,6 +227,20 @@ export async function buildSystemPromptParts(sessionId, { featureContext } = {})
     editRoute: 'memory-manage',
     editParams: { sessionId },
   });
+  // 7c. 当前时间 — anchor for every relative time reference downstream
+  //     (memory mentions "下午"; schedule says "14:00"; the model reasons
+  //     about when "晚饭" is). Without this segment the model has no
+  //     absolute reference and drifts (e.g. reads 14:00 as morning).
+  //     Format matches surveillance.js's nowLine for cross-feature
+  //     consistency; placed between 「past」(memory) and 「now」(state)
+  //     so the transition reads naturally top-down. CLAUDE.md 铁律 9:
+  //     this is situational fact, not behavior guidance.
+  parts.push({
+    key: 'current-time',
+    title: '# 当前时间',
+    body: currentTimeLine(),
+    kind: 'computed',
+  });
   // 8. 当前社交状态
   parts.push({
     key: 'social',
@@ -319,6 +334,17 @@ export async function buildSystemPromptParts(sessionId, { featureContext } = {})
     warning: '改这里会影响 JSON 输出契约,出错会让动作解析失败',
   });
   return parts;
+}
+
+// Anchor line for the "# 当前时间" segment. Mirrors surveillance.js's
+// nowLine format so cross-feature debugging shows consistent strings;
+// kept here as a private helper to avoid a cross-module dependency for
+// a 4-line function.
+function currentTimeLine() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const weekday = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())} 星期${weekday}`;
 }
 
 // Join the structured parts into one string suitable for the chat API's
@@ -701,6 +727,12 @@ export async function maybeCompressMemory(sessionId) {
   // After L1 compression, check if tier-1 summaries themselves have piled
   // up enough to warrant a tier-2 rollup. Cheap when not needed.
   await maybeRollupToL2(sessionId);
+  // Timeline: when a memory just got compressed, the archived msgs span
+  // some past days that now warrant a per-day one-line summary. Fire-
+  // and-forget so the (potentially several) timeline API calls never
+  // block the reply path. Errors are logged, not surfaced.
+  timeline.generateMissingDays(sessionId).catch(e =>
+    console.warn('[context] timeline gen failed (non-fatal):', e));
   return memId;
 }
 
