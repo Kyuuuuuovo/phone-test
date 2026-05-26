@@ -23,21 +23,31 @@ export async function mountMemorySettings(container, params, router) {
         <div class="title">记忆总结</div>
       </header>
       <div class="page-body">
-        <p class="hint">超过「触发轮数」的对话会被压成中文摘要写入「过往记忆」,原消息从对话上下文里移除(但消息本身保留在聊天界面里,只是标记为已归档 — AI 看的是摘要,不再是原文)。每次 AI 回复后自动检查一次,不需要手动触发。</p>
-        <p class="hint">「压缩批量」决定一次压几条:超过触发轮数后,要积累到这么多条才真的发起一次总结。比如触发轮数 20、批量 10,那就是第 30 条到达时一次把最早的 10 条压成一条记忆。设小了会频繁调 API,设大了会让单次总结的输入很长。</p>
-        <p class="hint">当摘要本身累积到 8 条以上,系统会自动把最老的 4 条再压成一条更高层级的「章节摘要」,注入到 system prompt 的「远期记忆」段。长线对话不会让上下文无限膨胀。</p>
-        <p class="hint">关闭记忆总结后:超过窗口的旧消息 AI 看不到原文,但消息本身在聊天界面中保留。</p>
+        <p class="hint">
+          两个旋钮决定什么时候开始总结:<br>
+          • <b>缓冲条数</b>:总结之后,最近这么多条永远不被压,留给 AI 当短期记忆<br>
+          • <b>一次总结条数</b>:每次触发要压多少条
+        </p>
+        <p class="hint">
+          触发点 = 缓冲 + 一次总结。<br>
+          举例:缓冲 <b>20</b>、一次总结 <b>50</b> → 活跃消息攒到 <b>70</b> 条时,把最早的 50 条压成一条记忆,
+          剩下 20 条继续活跃,等下次再到 70 条再压一次。<br>
+          默认:缓冲 ${DEFAULT_THRESHOLD}、一次总结 ${DEFAULT_BATCH} → 第 ${DEFAULT_THRESHOLD + DEFAULT_BATCH} 条到的时候压最早 ${DEFAULT_BATCH} 条。
+        </p>
+        <p class="hint">被压缩的消息<b>不会发给 AI 原文</b>,只发摘要。聊天界面里这些消息折叠成「已归档 N 条」横条,点击展开。</p>
+        <p class="hint">L1 摘要累积到 8 条以上,最老的 4 条再压成一条「远期 / 章节」摘要,注入 prompt 的「# 远期记忆」段。长线对话上下文不会无限涨。</p>
+        <p class="hint">关闭总结后:超出窗口的旧消息 AI 看不到原文,聊天界面照常保留。</p>
         <form class="settings-form" autocomplete="off">
           <label class="checkbox-row">
             <input type="checkbox" name="enabled"${enabled ? ' checked' : ''}>
             <span>开启记忆总结</span>
           </label>
           <label>
-            <div class="label-text">触发轮数(超过这个数字才考虑压。默认 ${DEFAULT_THRESHOLD})</div>
+            <div class="label-text">缓冲条数(总结之后保留多少条活跃,默认 ${DEFAULT_THRESHOLD})</div>
             <input type="number" name="threshold" min="5" max="200" step="1" value="${threshold}">
           </label>
           <label>
-            <div class="label-text">压缩批量(累积到这么多溢出条数才真压一次。默认 ${DEFAULT_BATCH})</div>
+            <div class="label-text">一次总结条数(每次触发压几条,默认 ${DEFAULT_BATCH})</div>
             <input type="number" name="batch" min="1" max="100" step="1" value="${batchSize}">
           </label>
           <div class="form-actions">
