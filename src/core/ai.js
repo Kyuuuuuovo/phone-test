@@ -10,6 +10,14 @@ import { getCityByKey } from './cities.js';
 
 const handlers = new Map();   // action type -> async (action, ctx) => void
 
+// In-flight reply lock keyed by sessionId. Prevents two concurrent
+// requestReply calls on the same session (e.g. two tabs sharing the same
+// IndexedDB both pressing 「让 AI 回复」 within the same instant) from
+// running maybeCompressMemory in parallel and double-archiving the same
+// overflow window into two separate memory rows. Second caller awaits the
+// in-flight promise instead of starting another HTTP round-trip.
+const inFlight = new Map();
+
 export function registerHandler(type, fn) {
   handlers.set(type, fn);
 }
@@ -243,7 +251,21 @@ async function executeToolCall(tc, session) {
 // (up to MAX_ROUNDS). Final message must be text (containing the JSON-action array).
 const MAX_TOOL_ROUNDS = 5;
 
-export async function requestReply(sessionId, { featureContext } = {}) {
+export async function requestReply(sessionId, opts = {}) {
+  const existing = inFlight.get(sessionId);
+  if (existing) return existing;
+  const promise = (async () => {
+    try {
+      return await _requestReplyImpl(sessionId, opts);
+    } finally {
+      inFlight.delete(sessionId);
+    }
+  })();
+  inFlight.set(sessionId, promise);
+  return promise;
+}
+
+async function _requestReplyImpl(sessionId, { featureContext } = {}) {
   const systemPrompt = await context.buildSystemPrompt(sessionId, { featureContext });
   const baseMessages = await context.buildMessageHistory(sessionId);
   const session = await db.get('chatSessions', sessionId);

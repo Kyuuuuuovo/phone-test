@@ -374,7 +374,14 @@ export async function maybeCompressMemory(sessionId) {
   const batchSize = Number.isFinite(settings.memoryBatchSize) && settings.memoryBatchSize > 0
     ? settings.memoryBatchSize : 10;
 
-  const all = await db.query('chatMessages', 'sessionId', sessionId);
+  // Filter archived rows BEFORE the threshold check — without this, every
+  // new message past threshold would re-include the already-archived rows
+  // in `all`, picking the same overflow window and re-compressing the same
+  // content into a brand new memory (and re-archive-stamping rows that
+  // were already archived). The whole "compress once, hide" intent only
+  // works when the threshold comparison is against active-only count.
+  const all = (await db.query('chatMessages', 'sessionId', sessionId))
+    .filter(m => !m.archived);
   if (all.length <= threshold) return null;
   all.sort((a, b) => a.createdAt - b.createdAt);
   // Compress everything older than the most-recent `threshold` messages,

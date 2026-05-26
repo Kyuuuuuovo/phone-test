@@ -528,9 +528,23 @@ export async function mountChat(container, params, router) {
       if (!a) return;
       const editTarget = pickEditField(a);
       if (!editTarget) { alert('这种消息没法编辑'); return; }
-      const next = prompt(editTarget.label, editTarget.value);
-      if (next === null) return;
-      msg.actions = msg.actions.map((x, i) => i === actionIdx ? { ...x, [editTarget.field]: next } : x);
+      // Long-form fields → textarea; short single-line fields → text input.
+      const longForm = editTarget.field === 'content'
+        || editTarget.field === 'description'
+        || editTarget.field === 'message';
+      const v = await openAttachModal(container, {
+        title: editTarget.label,
+        fields: [{
+          name: 'value',
+          label: editTarget.label,
+          kind: longForm ? 'textarea' : 'text',
+          defaultValue: editTarget.value,
+          required: true,
+        }],
+        submitLabel: '保存',
+      });
+      if (!v) return;
+      msg.actions = msg.actions.map((x, i) => i === actionIdx ? { ...x, [editTarget.field]: v.value } : x);
       await db.set('chatMessages', msg);
       await refresh();
 
@@ -920,4 +934,8 @@ function renderAttachField(f) {
   `;
 }
 
-function cssEscape(s) { return s.replace(/"/g, '\\"'); }
+// Wrap CSS.escape so attribute-value selectors like [data-msg-id="..."]
+// stay safe regardless of what the id contains (`]` / `\` / newline / etc.).
+// CSS.escape returns numeric escapes for special chars, legal inside a
+// "..."-wrapped attribute value.
+function cssEscape(s) { return CSS.escape(String(s)); }

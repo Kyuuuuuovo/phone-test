@@ -1356,7 +1356,12 @@ label .label-text {
 .moments-empty { padding: 40px 24px; }
 
 /* Chat page */
-.chat-page { background: var(--bg); }
+/* position: relative so .bubble-menu (context menu on long-press / right-click)
+   anchors to the chat-page rect. Without this, absolute positioning climbs to
+   #page-container; on mobile the phone-frame inset/shadow offsets can push the
+   page rect slightly off the container rect, drifting the menu by a few px
+   relative to the bubble it opened on. */
+.chat-page { background: var(--bg); position: relative; }
 .chat-stream {
   flex: 1;
   overflow-y: auto;
