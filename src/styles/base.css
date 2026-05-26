@@ -756,10 +756,8 @@ label .label-text {
   gap: 10px;
 }
 .app-grid.unified-grid {
-  /* 严格正方形 cells —— aspect-ratio: 4/5 让 grid 整体 4:5 比例,4 cols × 5
-     rows 配 1fr 等分,cells 自然是 (gridWidth/4) × (gridHeight/5) = 接近
-     正方形。grid 尺寸只跟 width(home-page 内容宽)挂钩,不受同级 flex
-     item 影响。 */
+  /* 桌面 (phone-frame 宽固定 400-480 之间) 用 aspect-ratio 4:5 锁严格正方
+     cells —— 跟 .phone-frame 9:19.5 比例配,grid 不会撑过 page 高度。 */
   grid-template-rows: repeat(5, minmax(0, 1fr));
   grid-auto-rows: minmax(0, 1fr);
   width: 100%;
@@ -767,6 +765,25 @@ label .label-text {
   min-height: 0;
   flex-shrink: 0;
   position: relative;
+}
+/* 手机 viewport (phone-frame 撑满全宽) 上 aspect-ratio 4:5 锁出来的 grid 高
+   = width × 1.25,只占可用区一半多,下面剩一大片空白,显得图标小。iOS 实际
+   做法是 cells 跟 viewport 走 —— 手机长,cells 略高;不锁严格正方。drop
+   aspect-ratio + flex:1 让 grid 填满 home-page 剩余高度;cells 自然变成
+   (gridWidth/4) × (gridHeight/5) ≈ 1:1.4 矩形,squircle 图标仍然居中。
+   widget 跟 cells 一起变形(2×2 在手机会略高于宽),acceptable trade-off。 */
+@media (max-width: 440px) {
+  .app-grid.unified-grid {
+    aspect-ratio: auto;
+    flex: 1;
+    flex-shrink: 1;
+  }
+  /* 手机 cells 拉高之后(83×128 这种),icon 仍 clamp 在 68 上限看起来小。
+     提一档 clamp 让 icon 在大屏手机上能涨到 ~75-80,小屏 (iPhone SE 等)
+     至少 56,不至于跟桌面那个 68 上限一样卡住。 */
+  .app-grid.unified-grid .app-icon .icon {
+    width: clamp(56px, 82%, 80px);
+  }
 }
 /* 防止 widget 内容撑爆 grid cell。每个 widget 都 overflow:hidden 自己内容
    (已设),但 grid item 仍可以被 min-content 撑大 —— 加 min-width/min-height
