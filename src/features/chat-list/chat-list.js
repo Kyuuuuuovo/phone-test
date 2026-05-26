@@ -9,6 +9,7 @@
 // header "+" button can trigger it without going through chat-list's UI.
 
 import * as db from '../../core/db.js';
+import { openConfirm } from '../../core/modal.js';
 
 const ACTION_WIDTH = 144;  // 2 buttons × 72px — kept in sync with CSS
 
@@ -202,7 +203,12 @@ export async function mountChatList(container, params, router) {
         closeRevealed();
         await renderList();
       } else if (action === 'delete') {
-        if (!confirm('删除这个对话?消息和记忆会一起删,角色和世界书保留。')) {
+        if (!await openConfirm(container, {
+          title: '删除对话',
+          message: '删除这个对话?消息和记忆会一起删,角色和世界书保留。',
+          confirmLabel: '删除',
+          danger: true,
+        })) {
           closeRevealed();
           return;
         }
@@ -302,13 +308,23 @@ export async function mountChatList(container, params, router) {
       const c = await db.get('characters', s.characterId);
       if (!c) return;
       const goingToBlock = !c.blocked;
-      if (goingToBlock && !confirm(`把「${c.name || '这个角色'}」加入黑名单?`)) return;
+      if (goingToBlock && !await openConfirm(container, {
+        title: '加入黑名单',
+        message: `把「${c.name || '这个角色'}」加入黑名单?`,
+        confirmLabel: '加入黑名单',
+        danger: true,
+      })) return;
       c.blocked = goingToBlock;
       c.updatedAt = Date.now();
       await db.set('characters', c);
       await renderList();
     } else if (act === 'delete') {
-      if (!confirm('删除这个对话?消息和记忆会一起删,角色和世界书保留。')) return;
+      if (!await openConfirm(container, {
+        title: '删除对话',
+        message: '删除这个对话?消息和记忆会一起删,角色和世界书保留。',
+        confirmLabel: '删除',
+        danger: true,
+      })) return;
       const msgs = await db.query('chatMessages', 'sessionId', id);
       for (const m of msgs) await db.del('chatMessages', m.id);
       const mems = await db.query('memories', 'sessionId', id);

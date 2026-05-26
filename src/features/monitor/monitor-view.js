@@ -17,6 +17,7 @@
 
 import * as db from '../../core/db.js';
 import * as surveillance from '../../core/surveillance.js';
+import { openConfirm } from '../../core/modal.js';
 
 export async function mountMonitorView(container, params, router) {
   const cameraId = params?.cameraId;
@@ -115,7 +116,12 @@ export async function mountMonitorView(container, params, router) {
   const onClick = async (e) => {
     if (e.target.closest('.back')) return router.back();
     if (e.target.closest('.cam-delete')) {
-      if (!confirm('删除这个机位?画面历史也会一起删。')) return;
+      if (!await openConfirm(container, {
+        title: '删除机位',
+        message: '删除这个机位?画面历史也会一起删。',
+        confirmLabel: '删除',
+        danger: true,
+      })) return;
       const logs = await db.query('activityLog', 'cameraId', cameraId);
       for (const l of logs) await db.del('activityLog', l.id);
       await db.del('cameras', cameraId);

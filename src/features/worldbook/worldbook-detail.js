@@ -2,6 +2,7 @@
 // Each entry is its own card with title/content/order/enabled fields that autosave on change.
 
 import * as db from '../../core/db.js';
+import { openConfirm } from '../../core/modal.js';
 
 export async function mountWorldbookDetail(container, params, router) {
   const id = params.id;
@@ -128,7 +129,12 @@ export async function mountWorldbookDetail(container, params, router) {
     const entries = await db.query('worldbookEntries', 'worldbookId', id);
     const bindings = await db.query('characterWorldbooks', 'worldbookId', id);
     const msg = `删除世界书「${wb.name}」会同时删 ${entries.length} 个条目${bindings.length > 0 ? `,并从 ${bindings.length} 个角色身上解除挂载` : ''}。继续?`;
-    if (!confirm(msg)) return;
+    if (!await openConfirm(container, {
+      title: '删除世界书',
+      message: msg,
+      confirmLabel: '删除',
+      danger: true,
+    })) return;
     for (const e of entries)  await db.del('worldbookEntries', e.id);
     for (const b of bindings) await db.del('characterWorldbooks', b.id);
     await db.del('worldbooks', id);
@@ -166,7 +172,12 @@ export async function mountWorldbookDetail(container, params, router) {
     if (e.target.closest('.entry-delete')) {
       const card = e.target.closest('.entry-card');
       const entryId = card.dataset.entryId;
-      if (!confirm('删除这个条目?')) return;
+      if (!await openConfirm(container, {
+        title: '删除条目',
+        message: '删除这个条目?',
+        confirmLabel: '删除',
+        danger: true,
+      })) return;
       await db.del('worldbookEntries', entryId);
       await renderEntries();
     }

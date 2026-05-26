@@ -85,6 +85,51 @@ function renderField(f) {
   `;
 }
 
+// In-page confirm dialog — replaces window.confirm() so the prompt stays
+// inside the phone-frame and picks up theme styling. Returns Promise<boolean>:
+//   true  = user clicked confirm
+//   false = user clicked cancel OR clicked the backdrop OR pressed Escape
+//
+// Args:
+//   title         — header (string)
+//   message       — body line(s) (string; \n preserved via white-space: pre-wrap)
+//   confirmLabel  — text on the affirmative button (default '确认')
+//   cancelLabel   — text on the dismissive button (default '取消')
+//   danger        — when true, the confirm button is styled red (delete-action)
+export function openConfirm(container, { title, message, confirmLabel = '确认', cancelLabel = '取消', danger = false }) {
+  return new Promise((resolve) => {
+    const modal = document.createElement('div');
+    modal.className = 'modal-backdrop confirm-modal-backdrop';
+    modal.innerHTML = `
+      <div class="modal confirm-modal">
+        <div class="modal-header">${escHtml(title)}</div>
+        <div class="confirm-message">${escHtml(message)}</div>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary cancel-btn">${escHtml(cancelLabel)}</button>
+          <button type="button" class="btn${danger ? ' danger' : ''} confirm-btn">${escHtml(confirmLabel)}</button>
+        </div>
+      </div>
+    `;
+    container.appendChild(modal);
+
+    const cleanup = () => modal.remove();
+    const cancel  = () => { cleanup(); resolve(false); };
+    const accept  = () => { cleanup(); resolve(true); };
+
+    modal.querySelector('.cancel-btn').addEventListener('click', cancel);
+    modal.querySelector('.confirm-btn').addEventListener('click', accept);
+    modal.addEventListener('click', (e) => { if (e.target === modal) cancel(); });
+    // Auto-focus the confirm button so Enter accepts. Escape cancels.
+    const confirmBtn = modal.querySelector('.confirm-btn');
+    setTimeout(() => confirmBtn.focus(), 0);
+    const onKey = (e) => {
+      if (e.key === 'Escape')      { e.preventDefault(); cancel(); document.removeEventListener('keydown', onKey); }
+      else if (e.key === 'Enter')  { e.preventDefault(); accept(); document.removeEventListener('keydown', onKey); }
+    };
+    document.addEventListener('keydown', onKey);
+  });
+}
+
 function escHtml(s) {
   return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

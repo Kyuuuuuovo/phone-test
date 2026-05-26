@@ -2,6 +2,7 @@
 // Replaces the inline dropdown. Acts like WeChat's "聊天信息" page.
 
 import * as db from '../../core/db.js';
+import { openConfirm } from '../../core/modal.js';
 
 export async function mountChatInfo(container, params, router) {
   const sessionId = params.sessionId;
@@ -141,7 +142,11 @@ export async function mountChatInfo(container, params, router) {
         const file = input.files?.[0];
         document.body.removeChild(input);
         if (!file) return;
-        if (!confirm('导入会创建一个新对话(原数据不动)。继续吗?')) return;
+        if (!await openConfirm(container, {
+          title: '导入对话',
+          message: '导入会创建一个新对话(原数据不动)。继续吗?',
+          confirmLabel: '导入',
+        })) return;
         try {
           const newSid = await importSessionFromFile(file);
           alert('导入成功');
@@ -153,7 +158,12 @@ export async function mountChatInfo(container, params, router) {
       input.click();
 
     } else if (action === 'clear') {
-      if (!confirm('清空这个对话的所有消息和记忆?角色保留。')) return;
+      if (!await openConfirm(container, {
+        title: '清空对话',
+        message: '清空这个对话的所有消息和记忆?角色保留。',
+        confirmLabel: '清空',
+        danger: true,
+      })) return;
       const msgs = await db.query('chatMessages', 'sessionId', sessionId);
       for (const m of msgs) await db.del('chatMessages', m.id);
       const mems = await db.query('memories', 'sessionId', sessionId);
@@ -164,7 +174,12 @@ export async function mountChatInfo(container, params, router) {
       const fresh = await db.get('characters', session.characterId);
       if (!fresh) return;
       const goingToBlock = !fresh.blocked;
-      if (goingToBlock && !confirm(`把「${fresh.name || '这个角色'}」加入黑名单?对话和消息会保留,AI 会通过 system prompt 知道这个状态,你可以随时解除。`)) return;
+      if (goingToBlock && !await openConfirm(container, {
+        title: '加入黑名单',
+        message: `把「${fresh.name || '这个角色'}」加入黑名单?对话和消息会保留,AI 会通过 system prompt 知道这个状态,你可以随时解除。`,
+        confirmLabel: '加入黑名单',
+        danger: true,
+      })) return;
       fresh.blocked = goingToBlock;
       fresh.updatedAt = Date.now();
       await db.set('characters', fresh);

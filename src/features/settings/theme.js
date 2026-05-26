@@ -5,6 +5,7 @@
 // chat bubbles so users can judge the chat look without leaving the page.
 
 import * as db from '../../core/db.js';
+import { openConfirm } from '../../core/modal.js';
 import {
   DEFAULT_THEME, FONT_OPTIONS, TEXTURE_OPTIONS, GLASS_OPTIONS, THEME_PRESETS,
   normalizeTheme, applyTheme,
@@ -259,7 +260,12 @@ export async function mountTheme(container, params, router) {
         const pid = wrap?.dataset.presetId;
         const p = userPresets.find(x => x.id === pid);
         if (!p) return;
-        if (!confirm(`删除预设「${p.label}」?`)) return;
+        if (!await openConfirm(container, {
+          title: '删除预设',
+          message: `删除预设「${p.label}」?`,
+          confirmLabel: '删除',
+          danger: true,
+        })) return;
         userPresets = userPresets.filter(x => x.id !== pid);
         await persistUserPresets();
         render();

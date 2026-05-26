@@ -2826,6 +2826,92 @@ label .label-text {
   vertical-align: middle;
 }
 
+/* In-page confirm dialog (openConfirm) — same backdrop pattern as
+   attach-modal but centered, fixed-width, with two action buttons. */
+.confirm-modal-backdrop {
+  align-items: center !important;
+  padding: 24px 16px !important;
+}
+.confirm-modal {
+  max-width: 320px !important;
+  width: 100% !important;
+}
+.confirm-modal .confirm-message {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--fg);
+  margin: 4px 0 16px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Archive banner — collapsed-by-default stand-in for a run of consecutive
+   archived msgs. Visually quiet so the active conversation reads first. */
+.archive-banner {
+  margin: 8px 0;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
+  cursor: pointer;
+  user-select: none;
+  overflow: hidden;
+}
+.archive-banner:hover { background: color-mix(in srgb, var(--muted) 14%, transparent); }
+.archive-banner-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.archive-banner-icon { font-size: 10px; opacity: 0.7; }
+.archive-banner.expanded .archive-banner-bar { background: color-mix(in srgb, var(--muted) 6%, transparent); }
+.archive-banner-content {
+  padding: 8px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px dashed color-mix(in srgb, var(--muted) 25%, transparent);
+}
+/* Inside the banner the rows are already in an .msg-row layout — no extra
+   .archived dimming since the banner itself already signals "this is the
+   summarized region". */
+.archive-banner-content .msg-row.archived { opacity: 0.85; }
+.archive-banner-content .msg-row.archived .bubble { filter: none; }
+
+/* Worldbook list: 导入酒馆 JSON button in the header — same shape as the + button */
+.page-header .actions .import-tavern {
+  background: none;
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0 6px;
+}
+
+/* Memory-manage: export button — sits inline with the section title */
+.memory-manage-page .mem-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.memory-manage-page .mem-head .section-title { margin: 0; }
+.memory-manage-page .mem-export-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.memory-manage-page .mem-export-btn:hover {
+  background: var(--bubble-char);
+  color: var(--fg);
+}
+
 /* Memory-manage: 总结 / 时间线 tab switcher */
 .memory-manage-page .mm-tabs {
   display: flex;

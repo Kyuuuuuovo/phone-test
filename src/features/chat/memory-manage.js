@@ -12,6 +12,7 @@
 import * as db from '../../core/db.js';
 import { DEFAULT_MEMORY_SYS } from '../../core/context.js';
 import * as timeline from '../../core/timeline.js';
+import { openConfirm } from '../../core/modal.js';
 
 export async function mountMemoryManage(container, params, router) {
   const sessionId = params.sessionId;
@@ -59,7 +60,10 @@ export async function mountMemoryManage(container, params, router) {
     memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
     const override = session.memoryPromptOverride || '';
     return `
-      <h3 class="section-title">该会话已生成的总结(${memories.length})</h3>
+      <div class="mem-head">
+        <h3 class="section-title">该会话已生成的总结(${memories.length})</h3>
+        ${memories.length > 0 ? `<button type="button" class="mem-export-btn">导出为文本</button>` : ''}
+      </div>
       ${memories.length === 0 ? `
         <p class="hint">还没有总结。聊到超过设定轮数(去 设置 → 记忆总结 调整)后会自动生成。</p>
       ` : `
@@ -195,9 +199,41 @@ export async function mountMemoryManage(container, params, router) {
       const card = del.closest('[data-mem-id]');
       const memId = card?.dataset.memId;
       if (!memId) return;
-      if (!confirm('删除这条总结?这段的原始消息已经被压缩时删掉了,删了就只能下次重新生成新的。')) return;
+      if (!await openConfirm(container, {
+        title: '删除总结',
+        message: '删除这条总结?这段的原始消息已经被压缩时删掉了,删了就只能下次重新生成新的。',
+        confirmLabel: '删除',
+        danger: true,
+      })) return;
       await db.del('memories', memId);
       await render();
+    });
+
+    // Export — assemble plain text + download via a transient anchor. Keeps the
+    // file inside the user's browser; we never upload anything.
+    container.querySelector('.mem-export-btn')?.addEventListener('click', async () => {
+      const memories = await db.query('memories', 'sessionId', sessionId);
+      memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+      const character = await db.get('characters', session.characterId);
+      const header = `# ${character?.name || '会话'} · 记忆导出 · ${new Date().toLocaleString('zh-CN')}\n\n`;
+      const body = memories.map((m, i) => {
+        const d = new Date(m.createdAt);
+        const date = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+        const tier = m.tier === 2 ? '[远期 / 章节]' : '[近期 / 片段]';
+        return `${tier} #${i + 1} · ${date}\n${m.summary || '(空)'}`;
+      }).join('\n\n---\n\n');
+      const text = header + body + '\n';
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const url  = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const filename = `memories-${(character?.name || sessionId).replace(/[^\w一-龥]+/g, '_')}-${Date.now()}.txt`;
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Revoke after a tick so Chrome has time to start the download.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
   }
 
@@ -237,7 +273,12 @@ export async function mountMemoryManage(container, params, router) {
       const del = e.target.closest('.tl-del');
       if (del) {
         const id = del.dataset.id;
-        if (!confirm('删除这条时间线?如果是合并条目,会一并把内部的原始条目恢复显示。')) return;
+        if (!await openConfirm(container, {
+          title: '删除时间线',
+          message: '删除这条时间线?如果是合并条目,会一并把内部的原始条目恢复显示。',
+          confirmLabel: '删除',
+          danger: true,
+        })) return;
         // If it's a merged row, also unlink originals
         const row = await db.get('timeline', id);
         if (row?.mergedFrom) {
@@ -257,7 +298,11 @@ export async function mountMemoryManage(container, params, router) {
       const undo = e.target.closest('.tl-unmerge');
       if (undo) {
         const id = undo.dataset.id;
-        if (!confirm('撤销这次合并?合并条目被删除,原始的每日条目会恢复显示。')) return;
+        if (!await openConfirm(container, {
+          title: '撤销合并',
+          message: '撤销这次合并?合并条目被删除,原始的每日条目会恢复显示。',
+          confirmLabel: '撤销',
+        })) return;
         await timeline.unmerge(sessionId, id);
         await render();
         return;

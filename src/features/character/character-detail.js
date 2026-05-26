@@ -2,6 +2,7 @@
 // worldbook mount checkboxes (writes characterWorldbooks directly), delete with cascade.
 
 import * as db from '../../core/db.js';
+import { openConfirm } from '../../core/modal.js';
 
 export async function mountCharacterDetail(container, params, router) {
   const id = params.id;
@@ -179,7 +180,12 @@ export async function mountCharacterDetail(container, params, router) {
     const msg = sessions.length > 0
       ? `删除角色「${character.name}」会同时删 ${sessions.length} 个对话(连同消息和记忆)。世界书本体不动。继续?`
       : `删除角色「${character.name}」?`;
-    if (!confirm(msg)) return;
+    if (!await openConfirm(container, {
+      title: '删除角色',
+      message: msg,
+      confirmLabel: '删除',
+      danger: true,
+    })) return;
     // Cascade: sessions → their messages + memories, then sessions themselves
     for (const s of sessions) {
       const msgs = await db.query('chatMessages', 'sessionId', s.id);

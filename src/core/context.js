@@ -655,3 +655,52 @@ async function maybeRollupToL2(sessionId) {
 // Exported for the memory-manage page so it can show users the default it's
 // extending when they edit the session-level override.
 export { DEFAULT_MEMORY_SYS };
+
+// "Redo summary from this msg onward". Triggered from a user-msg's bubble menu
+// when the existing summaries got something wrong and the user wants the AI
+// to re-compress that range.
+//
+// Behavior:
+//   1. Find the target msg's createdAt (T).
+//   2. Unarchive any msg in this session with createdAt >= T (clear archived /
+//      archivedAt / archivedIntoMemoryId).
+//   3. Delete any memory whose toMsgId points to a msg with createdAt >= T —
+//      that's the set of memories whose coverage overlaps the redo window.
+//      Memories that are entirely older than T stay (they cover content the
+//      user is NOT redoing).
+//   4. Run maybeCompressMemory once so fresh L1 summaries get generated for
+//      the newly-unarchived overflow.
+//
+// L2 caveat: an L2 row's fromMsgId/toMsgId points to the chatMsgs it summarized
+// transitively (via its source L1s). So step 3 catches L2s whose toMsgId is in
+// the redo window — they get deleted, the new L1s will roll up to a fresh L2
+// on the next compression that triggers L2 (see maybeRollupToL2's gate).
+export async function resummarizeFrom(sessionId, fromMsgId) {
+  const target = await db.get('chatMessages', fromMsgId);
+  if (!target) throw new Error(`resummarizeFrom: msg ${fromMsgId} not found`);
+  const T = target.createdAt;
+  // Unarchive
+  const allMsgs = await db.query('chatMessages', 'sessionId', sessionId);
+  for (const m of allMsgs) {
+    if (m.archived && m.createdAt >= T) {
+      delete m.archived;
+      delete m.archivedAt;
+      delete m.archivedIntoMemoryId;
+      await db.set('chatMessages', m);
+    }
+  }
+  // Drop overlapping memories
+  const allMems = await db.query('memories', 'sessionId', sessionId);
+  // Build a quick lookup: msgId → createdAt
+  const tsOf = new Map(allMsgs.map(m => [m.id, m.createdAt]));
+  for (const mem of allMems) {
+    const toTs = tsOf.get(mem.toMsgId);
+    // If we can't resolve the to-msg (orphan), be conservative: drop the
+    // memory, since we can't tell what it covered.
+    if (toTs == null || toTs >= T) {
+      await db.del('memories', mem.id);
+    }
+  }
+  // Re-trigger compression so the unarchived msgs get a new summary.
+  return await maybeCompressMemory(sessionId);
+}

@@ -5,6 +5,7 @@
 // "删除" removes the row (and clears activeApiConfigId if it pointed here).
 
 import * as db from '../../core/db.js';
+import { openConfirm } from '../../core/modal.js';
 import * as ai from '../../core/ai.js';
 
 export async function mountApiDetail(container, params, router) {
@@ -195,7 +196,12 @@ export async function mountApiDetail(container, params, router) {
 
   const onDelete = async () => {
     const all = await db.getAll('apiConfig');
-    if (!confirm(`删除配置「${config.name || '(未命名)'}」?`)) return;
+    if (!await openConfirm(container, {
+      title: '删除 API 配置',
+      message: `删除配置「${config.name || '(未命名)'}」?`,
+      confirmLabel: '删除',
+      danger: true,
+    })) return;
     await db.del('apiConfig', id);
     const s = (await db.get('settings', 'default')) || { id: 'default' };
     if (s.activeApiConfigId === id) {

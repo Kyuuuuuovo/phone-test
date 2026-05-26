@@ -1,6 +1,7 @@
 // Data backup: export all stores as JSON, import a JSON file (replaces existing).
 
 import * as db from '../../core/db.js';
+import { openConfirm } from '../../core/modal.js';
 
 export async function mountDataBackup(container, params, router) {
   container.innerHTML = `
@@ -68,7 +69,12 @@ export async function mountDataBackup(container, params, router) {
       const file = input.files?.[0];
       document.body.removeChild(input);
       if (!file) return;
-      if (!confirm('导入会覆盖当前所有数据,确定继续吗?')) return;
+      if (!await openConfirm(container, {
+        title: '导入备份',
+        message: '导入会覆盖当前所有数据,确定继续吗?',
+        confirmLabel: '导入',
+        danger: true,
+      })) return;
       try {
         status.className = 'form-status';
         status.textContent = '导入中…';

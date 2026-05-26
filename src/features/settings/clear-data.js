@@ -1,6 +1,7 @@
 // Clear data. Default: keep apiConfig. Optional checkbox to wipe it too.
 
 import * as db from '../../core/db.js';
+import { openConfirm } from '../../core/modal.js';
 
 export async function mountClearData(container, params, router) {
   container.innerHTML = `
@@ -35,7 +36,12 @@ export async function mountClearData(container, params, router) {
     const msg = includesApi
       ? '真的要清空全部数据(包含 API 设置)吗?这无法撤销。'
       : '真的要清空角色 / 对话 / 世界书 / 人设 / 记忆吗?API 设置和主题会保留。';
-    if (!confirm(msg)) return;
+    if (!await openConfirm(container, {
+      title: '清空数据',
+      message: msg,
+      confirmLabel: '清空',
+      danger: true,
+    })) return;
     try {
       status.className = 'form-status';
       status.textContent = '清空中…';

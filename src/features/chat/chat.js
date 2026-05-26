@@ -3,6 +3,8 @@
 
 import * as db from '../../core/db.js';
 import * as ai from '../../core/ai.js';
+import * as context from '../../core/context.js';
+import { openConfirm } from '../../core/modal.js';
 
 const SVG = {
   plus:  `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>`,
@@ -89,6 +91,7 @@ export async function mountChat(container, params, router) {
         <button data-action="favorite">收藏</button>
         <button data-action="edit" class="only-user">编辑</button>
         <button data-action="regenerate">重新生成</button>
+        <button data-action="resummarize" class="only-user">从这里重新总结</button>
         <button data-action="delete" class="danger">删除</button>
       </div>
     </div>
@@ -133,6 +136,10 @@ export async function mountChat(container, params, router) {
   // State
   let replyingTo = null;        // msgId currently being quoted
   let activeBubbleMsgId = null; // msgId the bubble-menu was opened for
+  // Which archive groups are currently expanded. Keyed by archivedIntoMemoryId
+  // (or '_unknown' for orphan archived rows). Reset is per-mount, not per-refresh,
+  // so toggling expand survives re-renders triggered by reply / send / edit.
+  const expandedArchiveGroups = new Set();
 
   async function refresh() {
     const msgs = await db.query('chatMessages', 'sessionId', sessionId);
@@ -153,12 +160,39 @@ export async function mountChat(container, params, router) {
 
     const parts = [];
     let prevTs = null;
+    // Group consecutive archived msgs (by archivedIntoMemoryId) into a single
+    // collapsible banner. Default = collapsed; only render the inner msg-row
+    // HTML when the group's key is in expandedArchiveGroups. Saves a ton of
+    // DOM nodes on long conversations and lets the user see "this part was
+    // summarized" without the visual noise of dim grey rows.
+    let archiveGroup = null;  // { key, msgs: [] }
+    const flushGroup = () => {
+      if (archiveGroup) {
+        parts.push(renderArchiveBanner(archiveGroup, expandedArchiveGroups, ctx));
+        archiveGroup = null;
+      }
+    };
     for (const m of msgs) {
+      if (m.archived) {
+        const groupKey = m.archivedIntoMemoryId || '_orphan';
+        if (!archiveGroup || archiveGroup.key !== groupKey) {
+          flushGroup();
+          archiveGroup = { key: groupKey, msgs: [m] };
+        } else {
+          archiveGroup.msgs.push(m);
+        }
+        // Keep prevTs advancing so a time separator can appear right AFTER
+        // an archive banner if there's a real gap.
+        prevTs = m.createdAt;
+        continue;
+      }
+      flushGroup();
       const sep = timeSeparator(m.createdAt, prevTs);
       if (sep) parts.push(`<div class="time-separator">${esc(sep)}</div>`);
       parts.push(renderMessageRow(m, ctx));
       prevTs = m.createdAt;
     }
+    flushGroup();
     stream.innerHTML = parts.join('');
     stream.scrollTop = stream.scrollHeight;
   }
@@ -431,6 +465,16 @@ export async function mountChat(container, params, router) {
   let touchStartXY = null;
 
   const onStreamClick = async (e) => {
+    // Archive banner: toggle the group's expanded state, then re-render.
+    const banner = e.target.closest('.archive-banner');
+    if (banner) {
+      const key = banner.dataset.groupKey;
+      if (expandedArchiveGroups.has(key)) expandedArchiveGroups.delete(key);
+      else                                  expandedArchiveGroups.add(key);
+      await refresh();
+      return;
+    }
+
     // Voice bubbles used to need a click to reveal the transcript; that
     // mechanic is gone (transcript is now inline). Whole-bubble click is
     // a no-op now.
@@ -462,7 +506,11 @@ export async function mountChat(container, params, router) {
       await refresh();
       return;
     }
-    if (!confirm(`解除对「${fresh.name || '这个角色'}」的拉黑?`)) return;
+    if (!await openConfirm(container, {
+      title: '解除拉黑',
+      message: `解除对「${fresh.name || '这个角色'}」的拉黑?`,
+      confirmLabel: '解除',
+    })) return;
     fresh.blocked = false;
     fresh.updatedAt = Date.now();
     await db.set('characters', fresh);
@@ -593,7 +641,12 @@ export async function mountChat(container, params, router) {
       const promptText = toDelete.length === 0
         ? '让 AI 基于当前对话再生成一条新回复,确定吗?'
         : `重新生成会删除这条之后的 ${toDelete.length} 条 AI 回复,然后让 AI 重新回复。确定吗?`;
-      if (!confirm(promptText)) return;
+      if (!await openConfirm(container, {
+        title: '重新生成',
+        message: promptText,
+        confirmLabel: '重新生成',
+        danger: toDelete.length > 0,
+      })) return;
       for (const m of toDelete) await db.del('chatMessages', m.id);
       await refresh();
       aiBtn.disabled = true;
@@ -612,8 +665,44 @@ export async function mountChat(container, params, router) {
         aiBtn.classList.remove('loading');
       }
 
+    } else if (btn.dataset.action === 'resummarize') {
+      // Wipes overlapping memories + unarchives msgs at-or-after this msg's
+      // createdAt, then re-runs the compression. The redo can be expensive
+      // (an L1 + possibly an L2 round-trip) — show a confirm with the count.
+      const target = await db.get('chatMessages', msgId);
+      if (!target) return;
+      const T = target.createdAt;
+      const allMsgs = await db.query('chatMessages', 'sessionId', sessionId);
+      const affectedMsgs = allMsgs.filter(m => m.archived && m.createdAt >= T);
+      const allMems = await db.query('memories', 'sessionId', sessionId);
+      const tsOf = new Map(allMsgs.map(m => [m.id, m.createdAt]));
+      const affectedMems = allMems.filter(mem => {
+        const toTs = tsOf.get(mem.toMsgId);
+        return toTs == null || toTs >= T;
+      });
+      if (affectedMems.length === 0 && affectedMsgs.length === 0) {
+        alert('这条消息之后没有已总结的内容,无需重新总结。');
+        return;
+      }
+      if (!await openConfirm(container, {
+        title: '从这里重新总结',
+        message: `会清掉这条之后已覆盖的 ${affectedMems.length} 条记忆,把 ${affectedMsgs.length} 条已归档消息恢复成活跃,然后让 AI 重新压缩一次。`,
+        confirmLabel: '重新总结',
+        danger: true,
+      })) return;
+      try {
+        await context.resummarizeFrom(sessionId, msgId);
+        await refresh();
+      } catch (e) {
+        alert(`重新总结失败:${String(e).slice(0, 300)}`);
+      }
     } else if (btn.dataset.action === 'delete') {
-      if (!confirm('删除这一条消息?(只删本条,前后消息保留)')) return;
+      if (!await openConfirm(container, {
+        title: '删除消息',
+        message: '删除这一条消息?(只删本条,前后消息保留)',
+        confirmLabel: '删除',
+        danger: true,
+      })) return;
       // Manual delete bypasses the archive flow that maybeCompressMemory uses,
       // so we have to clean up favorites by hand — otherwise the favorites
       // page shows "(已删除的消息)" for any starred bubble on this row.
@@ -719,6 +808,29 @@ function firstActionText(msg) {
     case 'location':   return `[位置] ${a.name || ''}${a.desc ? ' · ' + a.desc : ''}`;
     default:       return `[${a.type}]`;
   }
+}
+
+// Banner that stands in for a run of consecutive archived messages with the
+// same archivedIntoMemoryId. Collapsed by default — click toggles into a
+// container with the inner rendered msg-rows. The count gives the user a
+// sense of how much got compressed without rendering all the rows.
+function renderArchiveBanner(group, expandedSet, ctx) {
+  const expanded = expandedSet.has(group.key);
+  const count = group.msgs.length;
+  // The msg-rows render only when expanded to keep DOM cost down on long
+  // conversations (the original perf gripe in the second review).
+  const inner = expanded
+    ? group.msgs.map(m => renderMessageRow(m, ctx)).join('')
+    : '';
+  return `
+    <div class="archive-banner ${expanded ? 'expanded' : ''}" data-group-key="${esc(group.key)}">
+      <div class="archive-banner-bar">
+        <span class="archive-banner-icon">${expanded ? '▼' : '▶'}</span>
+        <span class="archive-banner-label">已归档 ${count} 条 · ${expanded ? '点击收起' : '点击展开'}</span>
+      </div>
+      ${expanded ? `<div class="archive-banner-content">${inner}</div>` : ''}
+    </div>
+  `;
 }
 
 function renderMessageRow(msg, ctx) {

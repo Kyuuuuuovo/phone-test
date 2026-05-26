@@ -7,6 +7,7 @@
 
 import * as db from '../../core/db.js';
 import * as ai from '../../core/ai.js';
+import { openConfirm } from '../../core/modal.js';
 
 export async function mountScheduleList(container, params, router) {
   async function render() {
@@ -56,7 +57,12 @@ export async function mountScheduleList(container, params, router) {
     container.querySelectorAll('[data-entry-id]').forEach(row => {
       row.querySelector('.entry-del')?.addEventListener('click', async (ev) => {
         ev.stopPropagation();
-        if (!confirm('删除这条行程?')) return;
+        if (!await openConfirm(container, {
+          title: '删除行程',
+          message: '删除这条行程?',
+          confirmLabel: '删除',
+          danger: true,
+        })) return;
         await db.del('schedule', row.dataset.entryId);
         await render();
       });

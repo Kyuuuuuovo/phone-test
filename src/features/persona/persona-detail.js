@@ -1,6 +1,7 @@
 // Edit one player persona. Delete also nulls any chatSessions.personaId that referenced it.
 
 import * as db from '../../core/db.js';
+import { openConfirm } from '../../core/modal.js';
 
 export async function mountPersonaDetail(container, params, router) {
   const id = params.id;
@@ -69,7 +70,12 @@ export async function mountPersonaDetail(container, params, router) {
     const msg = sessions.length > 0
       ? `删除人设「${persona.name}」?引用它的 ${sessions.length} 个对话会变成没有人设(对话本身保留)。`
       : `删除人设「${persona.name}」?`;
-    if (!confirm(msg)) return;
+    if (!await openConfirm(container, {
+      title: '删除人设',
+      message: msg,
+      confirmLabel: '删除',
+      danger: true,
+    })) return;
     // Null out references in chatSessions
     for (const s of sessions) {
       s.personaId = null;

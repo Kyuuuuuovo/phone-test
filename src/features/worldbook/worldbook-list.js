@@ -1,4 +1,6 @@
 // Worldbook list. Each row shows name + entry count + how many characters mount it.
+// 「导入酒馆 JSON」 accepts SillyTavern V2 character card AND raw worldbook
+// (lorebook) exports; see importTavernWorldbook() below for the schema map.
 
 import * as db from '../../core/db.js';
 
@@ -9,6 +11,7 @@ export async function mountWorldbookList(container, params, router) {
         <button class="back">‹ 返回</button>
         <div class="title">世界书</div>
         <div class="actions">
+          <button class="import-tavern" title="导入酒馆 JSON">⇪</button>
           <button class="new-entity" title="新建世界书">+</button>
         </div>
       </header>
@@ -54,6 +57,10 @@ export async function mountWorldbookList(container, params, router) {
 
   const onClick = async (e) => {
     if (e.target.closest('.back')) return router.back();
+    if (e.target.closest('.import-tavern')) {
+      await importTavernWorldbook(router, renderList);
+      return;
+    }
     if (e.target.closest('.new-entity')) {
       const id = db.newId();
       const now = Date.now();
@@ -67,6 +74,109 @@ export async function mountWorldbookList(container, params, router) {
   };
   container.addEventListener('click', onClick);
   return () => container.removeEventListener('click', onClick);
+}
+
+// Import a SillyTavern worldbook / character-card JSON into a new worldbook.
+//
+// Accepts three shapes, in priority order:
+//   1. V2 character card:   { data: { character_book: { entries: [...], name? } } }
+//   2. Raw worldbook export: { entries: [...] | {0: ..., 1: ...}, name? }
+//   3. Bare entries array:  [...]
+//
+// Per-entry mapping (lossy but practical — this app's worldbook model is
+// "全量注入", whereas ST's is keyword-triggered, so `keys` becomes the title
+// prefix as a label-only field; only `content` actually reaches the prompt):
+//   • keys[] → title           (joined with " / ", capped 80 chars)
+//   • content → content
+//   • enabled → enabled        (defaults true if absent)
+//   • position: 'before_char'  → before
+//   • position: 'after_char'   → inline   (closest equivalent; before-user-persona)
+//   • position: '0' / numeric  → inline
+//   • insertion_order → used to sort, mapped onto createdAt sequentially
+async function importTavernWorldbook(router, refresh) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.style.display = 'none';
+  document.body.appendChild(input);
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    document.body.removeChild(input);
+    if (!file) return;
+    let data;
+    try {
+      const text = await file.text();
+      data = JSON.parse(text);
+    } catch (e) {
+      alert(`解析 JSON 失败:${String(e).slice(0, 200)}`);
+      return;
+    }
+    // Resolve to { entries, name? }
+    let book = null;
+    if (data?.data?.character_book) book = data.data.character_book;
+    else if (data?.entries)         book = data;
+    else if (Array.isArray(data))   book = { entries: data };
+    if (!book) {
+      alert('文件里没找到 worldbook / character_book 字段');
+      return;
+    }
+    // entries can be an object {0:..., 1:...} or an array
+    let rawEntries = book.entries;
+    if (rawEntries && !Array.isArray(rawEntries) && typeof rawEntries === 'object') {
+      rawEntries = Object.values(rawEntries);
+    }
+    if (!Array.isArray(rawEntries) || rawEntries.length === 0) {
+      alert('entries 字段为空,没东西可以导入');
+      return;
+    }
+    // Sort by insertion_order if present (lower first ≈ injected first)
+    rawEntries = [...rawEntries].sort((a, b) => (a.insertion_order ?? 0) - (b.insertion_order ?? 0));
+
+    const wbId = db.newId();
+    const now = Date.now();
+    const wbName = String(book.name || data?.name || file.name.replace(/\.json$/i, '') || '导入的世界书').slice(0, 60);
+    await db.set('worldbooks', {
+      id: wbId, name: wbName,
+      description: `从酒馆 JSON 导入(${rawEntries.length} 条)`,
+      createdAt: now, updatedAt: now,
+    });
+    // Use a monotonically increasing createdAt offset so sort order matches
+    // insertion_order even though the rows are written in a tight loop.
+    let i = 0;
+    for (const e of rawEntries) {
+      const keys = Array.isArray(e.keys) ? e.keys
+        : Array.isArray(e.key) ? e.key
+        : [];
+      const title = keys.length > 0
+        ? keys.map(String).join(' / ').slice(0, 80)
+        : String(e.comment || e.name || '').slice(0, 80) || '(导入条目)';
+      const content = String(e.content || '').trim();
+      if (!content) { i++; continue; }
+      const pos = mapTavernPosition(e.position);
+      await db.set('worldbookEntries', {
+        id: db.newId(),
+        worldbookId: wbId,
+        title,
+        content,
+        enabled: e.enabled !== false,
+        position: pos,
+        createdAt: now + i,
+      });
+      i++;
+    }
+    await refresh();
+    router.navigate('worldbook-detail', { id: wbId });
+  });
+  input.click();
+}
+
+function mapTavernPosition(p) {
+  // ST V2 uses string positions; some exports use numeric codes.
+  if (p === 'before_char' || p === 0) return 'before';
+  if (p === 'after_char'  || p === 1) return 'inline';
+  // 2/3 in ST are insertion before/after example chats — no equivalent here,
+  // map to 'inline' as the safest default.
+  return 'inline';
 }
 
 function esc(s) {

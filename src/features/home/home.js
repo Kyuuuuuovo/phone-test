@@ -10,6 +10,7 @@
 // can continue editing without re-entering.
 
 import * as db from '../../core/db.js';
+import { openConfirm } from '../../core/modal.js';
 
 let preserveEditModeOnMount = false;
 
@@ -620,7 +621,12 @@ export async function mountHome(container, params, router) {
       e.stopPropagation();
       const w = delBtn.closest('[data-widget-id]');
       if (!w) return;
-      if (!editMode && !confirm('删除这个装饰?')) return;
+      if (!editMode && !await openConfirm(container, {
+        title: '删除装饰',
+        message: '删除这个装饰?',
+        confirmLabel: '删除',
+        danger: true,
+      })) return;
       preserveEditModeOnMount = editMode;
       await db.del('homeWidgets', w.dataset.widgetId);
       await router.navigate('home');
