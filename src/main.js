@@ -35,6 +35,7 @@ import { mountPersonaPick }     from './features/persona/persona-pick.js';
 import { mountMonitor }         from './features/monitor/monitor.js';
 import { mountMonitorView }     from './features/monitor/monitor-view.js';
 import { mountBottle }          from './features/bottle/bottle.js';
+import { mountMemoryApp }       from './features/memory/memory-app.js';
 import {
   BEAR_CHARACTER_ID, BEAR_SESSION_ID, DEFAULT_BEAR_AVATAR,
   ensureBearExists, pickAmbientLine,
@@ -164,6 +165,7 @@ async function boot() {
   router.registerPage('monitor',           mountMonitor);
   router.registerPage('monitor-view',      mountMonitorView);
   router.registerPage('bottle',            mountBottle);
+  router.registerPage('memory',            mountMemoryApp);
 
   // Reserved bear character + session (id-stable, idempotent).
   await ensureBearExists(db, ai.getActiveApiConfig);

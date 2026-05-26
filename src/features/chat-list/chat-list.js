@@ -450,7 +450,7 @@ export async function openNewChatModal(container, router) {
       </div>
     `;
     modal.querySelector('.back-pick').addEventListener('click', renderPickStage);
-    modal.querySelector('form').addEventListener('submit', (e) => {
+    modal.querySelector('form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const form = modal.querySelector('form');
       const fd = new FormData(form);

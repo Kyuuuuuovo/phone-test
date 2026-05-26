@@ -2,7 +2,7 @@
 // Data model frozen in STORES below — bump DB_VERSION when changing schema.
 
 export const DB_NAME = 'phone-app';
-export const DB_VERSION = 7;
+export const DB_VERSION = 8;
 
 // Object store definitions. Applied during onupgradeneeded.
 // keyPath = primary key field; indexes = secondary lookup paths.
@@ -120,6 +120,20 @@ export const STORES = {
     keyPath: 'id',
     indexes: [
       { name: 'sessionId', keyPath: 'sessionId' },
+    ],
+  },
+  // Milestones — user-marked important days. Shown in the memory app's
+  // calendar / 纪念日 tab. Optional sessionId + characterId so a milestone
+  // can be either global ("毕业") or tied to one relationship ("和小克说我喜欢ta").
+  // Fields: id, dayKey ('YYYY-MM-DD'), title, desc?, type? ('anniversary' |
+  // 'event' | 'milestone'), recurring? (bool — yearly), sessionId?,
+  // characterId?, createdAt.
+  // Indexed by dayKey so the calendar view can range-query a month at once.
+  milestones: {
+    keyPath: 'id',
+    indexes: [
+      { name: 'dayKey', keyPath: 'dayKey' },
+      { name: 'characterId', keyPath: 'characterId' },
     ],
   },
 };
