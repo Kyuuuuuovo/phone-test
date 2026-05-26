@@ -282,9 +282,10 @@ async function setupPet(router) {
     if (wasDrag) {
       const newX = parseFloat(orb.style.left) || 0;
       const newY = parseFloat(orb.style.top)  || 0;
-      const s = (await db.get('settings', 'default')) || { id: 'default' };
-      s.petX = newX; s.petY = newY;
-      await db.set('settings', s);
+      // Atomic settings write — concurrent updates (theme change, schedule
+      // toggle, ambient dismissal) won't clobber petX/petY by racing on
+      // the same get→put window.
+      await db.updateSettings(s => { s.petX = newX; s.petY = newY; });
       return;
     }
     if (wasLongPress) return;  // chat already navigated
@@ -306,31 +307,34 @@ async function setupPet(router) {
   // dismissed trigger can fire again, then restore it after the pick.
   let currentTriggerKey = null;
   async function showBubble({ forceFresh = false } = {}) {
+    // All three settings writes below go through updateSettings so the
+    // get→modify→put runs in a single IDB tx. Without this, the pickAmbientLine
+    // await between read+write was the worst race-prone spot in the app —
+    // a concurrent settings write (toggle, theme, dismissal) could clobber
+    // petDismissed / petLastBubbleAt back to stale.
     let restoreDismissed = null;
     if (forceFresh) {
-      const s = (await db.get('settings', 'default')) || { id: 'default' };
-      restoreDismissed = s.petDismissed || {};
-      s.petDismissed = {};
-      await db.set('settings', s);
+      await db.updateSettings(s => {
+        restoreDismissed = s.petDismissed || {};
+        s.petDismissed = {};
+      });
     }
     const picked = await pickAmbientLine({ db, getActiveApiConfig: ai.getActiveApiConfig });
     if (restoreDismissed) {
-      const s = (await db.get('settings', 'default')) || { id: 'default' };
-      // Only restore entries not for the trigger we just used, so the
-      // user-initiated greeting also counts as "seen" and won't re-pop on
-      // its own a moment later.
-      s.petDismissed = restoreDismissed;
-      if (picked) s.petDismissed[picked.triggerKey] = Date.now();
-      await db.set('settings', s);
+      // Restore the dismissed map, except mark the just-used trigger as
+      // "seen now" so the user-initiated greeting also counts and won't
+      // re-pop a moment later.
+      await db.updateSettings(s => {
+        s.petDismissed = { ...restoreDismissed };
+        if (picked) s.petDismissed[picked.triggerKey] = Date.now();
+      });
     }
     if (!picked) return;
     currentTriggerKey = picked.triggerKey;
     bubble.textContent = picked.line;
     positionBubble();
     bubble.hidden = false;
-    const s = (await db.get('settings', 'default')) || { id: 'default' };
-    s.petLastBubbleAt = Date.now();
-    await db.set('settings', s);
+    await db.updateSettings(s => { s.petLastBubbleAt = Date.now(); });
   }
   function positionBubble() {
     const orbRect = orb.getBoundingClientRect();
@@ -343,9 +347,10 @@ async function setupPet(router) {
   bubble.addEventListener('click', async () => {
     bubble.hidden = true;
     if (currentTriggerKey) {
-      const s = (await db.get('settings', 'default')) || { id: 'default' };
-      s.petDismissed = { ...(s.petDismissed || {}), [currentTriggerKey]: Date.now() };
-      await db.set('settings', s);
+      const key = currentTriggerKey;
+      await db.updateSettings(s => {
+        s.petDismissed = { ...(s.petDismissed || {}), [key]: Date.now() };
+      });
     }
   });
 

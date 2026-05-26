@@ -238,6 +238,61 @@ export function newId() {
   return (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 }
 
+// Atomic settings update — opens a single readwrite tx, fetches the current
+// row, passes it to `fn` (which mutates in place or returns a new object),
+// and writes back in the same tx. Concurrent updateSettings() calls
+// serialize through the IDB transaction queue, so there's no read/write
+// race where two updates each load the pre-state and one's write clobbers
+// the other.
+//
+// fn may be async — internally we use IDB request callbacks to keep
+// everything inside the same transaction (any await would let the tx
+// auto-commit). So fn should be sync; if you need async work, do it
+// BEFORE calling updateSettings.
+export async function updateSettings(fn) {
+  if (!_db) throw new Error('db not initialized — call db.init() first');
+  return new Promise((resolve, reject) => {
+    const tx = _db.transaction('settings', 'readwrite');
+    const store = tx.objectStore('settings');
+    const getReq = store.get('default');
+    getReq.onsuccess = () => {
+      try {
+        const current = getReq.result || { id: 'default' };
+        const next = fn(current) || current;
+        if (!next.id) next.id = 'default';
+        store.put(next);
+      } catch (e) {
+        try { tx.abort(); } catch (_) {}
+        reject(e);
+      }
+    };
+    getReq.onerror = () => reject(getReq.error);
+    tx.oncomplete  = () => resolve();
+    tx.onerror     = () => reject(tx.error);
+  });
+}
+
+// Atomic multi-store put — write a batch of rows in a single transaction.
+// `plan` is { storeName: [rows], ... }. All writes commit together (or
+// none, if any one fails). Use when a logical operation spans multiple
+// stores and partial application would leave the DB inconsistent — e.g.
+// the memory-archive batch in maybeCompressMemory (memory row +
+// archived flags on N chatMessages must all land together).
+export async function txnPut(plan) {
+  if (!_db) throw new Error('db not initialized — call db.init() first');
+  const stores = Object.keys(plan);
+  if (stores.length === 0) return;
+  return new Promise((resolve, reject) => {
+    const tx = _db.transaction(stores, 'readwrite');
+    for (const name of stores) {
+      const store = tx.objectStore(name);
+      for (const row of plan[name]) store.put(row);
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror    = () => reject(tx.error);
+  });
+}
+
 // v1 → v2 data migration. Runs inside the versionchange transaction.
 // Uses raw IDBRequest (not the async wrappers) because the tx is owned by onupgradeneeded.
 function migrateV1ToV2(tx) {

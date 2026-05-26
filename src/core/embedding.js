@@ -119,6 +119,13 @@ export async function embedMemory(memory) {
   return id;
 }
 
+// Minimum similarity for a result to be considered "relevant" enough to
+// inject. 0.35 is empirical: top-of-distribution cosine for unrelated
+// text on common embedding models sits around 0.1-0.3, while genuinely
+// related content reliably scores 0.4+. Below 0.35 is noise — surfacing
+// it as 「相关记忆」 wastes tokens and mildly poisons the prompt.
+const MIN_SIMILARITY = 0.35;
+
 // Top-K most-similar memory rows for a query string, scoped to one session.
 // Returns [{ memory, score }] sorted by score desc. Empty array on any
 // failure / disabled state (caller should treat as no retrieval).
@@ -149,7 +156,9 @@ export async function topKMemoriesForQuery(sessionId, queryText, k) {
     scored.push({ embedding: e, score });
   }
   scored.sort((a, b) => b.score - a.score);
-  const top = scored.slice(0, topK);
+  // Cut at threshold BEFORE slicing — a low-noise top-K of 0 is correct
+  // when nothing is genuinely related (caller treats it as "no recall").
+  const top = scored.filter(s => s.score >= MIN_SIMILARITY).slice(0, topK);
   // Resolve sourceId → memory row. Some may be orphaned (memory deleted
   // post-embed). Filter those out.
   const out = [];
@@ -160,18 +169,27 @@ export async function topKMemoriesForQuery(sessionId, queryText, k) {
   return out;
 }
 
+// Delay between embedding requests during backfill — keeps the run from
+// hammering rate limits when a fresh-enabled user has hundreds of old
+// memories to catch up on. 150ms = ~6 req/s, well under most provider caps.
+const BACKFILL_DELAY_MS = 150;
+
 // Backfill: scan all memories in a session and embed any without a vector.
 // Useful right after the user first enables vector memory (existing memories
 // would otherwise never get embedded). Best-effort — failures logged, skipped.
+// Serial (one at a time) + paced — providers rate-limit hard on bursts.
 export async function backfillSessionMemories(sessionId) {
   const settings = (await db.get('settings', 'default')) || {};
   if (settings.embedding?.enabled !== true) return { embedded: 0, skipped: 0 };
   const memories = await db.query('memories', 'sessionId', sessionId);
   const existingEmbs = await db.query('embeddings', 'sessionId', sessionId);
   const haveEmbed = new Set(existingEmbs.map(e => e.sourceId));
-  let embedded = 0, skipped = haveEmbed.size;
+  let embedded = 0, skipped = haveEmbed.size, first = true;
   for (const m of memories) {
     if (haveEmbed.has(m.id)) continue;
+    // Sleep between requests (skip before the very first one).
+    if (!first) await new Promise(r => setTimeout(r, BACKFILL_DELAY_MS));
+    first = false;
     const newId = await embedMemory(m);
     if (newId) embedded++;
   }

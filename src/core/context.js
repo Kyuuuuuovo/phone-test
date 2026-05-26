@@ -332,24 +332,31 @@ export async function buildSystemPrompt(sessionId, opts) {
     .join('\n\n---\n\n');
 }
 
-// Vector retrieval — embed the last few user messages as a query, cosine
-// top-K across this session's memory embeddings. Returns the formatted
-// lines (or '' when disabled / no hits / unconfigured).
+// Vector retrieval — embed the last few turns as a query, cosine top-K
+// across this session's memory embeddings. Returns the formatted lines
+// (or '' when disabled / no hits / unconfigured).
 //
-// Query construction: latest N user msgs concatenated. Newer first so the
-// embedding emphasizes what the user is currently talking about, but order
-// doesn't matter much to embeddings — the summed signal is what counts.
+// Query construction: last N messages regardless of role (user + character
+// interleaved). Including the most-recent assistant turn matters because
+// short user replies like "对 那个" are basically useless as queries on
+// their own — the assistant's preceding "上次你说想去京都" carries the
+// topic the user is responding to.
 async function buildVectorRecallLines(sessionId) {
   const settings = (await db.get('settings', 'default')) || {};
   if (settings.embedding?.enabled !== true) return '';
-  const QUERY_USER_MSG_COUNT = 3;
+  const QUERY_TURN_COUNT = 5;
   const allMsgs = (await db.query('chatMessages', 'sessionId', sessionId))
-    .filter(m => m.role === 'user' && !m.archived);
+    .filter(m => !m.archived && m.role !== 'system');
   if (allMsgs.length === 0) return '';
-  allMsgs.sort((a, b) => b.createdAt - a.createdAt);
-  const recent = allMsgs.slice(0, QUERY_USER_MSG_COUNT).reverse();
+  allMsgs.sort((a, b) => a.createdAt - b.createdAt);
+  const recent = allMsgs.slice(-QUERY_TURN_COUNT);
   const query = recent
-    .map(m => (m.actions || []).map(a => a.content || a.description || '').join(' '))
+    .map(m => {
+      const who = m.role === 'user' ? '用户' : '角色';
+      const text = (m.actions || []).map(a => a.content || a.description || '').filter(Boolean).join(' ');
+      return text ? `${who}:${text}` : '';
+    })
+    .filter(Boolean)
     .join('\n')
     .trim();
   if (!query) return '';
@@ -458,7 +465,10 @@ async function buildCameraLines(characterId, userName) {
 //     # 当前行程 segment on / off
 //   - per-entry: schedule.syncToChat (default true) — lets the user mute
 //     specific entries without disabling the whole feature
-async function buildScheduleLines(characterId) {
+//
+// Exported so surveillance.js can reuse the same window logic for camera
+// snapshots without duplicating the formatter.
+export async function buildScheduleLines(characterId) {
   const settings = (await db.get('settings', 'default')) || {};
   if (settings.syncScheduleToChat === false) return '';
   const all = await db.getAll('schedule');
@@ -516,6 +526,11 @@ export async function buildMessageHistory(sessionId, maxRecent = 40) {
 // Merge consecutive messages with the same role into one, joined by a
 // blank line. Only safe for plain string content — tool_calls / tool-role
 // messages have structure that can't be flattened, so we leave them alone.
+//
+// Time-aware: when two same-role messages span a noticeable gap (>5min),
+// insert a「[过了 N 分钟/小时/天]」marker between them so the model can see
+// the user didn't say both things in one breath. Without this, the
+// "morning vent + evening apology" arc collapses into one indistinct lump.
 function collapseAdjacentSameRole(msgs) {
   const out = [];
   for (const m of msgs) {
@@ -528,22 +543,39 @@ function collapseAdjacentSameRole(msgs) {
         && !m.tool_calls
         && last.role !== 'tool'
         && m.role !== 'tool') {
-      last.content = `${last.content}\n\n${m.content}`;
+      const gap = (m._ts ?? 0) - (last._lastTs ?? 0);
+      const sep = gap > 5 * 60 * 1000
+        ? `\n\n[过了 ${humanGap(gap)}]\n\n`
+        : '\n\n';
+      last.content = `${last.content}${sep}${m.content}`;
+      last._lastTs = m._ts;
     } else {
-      out.push({ ...m });
+      out.push({ ...m, _lastTs: m._ts });
     }
   }
-  return out;
+  // Strip the internal _ts / _lastTs fields before handing to the API.
+  return out.map(m => { const { _ts, _lastTs, ...rest } = m; return rest; });
+}
+
+function humanGap(ms) {
+  const mins = Math.round(ms / 60_000);
+  if (mins < 60)   return `${mins} 分钟`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24)  return `${hours} 小时`;
+  return `${Math.round(hours / 24)} 天`;
 }
 
 function toApiMessage(msg) {
+  // _ts is internal — collapseAdjacentSameRole uses it for gap-detection,
+  // then strips before sending to the API.
   if (msg.role === 'character') {
     // Echo the model's own past JSON-array output verbatim — reinforces format.
-    return { role: 'assistant', content: JSON.stringify(msg.actions ?? []) };
+    return { role: 'assistant', content: JSON.stringify(msg.actions ?? []), _ts: msg.createdAt };
   }
   return {
     role: msg.role === 'system' ? 'system' : 'user',
     content: renderActionsAsText(msg.actions ?? []),
+    _ts: msg.createdAt,
   };
 }
 
@@ -645,23 +677,27 @@ export async function maybeCompressMemory(sessionId) {
     toMsgId: overflow[overflow.length - 1].id,
     createdAt: Date.now(),
   };
-  await db.set('memories', newMem);
+  // Stamp every overflow row with the archive metadata so the atomic
+  // multi-store write below puts memory + archived msgs together. If
+  // the tx aborts partway, none of them commit — so the next
+  // maybeCompressMemory sees the same overflow set and retries, instead
+  // of finding "5 of 10 archived" and silently leaving the rest unarchived.
+  const stamp = Date.now();
+  for (const msg of overflow) {
+    msg.archived = true;
+    msg.archivedAt = stamp;
+    msg.archivedIntoMemoryId = memId;
+  }
+  await db.txnPut({
+    memories: [newMem],
+    chatMessages: overflow,
+  });
   // Fire-and-forget embed of the new memory. Failures don't block the
   // reply flow; embedding.embedMemory returns null when disabled /
   // unconfigured / failing.
   embedding.embedMemory(newMem).catch(e => console.warn('[context] embed failed:', e));
-  // Mark messages as archived instead of deleting them. Keeping the rows
-  // means:
-  //   1. Scrolling up still shows the user the conversation history.
-  //   2. favorites.msgId references stay valid (don't dangle).
-  // buildMessageHistory filters archived out so the API still gets the
-  // window-summary view rather than the full archive.
-  for (const msg of overflow) {
-    msg.archived = true;
-    msg.archivedAt = Date.now();
-    msg.archivedIntoMemoryId = memId;
-    await db.set('chatMessages', msg);
-  }
+  // (the per-row archive stamping + db.txnPut above replaced the old
+  // per-row await db.set loop. Reason in CLAUDE.md polish notes.)
   // After L1 compression, check if tier-1 summaries themselves have piled
   // up enough to warrant a tier-2 rollup. Cheap when not needed.
   await maybeRollupToL2(sessionId);
@@ -707,7 +743,14 @@ async function maybeRollupToL2(sessionId) {
     createdAt: Date.now(),
   };
   await db.set('memories', newL2);
-  for (const m of toMerge) await db.del('memories', m.id);
+  for (const m of toMerge) {
+    // Drop the embedding row for the L1 memory we're about to delete —
+    // otherwise the embeddings table grows unbounded and topKMemoriesForQuery
+    // sees orphans (which we filter, but the cosine math runs on them first).
+    const orphanEmbs = await db.query('embeddings', 'sourceId', m.id);
+    for (const e of orphanEmbs) await db.del('embeddings', e.id);
+    await db.del('memories', m.id);
+  }
   // L2 also gets a vector — semantic retrieval should be able to find a
   // chapter-summary just as well as a fine-grained one. Fire-and-forget.
   embedding.embedMemory(newL2).catch(e => console.warn('[context] L2 embed failed:', e));

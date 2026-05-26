@@ -29,6 +29,13 @@
 import * as db from './db.js';
 import * as ai from './ai.js';
 import * as context from './context.js';
+import { buildScheduleLines } from './context.js';
+
+// Per-camera activityLog cap. Each refresh appends one row; without
+// pruning a daily-checked camera grows to thousands over a year. Keep
+// the most recent N, drop the rest after each new write. 50 is plenty
+// for the monitor-view's "history" usage (it only renders latest anyway).
+const ACTIVITY_LOG_KEEP = 50;
 
 const SNAPSHOT_SYS = `你是角色的实时监控生成器。基于角色的人设、当前的时间和行程、最近的对话上下文、摄像头所在的房间和模式,生成一帧"摄像头画面"的结构化描述。
 
@@ -103,38 +110,9 @@ async function recentChatContext(characterId) {
   }).join('\n');
 }
 
-// Pull schedule lines for this character via context.js helper (shared with
-// chat's system prompt). We export buildScheduleLines... wait, it's not
-// exported. Inline a tiny version here so we don't have to monkey-patch
-// context.js. Window: past 6h → next 24h, character-relevant entries only.
-async function scheduleLinesFor(characterId) {
-  const all = await db.getAll('schedule');
-  if (all.length === 0) return '';
-  const now = Date.now();
-  const winStart = now - 6 * 60 * 60 * 1000;
-  const winEnd   = now + 24 * 60 * 60 * 1000;
-  const relevant = all
-    .filter(e => {
-      if (e.startTs < winStart || e.startTs > winEnd) return false;
-      if (e.who === 'character') return e.characterId === characterId;
-      return e.who === 'user';
-    })
-    .sort((a, b) => a.startTs - b.startTs);
-  if (relevant.length === 0) return '';
-  const fmtTime = (ts) => {
-    const d = new Date(ts);
-    const today = new Date(now).toDateString();
-    const day = d.toDateString() === today ? '今天' :
-                d.toDateString() === new Date(now - 86400000).toDateString() ? '昨天' :
-                d.toDateString() === new Date(now + 86400000).toDateString() ? '明天' :
-                `${d.getMonth()+1}/${d.getDate()}`;
-    return `${day} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-  };
-  return relevant.map(e => {
-    const who = e.who === 'user' ? '用户' : '角色';
-    return `- ${who} ${fmtTime(e.startTs)} ${e.title}`;
-  }).join('\n');
-}
+// (scheduleLinesFor used to live here as a near-copy of
+// context.buildScheduleLines. context.js now exports the helper so we just
+// import it — single source of truth for the [-6h, +24h] window logic.)
 
 // Resolve a display name for "the user" to reference in the surveillance
 // prompt. Persona binding lives on chatSessions, not on the camera — so
@@ -223,7 +201,7 @@ export async function generateSnapshot(cameraId) {
   if (!character) throw new Error(`generateSnapshot: character ${camera.characterId} not found`);
 
   const persona  = (character.persona || '').trim();
-  const schedule = await scheduleLinesFor(character.id);
+  const schedule = await buildScheduleLines(character.id);
   const recent   = await recentChatContext(character.id);
   const modeFact = modeFactLine(camera, character);
   const userName = await activePersonaNameFor(character.id);
@@ -282,6 +260,18 @@ export async function generateSnapshot(cameraId) {
     payload: safe,
     createdAt: now,
   });
+
+  // Prune: keep only the most-recent ACTIVITY_LOG_KEEP rows per camera.
+  // Done on every write so the table stays bounded — no separate sweep.
+  // Cheap because the per-camera count is small (50 cap) and we already
+  // have an index on cameraId.
+  const allLogs = await db.query('activityLog', 'cameraId', camera.id);
+  if (allLogs.length > ACTIVITY_LOG_KEEP) {
+    allLogs.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    for (const old of allLogs.slice(ACTIVITY_LOG_KEEP)) {
+      await db.del('activityLog', old.id);
+    }
+  }
 
   // Spy mode + noticed flips the camera into "discovered" state (sticky —
   // we don't unset it on later snapshots). Once discovered, future snapshots
