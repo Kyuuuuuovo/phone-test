@@ -17,7 +17,7 @@
 
 import * as db from '../../core/db.js';
 import * as surveillance from '../../core/surveillance.js';
-import { openConfirm } from '../../core/modal.js';
+import { openConfirm, openAlert } from '../../core/modal.js';
 
 export async function mountMonitorView(container, params, router) {
   const cameraId = params?.cameraId;
@@ -151,7 +151,7 @@ export async function mountMonitorView(container, params, router) {
       try {
         await surveillance.generateSnapshot(cameraId);
       } catch (err) {
-        alert(`生成画面失败:${String(err).slice(0, 300)}`);
+        await openAlert(container, { title: '生成画面失败', message: String(err).slice(0, 300), danger: true });
       } finally {
         busy = false;
         await render();

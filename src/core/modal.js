@@ -85,6 +85,37 @@ function renderField(f) {
   `;
 }
 
+// In-page notification dialog — replaces window.alert() so info / error
+// messages stay inside the phone-frame and pick up theme styling. Single
+// button, resolves on click / Enter / Escape. Returns Promise<void>.
+//
+// danger:true tints the title strip red — useful for error messages.
+export function openAlert(container, { title = '提示', message, label = '好', danger = false }) {
+  return new Promise((resolve) => {
+    const modal = document.createElement('div');
+    modal.className = 'modal-backdrop confirm-modal-backdrop';
+    modal.innerHTML = `
+      <div class="modal confirm-modal${danger ? ' alert-danger' : ''}">
+        <div class="modal-header">${escHtml(title)}</div>
+        <div class="confirm-message">${escHtml(message)}</div>
+        <div class="modal-actions">
+          <button type="button" class="btn confirm-btn">${escHtml(label)}</button>
+        </div>
+      </div>
+    `;
+    container.appendChild(modal);
+    const cleanup = () => { modal.remove(); document.removeEventListener('keydown', onKey); resolve(); };
+    modal.querySelector('.confirm-btn').addEventListener('click', cleanup);
+    modal.addEventListener('click', (e) => { if (e.target === modal) cleanup(); });
+    const confirmBtn = modal.querySelector('.confirm-btn');
+    setTimeout(() => confirmBtn.focus(), 0);
+    const onKey = (e) => {
+      if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); cleanup(); }
+    };
+    document.addEventListener('keydown', onKey);
+  });
+}
+
 // In-page confirm dialog — replaces window.confirm() so the prompt stays
 // inside the phone-frame and picks up theme styling. Returns Promise<boolean>:
 //   true  = user clicked confirm

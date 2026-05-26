@@ -4,7 +4,7 @@
 // page just renders + lets the user top up.
 
 import * as db from '../../core/db.js';
-import { openModal } from '../../core/modal.js';
+import { openModal, openAlert } from '../../core/modal.js';
 
 export async function mountWallet(container, params, router) {
   async function render() {
@@ -77,7 +77,7 @@ export async function mountWallet(container, params, router) {
       if (!v) return;
       const amount = parseFloat(v.amount);
       if (!Number.isFinite(amount) || amount <= 0) return;
-      if (amount > Number(w.balance || 0)) { alert('余额不足'); return; }
+      if (amount > Number(w.balance || 0)) { await openAlert(container, { title: '余额不足', message: '当前余额不够这笔操作。', danger: true }); return; }
       w.balance = Number((Number(w.balance || 0) - amount).toFixed(2));
       await db.set('wallet', w);
       await render();

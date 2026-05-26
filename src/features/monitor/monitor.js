@@ -13,6 +13,7 @@
 
 import * as db from '../../core/db.js';
 import * as surveillance from '../../core/surveillance.js';
+import { openAlert } from '../../core/modal.js';
 
 const SPY_PLACEHOLDERS = ['卧室', '客厅', '浴室', '书房', '厨房'];
 
@@ -94,12 +95,12 @@ export async function mountMonitor(container, params, router) {
 async function openAddCameraFlow(container, rerender) {
   const allChars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
   if (allChars.length === 0) {
-    alert('先去角色管理建一个角色');
+    await openAlert(container, { title: '没有角色', message: '先去角色管理建一个角色,再回来添加机位。' });
     return;
   }
   const chars = allChars.filter(c => !c.blocked);
   if (chars.length === 0) {
-    alert('没有可用角色(被拉黑的不显示)');
+    await openAlert(container, { title: '没有可用角色', message: '已存在的角色全部在黑名单里。先解除拉黑或新建角色。' });
     return;
   }
 

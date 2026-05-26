@@ -10,7 +10,7 @@
 // can continue editing without re-entering.
 
 import * as db from '../../core/db.js';
-import { openConfirm } from '../../core/modal.js';
+import { openConfirm, openAlert } from '../../core/modal.js';
 
 let preserveEditModeOnMount = false;
 
@@ -199,7 +199,7 @@ async function pickImageAndSave(container, router) {
   });
   if (!file) return;
   if (file.size > 4 * 1024 * 1024) {
-    alert(`图片太大(${(file.size/1024/1024).toFixed(1)} MB),建议 < 4 MB`);
+    await openAlert(document.body, { title: '图片太大', message: `${(file.size/1024/1024).toFixed(1)} MB,建议 < 4 MB,IndexedDB 容易满。`, danger: true });
     return;
   }
   const data = await new Promise((res, rej) => {
@@ -661,7 +661,7 @@ export async function mountHome(container, params, router) {
       await router.navigate(btn.dataset.target);
     } catch (err) {
       if (String(err).includes('unknown page')) {
-        alert(`「${btn.dataset.label}」还没做完`);
+        await openAlert(container, { title: '还没做完', message: `「${btn.dataset.label}」这一项还在路线图上。` });
       } else {
         throw err;
       }

@@ -2863,6 +2863,7 @@ label .label-text {
   max-width: 320px !important;
   width: 100% !important;
 }
+.confirm-modal.alert-danger .modal-header { color: var(--danger); }
 .confirm-modal .confirm-message {
   font-size: 14px;
   line-height: 1.55;

@@ -26,6 +26,7 @@
 import * as db   from '../../core/db.js';
 import * as ai   from '../../core/ai.js';
 import * as bottleCore from '../../core/bottle.js';
+import { openAlert } from '../../core/modal.js';
 
 export async function mountBottle(container, params, router) {
   // On open: lazy-generate replies for any drifting bottles whose
@@ -256,11 +257,11 @@ async function openBottleDetail(container, bottleId, router, onChange) {
       try {
         const fresh = await db.get('bottles', bottleId);
         const newChar = await bottleCore.promoteStrangerToFriend(db, fresh);
-        alert(`已把 ${newChar.name} 加为联系人。可以去消息列表开个新对话。`);
+        await openAlert(container, { title: '已加为联系人', message: `${newChar.name} 已经加进通讯录,可以去消息列表开个新对话。` });
         modal.remove();
         await onChange();
       } catch (e) {
-        alert(`加好友失败:${String(e).slice(0, 200)}`);
+        await openAlert(container, { title: '加好友失败', message: String(e).slice(0, 200), danger: true });
       }
     });
   }

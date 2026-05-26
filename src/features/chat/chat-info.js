@@ -2,7 +2,7 @@
 // Replaces the inline dropdown. Acts like WeChat's "聊天信息" page.
 
 import * as db from '../../core/db.js';
-import { openConfirm } from '../../core/modal.js';
+import { openConfirm, openAlert } from '../../core/modal.js';
 
 export async function mountChatInfo(container, params, router) {
   const sessionId = params.sessionId;
@@ -127,9 +127,9 @@ export async function mountChatInfo(container, params, router) {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        alert(`已导出:${payload.chatMessages.length} 条消息 + ${payload.memories.length} 条记忆`);
+        await openAlert(container, { title: '已导出', message: `${payload.chatMessages.length} 条消息 + ${payload.memories.length} 条记忆` });
       } catch (e) {
-        alert(`导出失败:${String(e).slice(0, 200)}`);
+        await openAlert(container, { title: '导出失败', message: String(e).slice(0, 200), danger: true });
       }
 
     } else if (action === 'import') {
@@ -149,10 +149,10 @@ export async function mountChatInfo(container, params, router) {
         })) return;
         try {
           const newSid = await importSessionFromFile(file);
-          alert('导入成功');
+          await openAlert(container, { title: '导入成功', message: '即将跳到新会话。' });
           router.navigate('chat', { sessionId: newSid });
         } catch (e) {
-          alert(`导入失败:${String(e).slice(0, 300)}`);
+          await openAlert(container, { title: '导入失败', message: String(e).slice(0, 300), danger: true });
         }
       }, { once: true });
       input.click();
@@ -168,7 +168,7 @@ export async function mountChatInfo(container, params, router) {
       for (const m of msgs) await db.del('chatMessages', m.id);
       const mems = await db.query('memories', 'sessionId', sessionId);
       for (const m of mems) await db.del('memories', m.id);
-      alert('已清空');
+      await openAlert(container, { title: '已清空', message: '会话的消息和记忆都清掉了。角色保留。' });
 
     } else if (action === 'block') {
       const fresh = await db.get('characters', session.characterId);

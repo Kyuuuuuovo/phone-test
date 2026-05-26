@@ -7,7 +7,7 @@
 
 import * as db from '../../core/db.js';
 import * as ai from '../../core/ai.js';
-import { openConfirm } from '../../core/modal.js';
+import { openConfirm, openAlert } from '../../core/modal.js';
 
 export async function mountScheduleList(container, params, router) {
   async function render() {
@@ -143,7 +143,7 @@ export async function mountScheduleList(container, params, router) {
       ev.preventDefault();
       const fd = new FormData(form);
       const startTs = new Date(fd.get('startTs')).getTime();
-      if (!Number.isFinite(startTs)) { alert('开始时间无效'); return; }
+      if (!Number.isFinite(startTs)) { await openAlert(container, { title: '时间无效', message: '开始时间格式有误。', danger: true }); return; }
       const endRaw = fd.get('endTs');
       const endTs = endRaw ? new Date(endRaw).getTime() : null;
       const who = String(fd.get('who') || 'user');
@@ -167,7 +167,7 @@ export async function mountScheduleList(container, params, router) {
 
   async function openAIGenModal() {
     const chars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
-    if (chars.length === 0) { alert('先去角色管理建一个角色'); return; }
+    if (chars.length === 0) { await openAlert(container, { title: '没有角色', message: '先去角色管理建一个角色,才能给角色生成日程。' }); return; }
     const now = new Date();
     const defaultStart = new Date(now);
     defaultStart.setMinutes(0, 0, 0);

@@ -9,7 +9,7 @@
 // header "+" button can trigger it without going through chat-list's UI.
 
 import * as db from '../../core/db.js';
-import { openConfirm } from '../../core/modal.js';
+import { openConfirm, openAlert } from '../../core/modal.js';
 
 const ACTION_WIDTH = 144;  // 2 buttons × 72px — kept in sync with CSS
 
@@ -457,10 +457,10 @@ export async function openNewChatModal(container, router) {
       const title = String(fd.get('title') || '').trim();
       const members = fd.getAll('member').map(String);
       if (!title) return;
-      if (members.length < 2) { alert('至少选 2 个角色'); return; }
+      if (members.length < 2) { await openAlert(container, { title: '成员不够', message: '群聊至少需要 2 个角色。' }); return; }
       // P3: this is where we'd db.set('chatSessions', { participantIds: members, ... })
       // and navigate to a group-chat view. Currently no group-chat AI flow.
-      alert(`群聊功能还在开发中。\n群名:${title}\n成员:${members.length} 人`);
+      await openAlert(container, { title: '群聊还在开发中', message: `已记录:${title}(${members.length} 人)。等多角色调度做好后会自动开通。` });
       modal.remove();
     });
   }

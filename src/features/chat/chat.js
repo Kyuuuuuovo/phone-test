@@ -4,7 +4,7 @@
 import * as db from '../../core/db.js';
 import * as ai from '../../core/ai.js';
 import * as context from '../../core/context.js';
-import { openConfirm } from '../../core/modal.js';
+import { openConfirm, openAlert } from '../../core/modal.js';
 
 const SVG = {
   plus:  `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>`,
@@ -204,7 +204,11 @@ export async function mountChat(container, params, router) {
     const w = (await db.get('wallet', 'default')) || { id: 'default', balance: 0 };
     const balance = Number(w.balance || 0);
     if (balance < amount) {
-      alert(`余额不足 — 当前 ¥${balance.toFixed(2)},${kindLabel}需 ¥${amount.toFixed(2)}。去「我 → 钱包」充值。`);
+      await openAlert(container, {
+        title: '余额不足',
+        message: `当前 ¥${balance.toFixed(2)},${kindLabel}需 ¥${amount.toFixed(2)}。去「我 → 钱包」充值。`,
+        danger: true,
+      });
       return false;
     }
     w.balance = Number((balance - amount).toFixed(2));
@@ -319,7 +323,7 @@ export async function mountChat(container, params, router) {
       // side is typing rather than flooding.
       await streamingReveal(result?.messageId);
     } catch (e) {
-      alert(`AI 回复失败:${String(e).slice(0, 300)}`);
+      await openAlert(container, { title: 'AI 回复失败', message: String(e).slice(0, 300), danger: true });
     } finally {
       aiBtn.disabled = false;
       sendBtn.disabled = false;
@@ -580,7 +584,7 @@ export async function mountChat(container, params, router) {
       const existing = await db.query('favorites', 'sessionId', sessionId);
       const dupe = existing.find(f => f.msgId === msgId && (f.actionIdx ?? 0) === actionIdx);
       if (dupe) {
-        alert('已经在收藏里了');
+        await openAlert(container, { title: '已收藏', message: '这条已经在收藏里了。' });
       } else {
         await db.set('favorites', {
           id: db.newId(),
@@ -603,7 +607,7 @@ export async function mountChat(container, params, router) {
       const a = msg.actions[actionIdx];
       if (!a) return;
       const editTarget = pickEditField(a);
-      if (!editTarget) { alert('这种消息没法编辑'); return; }
+      if (!editTarget) { await openAlert(container, { title: '没法编辑', message: '这种类型的消息没有可编辑的文字字段。' }); return; }
       // Long-form fields → textarea; short single-line fields → text input.
       const longForm = editTarget.field === 'content'
         || editTarget.field === 'description'
@@ -662,7 +666,7 @@ export async function mountChat(container, params, router) {
         await refresh();
         await streamingReveal(result?.messageId);
       } catch (e) {
-        alert(`重新生成失败:${String(e).slice(0, 300)}`);
+        await openAlert(container, { title: '重新生成失败', message: String(e).slice(0, 300), danger: true });
       } finally {
         aiBtn.disabled = false;
         sendBtn.disabled = false;
@@ -685,7 +689,7 @@ export async function mountChat(container, params, router) {
         return toTs == null || toTs >= T;
       });
       if (affectedMems.length === 0 && affectedMsgs.length === 0) {
-        alert('这条消息之后没有已总结的内容,无需重新总结。');
+        await openAlert(container, { title: '无需重新总结', message: '这条消息之后没有已总结的内容。' });
         return;
       }
       if (!await openConfirm(container, {
@@ -698,7 +702,7 @@ export async function mountChat(container, params, router) {
         await context.resummarizeFrom(sessionId, msgId);
         await refresh();
       } catch (e) {
-        alert(`重新总结失败:${String(e).slice(0, 300)}`);
+        await openAlert(container, { title: '重新总结失败', message: String(e).slice(0, 300), danger: true });
       }
     } else if (btn.dataset.action === 'delete') {
       if (!await openConfirm(container, {

@@ -3,6 +3,7 @@
 // (lorebook) exports; see importTavernWorldbook() below for the schema map.
 
 import * as db from '../../core/db.js';
+import { openAlert } from '../../core/modal.js';
 
 export async function mountWorldbookList(container, params, router) {
   container.innerHTML = `
@@ -108,7 +109,7 @@ async function importTavernWorldbook(router, refresh) {
       const text = await file.text();
       data = JSON.parse(text);
     } catch (e) {
-      alert(`解析 JSON 失败:${String(e).slice(0, 200)}`);
+      await openAlert(document.body, { title: 'JSON 解析失败', message: String(e).slice(0, 200), danger: true });
       return;
     }
     // Resolve to { entries, name? }
@@ -117,7 +118,7 @@ async function importTavernWorldbook(router, refresh) {
     else if (data?.entries)         book = data;
     else if (Array.isArray(data))   book = { entries: data };
     if (!book) {
-      alert('文件里没找到 worldbook / character_book 字段');
+      await openAlert(document.body, { title: '导入失败', message: '文件里没找到 worldbook / character_book 字段。', danger: true });
       return;
     }
     // entries can be an object {0:..., 1:...} or an array
@@ -126,7 +127,7 @@ async function importTavernWorldbook(router, refresh) {
       rawEntries = Object.values(rawEntries);
     }
     if (!Array.isArray(rawEntries) || rawEntries.length === 0) {
-      alert('entries 字段为空,没东西可以导入');
+      await openAlert(document.body, { title: '没东西可导入', message: 'entries 字段为空。', danger: true });
       return;
     }
     // Sort by insertion_order if present (lower first ≈ injected first)
