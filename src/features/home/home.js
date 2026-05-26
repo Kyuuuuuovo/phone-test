@@ -65,13 +65,14 @@ const DOCK = [
 // favorites pin (see migrateFavoritesWidget in mountHome).
 async function renderFavoritesWidget(w) {
   const id = w?.id || '';
-  const size = w?.size || 'small';
+  // Favorites is always full-row (size-medium) — the strip layout looks
+  // wrong squeezed into half a row.
+  const size = 'medium';
   const favs = await db.getAll('favorites');
   if (favs.length === 0) {
     return `
       <div class="widget widget-favorites user-widget size-${size} empty" data-widget-id="${escHtml(id)}" data-target="favorites-list">
-        <div class="widget-head"><span class="widget-title">收藏</span></div>
-        <div class="widget-empty-msg">还没有收藏</div>
+        <div class="widget-empty-msg">收藏 · 还没有收藏 — 长按消息添加</div>
         <button class="widget-del" title="删除">×</button>
       </div>
     `;
@@ -85,9 +86,6 @@ async function renderFavoritesWidget(w) {
   const text = action ? actionPreviewForWidget(action) : '(原消息已删除)';
   return `
     <div class="widget widget-favorites user-widget size-${size}" data-widget-id="${escHtml(id)}" data-target="favorites-list">
-      <div class="widget-head">
-        <span class="widget-title">收藏</span>
-      </div>
       <div class="widget-quote">${escHtml(text)}</div>
       <div class="widget-from">— ${escHtml(character?.name || '(未知)')}</div>
       <button class="widget-del" title="删除">×</button>
@@ -146,7 +144,9 @@ function renderNoteWidget(w) {
 // polaroids on the wallpaper.
 function renderPolaroidWidget(w) {
   const photos = Array.isArray(w.data?.photos) ? w.data.photos.slice(0, 3) : [];
-  const size = w?.size || 'small';
+  // Polaroid is always half-row regardless of stored size (handles old
+  // widgets created before this widget was set to size-small by default).
+  const size = 'small';
   // stackOrder defaults to [0, 1, 2] — third index (last) is the front.
   // We pad/truncate so length matches photos length.
   let stackOrder = Array.isArray(w.data?.stackOrder) ? [...w.data.stackOrder] : [];
@@ -195,7 +195,9 @@ function renderPolaroidWidget(w) {
 // will reflect here automatically). When only `name` is set it's a custom
 // label the user typed (e.g. "小猫"). characterId takes precedence.
 async function renderAnniversaryWidget(w) {
-  const size = w?.size || 'small';
+  // Anniversary is always half-row regardless of stored size (handles old
+  // widgets created before this widget was set to size-small by default).
+  const size = 'small';
   const startTs = Number(w.data?.startTs);
   const days = Number.isFinite(startTs)
     ? Math.max(0, Math.floor((Date.now() - startTs) / 86400000))
@@ -289,7 +291,7 @@ async function openAddWidgetModal(container, router) {
           id: db.newId(),
           type: 'favorites',
           placement,
-          size: 'small',
+          size: 'medium',
           createdAt: Date.now(),
         });
         await router.navigate('home');
@@ -667,7 +669,7 @@ export async function mountHome(container, params, router) {
         id: db.newId(),
         type: 'favorites',
         placement: 'above',
-        size: 'small',
+        size: 'medium',
         order: 1,
         createdAt: Date.now(),
       });

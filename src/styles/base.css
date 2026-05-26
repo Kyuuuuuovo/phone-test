@@ -542,21 +542,24 @@ label .label-text {
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
 }
 /* Placeholder that occupies the dragged widget's old grid slot so the
-   row layout doesn't collapse while dragging. */
+   row layout doesn't collapse while dragging. Subtle by design — a thin
+   dashed outline with no fill, so it doesn't read as a competing "card"
+   next to the floating widget the user is holding. */
 .widget-placeholder {
   border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--fg) 8%, transparent);
-  border: 1.5px dashed color-mix(in srgb, var(--fg) 18%, transparent);
+  background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--fg) 12%, transparent);
   pointer-events: none;
 }
 .widget-placeholder.size-small  { grid-column: span 1; }
 .widget-placeholder.size-medium,
 .widget-placeholder.size-large  { grid-column: span 2; }
-/* Tile placeholder for dragging .app-icon. Single grid cell. */
+/* Tile placeholder for dragging .app-icon. Single grid cell. Matches the
+   subtle widget-placeholder so both reorder UX feel consistent. */
 .tile-placeholder {
   border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--fg) 8%, transparent);
-  border: 1.5px dashed color-mix(in srgb, var(--fg) 18%, transparent);
+  background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--fg) 12%, transparent);
   pointer-events: none;
 }
 @keyframes home-jiggle {
@@ -859,17 +862,37 @@ label .label-text {
   font-weight: 500;
 }
 
-/* Favorites widget — unified 120px height so it stacks neatly next to
-   polaroid / anniversary. Truncate quote to 2 lines max so the height
-   doesn't blow out when a long memo got pinned. */
+/* Favorites widget — full row width, compact height (~app-icon scale).
+   Two-line layout: single-line quote + small "— name" caption. No
+   "收藏" title row (the widget is the favorites widget, no label needed). */
 .widget.widget-favorites {
-  height: 120px;
+  height: 64px;
+  padding: 10px 14px;
   display: flex;
   flex-direction: column;
   justify-content: center;
+  gap: 2px;
 }
 .widget.widget-favorites .widget-quote {
-  -webkit-line-clamp: 2;
+  font-size: 13px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+}
+.widget.widget-favorites .widget-from {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+  margin: 0;
+}
+.widget.widget-favorites.empty .widget-empty-msg {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
 }
 
 /* Anniversary radio-row + conditional inputs (in the add-widget modal). */
