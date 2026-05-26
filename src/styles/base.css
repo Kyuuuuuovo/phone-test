@@ -102,16 +102,17 @@ body[data-fx-glass="liquid"] .modal {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* E1 fix — flush-anchored strips (page-header, dock, chat-input, etc.) sit
-   right against .phone-frame's overflow:hidden edge. The default outer drop
-   shadow `0 6px 24px` had nowhere to render cleanly at the top corners and
-   visually stacked against .phone-frame's own outer shadow, producing the
-   "double shadow at the top two corners" the user reported. Cards (app-icon
-   .icon / widget / entity-row) keep the elevation shadow — they're meant
-   to look lifted. */
+/* E1 fix — flush-anchored strips (page-header, messaging-tabs, chat-input
+   etc.) sit right against .phone-frame's overflow:hidden edge. The default
+   outer drop shadow `0 6px 24px` had nowhere to render cleanly at the top
+   corners and visually stacked against .phone-frame's own outer shadow,
+   producing the "double shadow at the top two corners" the user reported.
+   Cards (app-icon .icon / widget / entity-row) keep the elevation shadow.
+   .home-dock is NOT in this list — it's been re-styled as a floating pill
+   with margin from the bottom, so it lives in "card" territory and needs
+   the outer shadow to look properly lifted. */
 body[data-fx-glass="liquid"] .page-header,
 body[data-fx-glass="liquid"] .messaging-tabs,
-body[data-fx-glass="liquid"] .home-dock,
 body[data-fx-glass="liquid"] .chat-input,
 body[data-fx-glass="liquid"] .attach-panel {
   box-shadow:
@@ -205,10 +206,10 @@ body[data-fx-glass="metal"] .modal {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* Metal strip override — same E1 reasoning as liquid: drop outer elevation. */
+/* Metal strip override — same E1 reasoning as liquid. .home-dock excluded
+   for the same floating-pill reason described above. */
 body[data-fx-glass="metal"] .page-header,
 body[data-fx-glass="metal"] .messaging-tabs,
-body[data-fx-glass="metal"] .home-dock,
 body[data-fx-glass="metal"] .chat-input,
 body[data-fx-glass="metal"] .attach-panel {
   box-shadow:
@@ -583,13 +584,21 @@ label .label-text {
 .home-pager .dot:hover { transform: scale(1.2); }
 .home-dock {
   flex: 0 0 auto;
-  padding: 10px 12px max(10px, env(safe-area-inset-bottom));
-  /* Sit on top of the wallpaper without a visible seam — no border, very
-     light tint so it feels like a soft bottom shelf rather than a separate
-     slab. The icon tiles themselves are still their own glass blocks. */
-  background: color-mix(in srgb, var(--surface) 20%, transparent);
+  /* Floating pill — sits detached from the bottom edge with 12px margins,
+     rounded corners + a soft shadow so it visually echoes the rounded app
+     icons above instead of being a hard right-angled shelf flush with the
+     phone-frame bottom. The wallpaper still shows through via the surface
+     tint + backdrop blur. Glass modes (frosted / liquid / metal) take over
+     the bg + bevel via the [data-fx-glass] selector list and the rounded
+     shape carries through. */
+  margin: 0 12px max(12px, env(safe-area-inset-bottom));
+  padding: 10px 16px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
   backdrop-filter: blur(24px) saturate(140%);
   -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.10);
 }
 .dock-grid {
   grid-template-columns: repeat(2, max-content) !important;
@@ -848,12 +857,8 @@ label .label-text {
 .settings-item.toggle-row:hover { background: var(--surface); }
 .settings-item.toggle-row input[type=checkbox] { width: auto; cursor: pointer; }
 
-/* Theme editor */
-.theme-editor-page .page-header .reset-btn {
-  padding: 4px 10px;
-  font-size: 12px;
-  border-radius: 8px;
-}
+/* Theme editor — tabbed layout (预设 / 颜色 / 字体 / 玻璃 / 壁纸) with
+   a bottom sticky strip holding the mini-preview + save/reset bar. */
 .theme-editor-page .section-title {
   margin: 18px 0 6px;
   font-size: 13px;
@@ -862,40 +867,124 @@ label .label-text {
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
-.theme-preview {
+.theme-editor-page .section-title:first-child { margin-top: 4px; }
+
+/* Tab bar — sits between header and the scrollable body. flex:1 each so
+   five tabs share the width evenly inside the phone-frame's 375-480px. */
+.theme-editor-page .theme-tabs {
+  flex: 0 0 auto;
+  display: flex;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 12px;
-  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.theme-editor-page .theme-tab {
+  flex: 1;
+  padding: 12px 4px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.theme-editor-page .theme-tab:hover { color: var(--fg); }
+.theme-editor-page .theme-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.theme-editor-page .theme-tab-body { padding-bottom: 8px; }
+
+/* Sticky strip: mini-preview + actions bar. flex:0 0 auto so it pins to
+   the bottom while .theme-tab-body (flex:1) takes the rest. */
+.theme-editor-page .theme-sticky {
+  flex: 0 0 auto;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 10px 12px;
+}
+.theme-editor-page .theme-mini-preview {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  padding-bottom: 8px;
 }
-.theme-preview-bubble {
-  max-width: 75%;
-  padding: 7px 11px;
-  border-radius: 14px;
-  font-size: 14px;
-  line-height: 1.4;
+.theme-editor-page .mini-tile-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
 }
-.theme-preview-bubble.user {
-  align-self: flex-end;
-  background: var(--bubble-user);
-  color: var(--bubble-user-fg);
-  border-bottom-right-radius: 4px;
+.theme-editor-page .mini-tile {
+  width: 28px;
+  height: 28px;
+  border-radius: calc(var(--radius-lg) * 0.6);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
-.theme-preview-bubble.char {
-  align-self: flex-start;
+.theme-editor-page .mini-chat {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+.theme-editor-page .mini-bubble {
+  padding: 4px 10px;
+  border-radius: calc(var(--radius-md) * 1.1);
+  font-size: 11px;
+  line-height: 1.3;
+  max-width: 55%;
+}
+.theme-editor-page .mini-bubble.char {
   background: var(--bubble-char);
   color: var(--bubble-char-fg);
-  border-bottom-left-radius: 4px;
 }
-.theme-preview-meta {
-  margin-top: 6px;
-  font-size: 11px;
+.theme-editor-page .mini-bubble.user {
+  background: var(--bubble-user);
+  color: var(--bubble-user-fg);
+}
+.theme-editor-page .mini-dock {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  align-self: center;
+}
+.theme-editor-page .mini-dock-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: calc(var(--radius-lg) * 0.5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.theme-editor-page .theme-actions-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  padding-top: 8px;
+}
+.theme-editor-page .theme-status {
+  flex: 1;
+  font-size: 12px;
   color: var(--muted);
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.theme-editor-page .theme-status.success { color: var(--success); }
+.theme-editor-page .theme-status.error   { color: var(--danger); }
+.theme-editor-page .reset-btn,
+.theme-editor-page .save-btn {
+  padding: 6px 14px;
+  font-size: 13px;
 }
 .color-row { margin-bottom: 10px; }
 .color-row-controls {
