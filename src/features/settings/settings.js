@@ -61,21 +61,40 @@ export async function mountSettings(container, params, router) {
             <span class="settings-chevron">›</span>
           </button>
         </div>
+
+        <h3 class="settings-section-title">调试</h3>
+        <div class="settings-list">
+          <label class="settings-item toggle-row">
+            <span class="settings-label">开发者模式
+              <div class="settings-sub">聊天页右上角显示「提示词调试」入口</div>
+            </span>
+            <input type="checkbox" data-toggle="devMode"${settings.devMode === true ? ' checked' : ''}>
+          </label>
+        </div>
       </div>
     </div>
   `;
 
   const onChange = async (e) => {
-    const cb = e.target.closest('[data-toggle="petEnabled"]');
+    const cb = e.target.closest('[data-toggle]');
     if (!cb) return;
+    const which = cb.dataset.toggle;
     const s = (await db.get('settings', 'default')) || { id: 'default' };
-    s.petEnabled = !!cb.checked;
-    await db.set('settings', s);
-    // Toggle the orb in-place. Reload not needed but the simplest path.
-    const orb = document.querySelector('.pet-orb');
-    const bubble = document.querySelector('.pet-bubble');
-    if (orb)    orb.hidden    = !cb.checked;
-    if (bubble) bubble.hidden = true;
+    if (which === 'petEnabled') {
+      s.petEnabled = !!cb.checked;
+      await db.set('settings', s);
+      // Toggle the orb in-place. Reload not needed but the simplest path.
+      const orb = document.querySelector('.pet-orb');
+      const bubble = document.querySelector('.pet-bubble');
+      if (orb)    orb.hidden    = !cb.checked;
+      if (bubble) bubble.hidden = true;
+    } else if (which === 'devMode') {
+      s.devMode = !!cb.checked;
+      await db.set('settings', s);
+      // The chat page reads devMode at mount time, so the gear icon won't
+      // appear until next chat navigation. Acceptable — toggling devMode
+      // is rare and the visual change is one back-and-back away.
+    }
   };
   container.addEventListener('change', onChange);
 

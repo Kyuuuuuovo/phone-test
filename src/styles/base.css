@@ -2571,3 +2571,193 @@ label .label-text {
 .character-pick-row .session-avatar { width: 36px; height: 36px; font-size: 16px; }
 .character-pick-row .session-name { font-size: 14px; }
 .character-pick-row .session-preview { font-size: 12px; }
+
+/* Chat header right side — flex container so the gear icon (devMode only)
+   can sit next to the more button without disturbing the title centering
+   (title is absolutely positioned and doesn't flex). */
+.chat-page .page-header .header-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  z-index: 1;
+}
+.chat-page .page-header .header-actions .icon-btn { background: transparent; }
+
+/* Two-line settings row: main label on top, smaller sub text below */
+.settings-sub {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: normal;
+  margin-top: 2px;
+}
+
+/* ── Prompt inspector page (devMode) ─────────────────────────────────── */
+.prompt-inspector-page .pi-section { margin-bottom: 20px; }
+.prompt-inspector-page .pi-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.prompt-inspector-page .pi-dump-toggle {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.prompt-inspector-page .pi-dump-toggle:hover { background: var(--bubble-char); color: var(--fg); }
+.prompt-inspector-page .pi-dump-pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+/* API row — radio + name + sub */
+.prompt-inspector-page .pi-api-list {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.prompt-inspector-page .pi-api-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  margin: 0;
+}
+.prompt-inspector-page .pi-api-row:last-child { border-bottom: none; }
+.prompt-inspector-page .pi-api-row:hover { background: var(--bubble-char); }
+.prompt-inspector-page .pi-api-row.active { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.prompt-inspector-page .pi-api-row input[type="radio"] { width: auto; flex-shrink: 0; }
+.prompt-inspector-page .pi-api-text { flex: 1; min-width: 0; }
+.prompt-inspector-page .pi-api-name { font-weight: 600; font-size: 14px; }
+.prompt-inspector-page .pi-api-sub  { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.prompt-inspector-page .pi-empty {
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  font-size: 13px;
+}
+.prompt-inspector-page .pi-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+
+/* Part cards — one per section in injection order */
+.prompt-inspector-page .pi-parts { display: flex; flex-direction: column; gap: 10px; }
+.prompt-inspector-page .pi-part {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+.prompt-inspector-page .pi-part-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.prompt-inspector-page .pi-part-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.prompt-inspector-page .pi-part-actions { display: flex; gap: 4px; }
+.prompt-inspector-page .pi-part-actions button {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.prompt-inspector-page .pi-part-actions button:hover { background: var(--bubble-char); color: var(--fg); }
+.prompt-inspector-page .pi-part-body {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  min-height: 60px;
+  max-height: 200px;
+  resize: vertical;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.prompt-inspector-page .pi-part-body[readonly] {
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  cursor: default;
+}
+.prompt-inspector-page .pi-part.editing .pi-part-body {
+  background: var(--surface);
+  min-height: 160px;
+  max-height: 360px;
+}
+.prompt-inspector-page .pi-part.editing .pi-part-foot { display: block; }
+.prompt-inspector-page .pi-part-foot { margin-top: 8px; text-align: right; }
+.prompt-inspector-page .pi-part-foot[hidden] { display: none; }
+.prompt-inspector-page .pi-part-foot .btn { padding: 6px 14px; font-size: 13px; }
+.prompt-inspector-page .pi-warning {
+  font-size: 11px;
+  color: var(--danger);
+  background: rgba(255, 59, 48, 0.08);
+  padding: 6px 8px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+
+/* Inline badges on part titles */
+.prompt-inspector-page .pi-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.prompt-inspector-page .pi-badge.locked    { background: color-mix(in srgb, var(--muted) 20%, transparent); color: var(--muted); }
+.prompt-inspector-page .pi-badge.override  { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.prompt-inspector-page .pi-badge.data      { background: color-mix(in srgb, var(--success) 18%, transparent); color: var(--success); }
+.prompt-inspector-page .pi-badge.computed  { background: color-mix(in srgb, var(--muted) 14%, transparent); color: var(--muted); }
+.prompt-inspector-page .pi-badge.skip      { background: rgba(255, 59, 48, 0.10); color: var(--danger); }

@@ -24,6 +24,7 @@ import { mountChatInfo }    from './features/chat/chat-info.js';
 import { mountChatBeautify } from './features/chat/chat-beautify.js';
 import { mountMemoryManage } from './features/chat/memory-manage.js';
 import { mountChatSettings } from './features/chat/chat-settings.js';
+import { mountPromptInspector } from './features/chat/prompt-inspector.js';
 import { mountCharacterList }   from './features/character/character-list.js';
 import { mountCharacterDetail } from './features/character/character-detail.js';
 import { mountWorldbookList }   from './features/worldbook/worldbook-list.js';
@@ -152,6 +153,7 @@ async function boot() {
   router.registerPage('chat-beautify',     mountChatBeautify);
   router.registerPage('memory-manage',     mountMemoryManage);
   router.registerPage('chat-settings',     mountChatSettings);
+  router.registerPage('prompt-inspector',  mountPromptInspector);
   router.registerPage('character-list',    mountCharacterList);
   router.registerPage('character-detail',  mountCharacterDetail);
   router.registerPage('worldbook-list',    mountWorldbookList);

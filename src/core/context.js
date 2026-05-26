@@ -62,7 +62,11 @@ export const ACTION_SCHEMAS_TEXT = `# 动作定义表
 
 再次强调:只输出 JSON 数组本身,不输出任何其他字符,也不要用 \`\`\`json 包裹。`;
 
-// Build the system prompt for one session.
+// Build the structured part list for one session's system prompt. Each part
+// is { key, title, body, kind, ... } so the prompt-inspector UI can render
+// each segment, mark which ones are user-overridable, and dump the full
+// joined string when needed. buildSystemPrompt below joins these parts.
+//
 // Section order (maps to the user-facing 6-block abstraction in CLAUDE.md):
 //   ① Framing
 //   1. "你是【char】,正在与【user】聊天。" (always)
@@ -75,21 +79,28 @@ export const ACTION_SCHEMAS_TEXT = `# 动作定义表
 //   7. # 过往记忆                  (if any memory summaries)
 //   8. # 当前社交状态              (if character.blocked)
 //   ③ 对话规范
-//   9. # 对话规范                  (humanizer constant, if non-empty)
+//   9. # 对话规范                  (humanizer constant, override-able)
 //   ④ 动作使用规约
-//  10. # 动作使用规约               (behavior constant, if non-empty — WHEN to use which action)
+//  10. # 动作使用规约               (behavior constant, override-able)
 //  (per-turn hook)
 //  11. # 用户本轮使用的功能定义     (optional featureContext arg — set per-turn)
 //   ⑤ 输出格式数量约束
-//  12. OUTPUT_COUNT_SPEC          (JSON-only + count constraints, always)
+//  12. OUTPUT_COUNT_SPEC          (always, override-able)
 //   ⑥ 动作定义表
-//  13. ACTION_SCHEMAS_TEXT        (per-action JSON schemas + example, always last)
-export async function buildSystemPrompt(sessionId, { featureContext } = {}) {
+//  13. ACTION_SCHEMAS_TEXT        (always, override-able)
+//
+// `kind` values:
+//   'computed' — built from app state (framing line) — not editable here
+//   'data'     — user data (character/persona/worldbook/memory/schedule/...);
+//                editable via editRoute, not via the inspector itself
+//   'override' — author-locked source constants with optional settings override
+//                (humanizer, behavior, OUTPUT_COUNT_SPEC, ACTION_SCHEMAS_TEXT)
+export async function buildSystemPromptParts(sessionId, { featureContext } = {}) {
   const session = await db.get('chatSessions', sessionId);
-  if (!session) throw new Error(`buildSystemPrompt: session ${sessionId} not found`);
+  if (!session) throw new Error(`buildSystemPromptParts: session ${sessionId} not found`);
 
   const character = await db.get('characters', session.characterId);
-  if (!character) throw new Error(`buildSystemPrompt: character ${session.characterId} not found`);
+  if (!character) throw new Error(`buildSystemPromptParts: character ${session.characterId} not found`);
 
   const persona = session.personaId ? await db.get('personas', session.personaId) : null;
 
@@ -114,90 +125,185 @@ export async function buildSystemPrompt(sessionId, { featureContext } = {}) {
   // Split memories by tier so we can inject them in two sections from
   // abstract → concrete: "# 远期记忆" (L2 chapter summaries) precede
   // "# 近期记忆" (L1 per-batch summaries) precede the raw recent messages.
-  // This gives the model a sense of temporal depth without bloating context.
   const l1Mem = memories.filter(m => (m.tier ?? 1) === 1).sort((a, b) => a.createdAt - b.createdAt);
   const l2Mem = memories.filter(m => m.tier === 2).sort((a, b) => a.createdAt - b.createdAt);
 
-  // Author-locked meta constants — NOT visible to end users. See CLAUDE.md 铁律 10.
-  const humanizer = (HUMANIZER_PROMPT  ?? '').trim();
-  const behavior  = (BEHAVIOR_GUIDANCE ?? '').trim();
+  // Settings-driven overrides for the author-locked sections. `??` (not `||`)
+  // is intentional: a user-set empty string ('') means "intentionally skip
+  // this section" and must NOT fall back to the source constant. Only an
+  // *absent* field (undefined) falls back.
+  const settings = (await db.get('settings', 'default')) || {};
+  const ov  = settings.promptOverrides       || {};
+  const ovo = settings.promptOutputOverrides || {};
+  const humanizer   = (ov.humanizer   ?? HUMANIZER_PROMPT   ?? '').trim();
+  const behavior    = (ov.behavior    ?? BEHAVIOR_GUIDANCE  ?? '').trim();
+  const countSpec   = (ovo.countSpec   ?? OUTPUT_COUNT_SPEC).trim();
+  const schemasText = (ovo.schemasText ?? ACTION_SCHEMAS_TEXT).trim();
 
   const parts = [];
   // 1. Framing — who you are, who you're talking to.
   const charName = character.name || '(未命名角色)';
   const userName = persona?.name || null;
-  parts.push(userName
-    ? `你是【${charName}】,正在与【${userName}】聊天。`
-    : `你是【${charName}】,正在跟一位用户聊天。`);
-  // 2. 角色设定
+  parts.push({
+    key: 'framing',
+    title: null,
+    body: userName
+      ? `你是【${charName}】,正在与【${userName}】聊天。`
+      : `你是【${charName}】,正在跟一位用户聊天。`,
+    kind: 'computed',
+  });
   // 2. 世界观(前置)
-  if (wbBy.before.length > 0) {
-    parts.push(`# 世界观 / 背景设定(前置)\n\n${wbBy.before.join('\n\n')}`);
-  }
+  parts.push({
+    key: 'wb-before',
+    title: '# 世界观 / 背景设定(前置)',
+    body: wbBy.before.join('\n\n'),
+    kind: 'data',
+    editRoute: 'worldbook-list',
+  });
   // 3. 角色设定
-  parts.push(`# 角色设定\n\n${character.persona || character.name || '(无设定)'}`);
+  parts.push({
+    key: 'character',
+    title: '# 角色设定',
+    body: character.persona || character.name || '(无设定)',
+    kind: 'data',
+    editRoute: 'character-detail',
+    editParams: { id: character.id },
+  });
   // 4. 世界观(默认)
-  if (wbBy.inline.length > 0) {
-    parts.push(`# 世界观 / 背景设定\n\n${wbBy.inline.join('\n\n')}`);
-  }
+  parts.push({
+    key: 'wb-inline',
+    title: '# 世界观 / 背景设定',
+    body: wbBy.inline.join('\n\n'),
+    kind: 'data',
+    editRoute: 'worldbook-list',
+  });
   // 5. 用户人设
-  if (persona) {
-    parts.push(`# 用户人设\n\n${persona.persona || persona.name || '(未填写)'}`);
-  }
-  // 6. 世界观(后置) — placed AFTER the user persona, so 'after' is a
-  // meaningfully different slot from 'inline' (which is right after the
-  // character setting). Labelled 「用户人设后」 in the editor.
-  if (wbBy.after.length > 0) {
-    parts.push(`# 世界观 / 背景设定(用户人设后)\n\n${wbBy.after.join('\n\n')}`);
-  }
-  // 7. 过往记忆 — split into L2 (远期, chapter summaries) + L1 (近期, batch
-  //    summaries). Older / more compressed first.
-  if (l2Mem.length > 0) {
-    parts.push(`# 远期记忆(章节,由老到新)\n\n${l2Mem.map(m => m.summary).join('\n\n')}`);
-  }
-  if (l1Mem.length > 0) {
-    parts.push(`# 近期记忆(由老到新)\n\n${l1Mem.map(m => m.summary).join('\n\n')}`);
-  }
+  parts.push({
+    key: 'user-persona',
+    title: '# 用户人设',
+    body: persona ? (persona.persona || persona.name || '(未填写)') : '',
+    kind: 'data',
+    editRoute: persona ? 'persona-detail' : 'persona-list',
+    editParams: persona ? { id: persona.id } : undefined,
+  });
+  // 6. 世界观(后置)
+  parts.push({
+    key: 'wb-after',
+    title: '# 世界观 / 背景设定(用户人设后)',
+    body: wbBy.after.join('\n\n'),
+    kind: 'data',
+    editRoute: 'worldbook-list',
+  });
+  // 7. 远期 + 近期记忆
+  parts.push({
+    key: 'mem-l2',
+    title: '# 远期记忆(章节,由老到新)',
+    body: l2Mem.map(m => m.summary).join('\n\n'),
+    kind: 'data',
+    editRoute: 'memory-manage',
+    editParams: { sessionId },
+  });
+  parts.push({
+    key: 'mem-l1',
+    title: '# 近期记忆(由老到新)',
+    body: l1Mem.map(m => m.summary).join('\n\n'),
+    kind: 'data',
+    editRoute: 'memory-manage',
+    editParams: { sessionId },
+  });
   // 8. 当前社交状态
-  if (character.blocked) {
-    parts.push(`# 当前社交状态\n\n注意:你目前已被对方加入黑名单。这是该 app 内的关系状态,具体如何反应由你的人设决定。`);
-  }
-  // 8b. 当前行程 — schedule entries near the current time (past 6h to next 24h).
-  // Two buckets: events on user's calendar (so the AI knows what you're up to)
-  // and events on this character's own calendar (so the AI stays consistent
-  // with its own day). Past events get marked "(已过)", current "(进行中)",
-  // future just shown with time.
+  parts.push({
+    key: 'social',
+    title: '# 当前社交状态',
+    body: character.blocked
+      ? '注意:你目前已被对方加入黑名单。这是该 app 内的关系状态,具体如何反应由你的人设决定。'
+      : '',
+    kind: 'data',
+    editRoute: 'character-detail',
+    editParams: { id: character.id },
+  });
+  // 8b. 当前行程
   const scheduleLines = await buildScheduleLines(character.id);
-  if (scheduleLines) parts.push(`# 当前行程\n\n${scheduleLines}`);
-  // 8c. 摄像头 — what the character knows about cameras in their home.
-  // CRITICAL: spy cameras that are NOT yet discovered are NOT injected
-  // (the whole point of spy mode is the character doesn't know). Only
-  // injects (a) open cameras (character agreed to them) and (b) spy
-  // cameras AFTER discoveredAt is set (the character has already caught
-  // the user). Without this, monitor's noticed/discoveredAt state never
-  // reaches the chat side and the character keeps acting unaware.
+  parts.push({
+    key: 'schedule',
+    title: '# 当前行程',
+    body: scheduleLines,
+    kind: 'data',
+    editRoute: 'schedule',
+  });
+  // 8c. 摄像头
   const cameraLines = await buildCameraLines(character.id, persona?.name);
-  if (cameraLines) parts.push(`# 摄像头\n\n${cameraLines}`);
+  parts.push({
+    key: 'cameras',
+    title: '# 摄像头',
+    body: cameraLines,
+    kind: 'data',
+    editRoute: 'monitor',
+  });
   // 9. 对话规范
-  if (humanizer) {
-    parts.push(`# 对话规范\n\n${humanizer}`);
-  }
+  parts.push({
+    key: 'humanizer',
+    title: '# 对话规范',
+    body: humanizer,
+    kind: 'override',
+    overrideScope: 'promptOverrides',
+    overrideKey: 'humanizer',
+    defaultValue: HUMANIZER_PROMPT,
+  });
   // 10. 动作使用规约 — WHEN / in what context to use each action.
   //     Boundary: action-context spec, NOT character-behavior steering.
-  if (behavior) {
-    parts.push(`# 动作使用规约\n\n${behavior}`);
-  }
-  // 11. 用户本轮使用的功能定义 (per-turn hook — caller passes featureContext to describe what app
-  //     feature triggered this AI call, e.g. voice button / transfer button).
+  parts.push({
+    key: 'behavior',
+    title: '# 动作使用规约',
+    body: behavior,
+    kind: 'override',
+    overrideScope: 'promptOverrides',
+    overrideKey: 'behavior',
+    defaultValue: BEHAVIOR_GUIDANCE,
+  });
+  // 11. 用户本轮使用的功能定义 (per-turn featureContext)
   const fc = (featureContext ?? '').trim();
-  if (fc) {
-    parts.push(`# 用户本轮使用的功能定义\n\n${fc}`);
-  }
-  // 12. 输出数量约束 + 只输 JSON 数组
-  parts.push(OUTPUT_COUNT_SPEC);
+  parts.push({
+    key: 'feature',
+    title: '# 用户本轮使用的功能定义',
+    body: fc,
+    kind: 'computed',
+  });
+  // 12. 输出数量约束 — title is null because countSpec already contains its
+  //     own '# 输出格式严格约束' heading.
+  parts.push({
+    key: 'output-count',
+    title: null,
+    body: countSpec,
+    kind: 'override',
+    overrideScope: 'promptOutputOverrides',
+    overrideKey: 'countSpec',
+    defaultValue: OUTPUT_COUNT_SPEC,
+    warning: '改这里会影响 JSON 输出契约,出错会让动作解析失败',
+  });
   // 13. 动作定义表(每种动作的 JSON schema + 示例)
-  parts.push(ACTION_SCHEMAS_TEXT);
-  return parts.join('\n\n---\n\n');
+  parts.push({
+    key: 'output-schemas',
+    title: null,
+    body: schemasText,
+    kind: 'override',
+    overrideScope: 'promptOutputOverrides',
+    overrideKey: 'schemasText',
+    defaultValue: ACTION_SCHEMAS_TEXT,
+    warning: '改这里会影响 JSON 输出契约,出错会让动作解析失败',
+  });
+  return parts;
+}
+
+// Join the structured parts into one string suitable for the chat API's
+// system role. Parts with empty bodies (e.g. no worldbook entries, no
+// memory, no persona) are dropped — they take up no space in the prompt.
+export async function buildSystemPrompt(sessionId, opts) {
+  const parts = await buildSystemPromptParts(sessionId, opts);
+  return parts
+    .filter(p => (p.body ?? '').trim() !== '')
+    .map(p => p.title ? `${p.title}\n\n${p.body}` : p.body)
+    .join('\n\n---\n\n');
 }
 
 // Camera knowledge for the character — only includes cameras the character

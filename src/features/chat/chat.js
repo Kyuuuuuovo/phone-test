@@ -10,6 +10,7 @@ const SVG = {
   ai:    `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 3l1.5 4.5L17 9l-4.5 1.5L11 15l-1.5-4.5L5 9l4.5-1.5L11 3zM18 13l1 2.5 2.5 1-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1 1-2.5z"/></svg>`,
   more:  `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>`,
   voice: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1-3.29-2.5-4.03v8.06c1.5-.74 2.5-2.26 2.5-4.03z"/></svg>`,
+  gear:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
   image: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z"/></svg>`,
   pin:   `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>`,
   redpacket: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 3h12a2 2 0 0 1 2 2v3H4V5a2 2 0 0 1 2-2zm-2 7h16v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-9zm8 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>`,
@@ -30,13 +31,20 @@ export async function mountChat(container, params, router) {
   const character = await db.get('characters', session.characterId);
 
   const isBlocked = !!character?.blocked;
+  // devMode gates the gear icon (prompt inspector). Author-only — kept off
+  // for end users so they don't see / fiddle with raw prompt sections.
+  const settingsRow = (await db.get('settings', 'default')) || {};
+  const devMode = settingsRow.devMode === true;
 
   container.innerHTML = `
     <div class="page chat-page">
       <header class="page-header">
         <button class="back">‹</button>
         <div class="title">${esc(character?.name ?? '聊天')}${isBlocked ? ' <span class="blocked-badge">已拉黑</span>' : ''}</div>
-        <button class="icon-btn more-btn" title="更多">${SVG.more}</button>
+        <div class="header-actions">
+          ${devMode ? `<button class="icon-btn inspector-btn" title="提示词调试">${SVG.gear}</button>` : ''}
+          <button class="icon-btn more-btn" title="更多">${SVG.more}</button>
+        </div>
       </header>
       ${isBlocked ? `<div class="blocked-banner">这个角色已被你拉黑。AI 知情,会按角色人设决定怎么反应。解除拉黑的权利只在你手里。</div>` : ''}
       <div class="chat-stream"></div>
@@ -111,6 +119,7 @@ export async function mountChat(container, params, router) {
   const aiBtn       = container.querySelector('.ai-btn');
   const plusBtn     = container.querySelector('.plus-btn');
   const moreBtn     = container.querySelector('.more-btn');
+  const inspectorBtn = container.querySelector('.inspector-btn');
   const panel       = container.querySelector('.attach-panel');
   const bubbleMenu  = container.querySelector('.bubble-menu');
   const replyBar    = container.querySelector('.reply-preview');
@@ -402,6 +411,13 @@ export async function mountChat(container, params, router) {
     router.navigate('chat-info', { sessionId });
   };
 
+  const onInspector = (e) => {
+    e.stopPropagation();
+    closePanel();
+    closeBubbleMenu();
+    router.navigate('prompt-inspector', { sessionId });
+  };
+
   // Bubble context-menu open: long-press (touch) + right-click (desktop)
   let longPressTimer = null;
   let touchStartXY = null;
@@ -639,6 +655,7 @@ export async function mountChat(container, params, router) {
   plusBtn.addEventListener('click', onPlusToggle);
   panel.addEventListener('click', onPanelClick);
   moreBtn.addEventListener('click', onMoreToggle);
+  if (inspectorBtn) inspectorBtn.addEventListener('click', onInspector);
   bubbleMenu.addEventListener('click', onBubbleMenuAction);
   replyCancel.addEventListener('click', onReplyCancel);
   input.addEventListener('keydown', onKey);
@@ -657,6 +674,7 @@ export async function mountChat(container, params, router) {
     plusBtn.removeEventListener('click', onPlusToggle);
     panel.removeEventListener('click', onPanelClick);
     moreBtn.removeEventListener('click', onMoreToggle);
+    if (inspectorBtn) inspectorBtn.removeEventListener('click', onInspector);
     bubbleMenu.removeEventListener('click', onBubbleMenuAction);
     replyCancel.removeEventListener('click', onReplyCancel);
     input.removeEventListener('keydown', onKey);
