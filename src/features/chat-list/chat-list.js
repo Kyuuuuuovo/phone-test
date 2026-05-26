@@ -99,7 +99,17 @@ export async function mountChatList(container, params, router) {
     revealed = row;
   }
 
-  // ── Pointer handlers (swipe) ─────────────────────────────────────────
+  // ── Pointer handlers (swipe + long-press) ───────────────────────────
+  // Long-press on touch/pen mirrors the desktop right-click contextual menu
+  // (置顶 / 拉黑 / 删除). Without this, mobile users have no way to reach
+  // 拉黑 — swipe only surfaces 置顶 + 删除. 500ms hold without horizontal
+  // motion fires the same showSessionMenu logic as contextmenu.
+  const LONG_PRESS_MS = 500;
+  let longPressTimer = null;
+  function clearLongPress() {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  }
+
   const onPointerDown = (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     if (e.target.closest('.action-btn')) return;
@@ -115,6 +125,16 @@ export async function mountChatList(container, params, router) {
       pointerId: e.pointerId,
       revealedAtStart: row === revealed,
     };
+    // Long-press: only for touch / pen (desktop has contextmenu).
+    if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+      const startX = e.clientX, startY = e.clientY;
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        // Cancel any swipe-in-progress so the row doesn't slide while the menu shows.
+        if (drag && drag.row === row) drag.swiping = false;
+        showSessionMenu(row, startX, startY);
+      }, LONG_PRESS_MS);
+    }
   };
 
   const onPointerMove = (e) => {
@@ -122,6 +142,8 @@ export async function mountChatList(container, params, router) {
     const dx = e.clientX - drag.startX;
     const dy = e.clientY - drag.startY;
     if (!drag.swiping) {
+      // Movement > 6px cancels the long-press intent (user is swiping or scrolling).
+      if (longPressTimer && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) clearLongPress();
       if (Math.abs(dx) < 6 || Math.abs(dx) < Math.abs(dy)) return;
       drag.swiping = true;
       drag.item.style.transition = 'none';
@@ -137,6 +159,7 @@ export async function mountChatList(container, params, router) {
 
   const onPointerEnd = (e) => {
     if (!drag || e.pointerId !== drag.pointerId) return;
+    clearLongPress();
     const wasSwiping = drag.swiping;
     if (wasSwiping) {
       drag.item.style.transition = '';
@@ -225,10 +248,9 @@ export async function mountChatList(container, params, router) {
 
   function closeSessionMenu() { sessionMenu.hidden = true; }
 
-  const onContextMenu = async (e) => {
-    const row = e.target.closest('.session-row');
-    if (!row) return;
-    e.preventDefault();
+  // Extracted so both right-click (desktop) and long-press (mobile) reuse the
+  // same menu rendering + positioning.
+  async function showSessionMenu(row, clientX, clientY) {
     closeRevealed();
     const id = row.dataset.sessionId;
     const s = await db.get('chatSessions', id);
@@ -242,10 +264,25 @@ export async function mountChatList(container, params, router) {
     `;
     sessionMenu.dataset.sessionId = id;
     sessionMenu.hidden = false;
-    // Position next to the cursor, clamped inside body.
+    // Pre-measure: visibility:hidden lets the menu lay out without flashing
+    // at the previous position before the JS positioner kicks in.
+    sessionMenu.style.visibility = 'hidden';
     const bodyRect = body.getBoundingClientRect();
-    sessionMenu.style.left = Math.min(e.clientX - bodyRect.left, bodyRect.width - 160) + 'px';
-    sessionMenu.style.top  = Math.min(e.clientY - bodyRect.top,  bodyRect.height - 140) + 'px';
+    const menuRect = sessionMenu.getBoundingClientRect();
+    let left = Math.min(clientX - bodyRect.left, bodyRect.width  - menuRect.width  - 8);
+    let top  = Math.min(clientY - bodyRect.top,  bodyRect.height - menuRect.height - 8);
+    if (left < 8) left = 8;
+    if (top  < 8) top  = 8;
+    sessionMenu.style.left = left + 'px';
+    sessionMenu.style.top  = top + 'px';
+    sessionMenu.style.visibility = '';
+  }
+
+  const onContextMenu = (e) => {
+    const row = e.target.closest('.session-row');
+    if (!row) return;
+    e.preventDefault();
+    showSessionMenu(row, e.clientX, e.clientY);
   };
 
   const onMenuClick = async (e) => {

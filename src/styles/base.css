@@ -172,6 +172,10 @@ body[data-fx-texture]:not([data-fx-texture="none"]) .page > * { position: relati
    shrink toward 9:19.5 when window height is short; max(480px) is the
    absolute cap. Mobile viewports (full width) just take 100% within bounds. */
 .phone-frame {
+  /* 100vh fallback for older browsers; 100dvh (dynamic viewport height) on
+     anything Safari 15.4+ / Chrome 108+ so the frame stops jumping when iOS
+     Safari hides/shows its address bar (100vh includes the bar's height,
+     which leads to a sudden re-layout mid-scroll). */
   max-width: clamp(400px, calc((100vh - 24px) * 9 / 19.5), 480px);
   width: 100%;
   margin: 0 auto;
@@ -181,6 +185,26 @@ body[data-fx-texture]:not([data-fx-texture="none"]) .page > * { position: relati
   background: var(--bg);
   box-shadow: 0 0 24px rgba(0, 0, 0, 0.15);
   overflow: hidden;
+}
+@supports (height: 100dvh) {
+  .phone-frame {
+    max-width: clamp(400px, calc((100dvh - 24px) * 9 / 19.5), 480px);
+  }
+}
+
+/* Narrow-viewport tuning. Sub-440px (old Androids, split-screen modes,
+   browser zoom) — drop the desktop max-width cap, the box-shadow, and
+   give the frame full-width. The .phone-frame's clamp() has a 400px MIN
+   which can overflow horizontally on phones under that width otherwise. */
+@media (max-width: 440px) {
+  .phone-frame {
+    max-width: 100%;
+    box-shadow: none;
+  }
+  /* The outside-bg color only matters when the frame is narrower than the
+     viewport. On true mobile the frame fills the viewport and the body
+     background just adds a flash during reloads. Match it to var(--bg). */
+  body { background: var(--bg); }
 }
 
 /* Fake iOS status bar at very top of frame.
@@ -1627,7 +1651,11 @@ label .label-text {
 
 .chat-input {
   flex: 0 0 auto;
-  padding: 8px;
+  /* Bottom padding accounts for the iOS home-indicator strip so the input
+     box isn't tucked under it on iPhone X+ phones (matches what
+     .attach-panel + .messaging-tabs + .home-dock already do for their
+     bottom strips). */
+  padding: 8px 8px max(8px, env(safe-area-inset-bottom));
   display: flex;
   gap: 6px;
   align-items: flex-end;

@@ -227,17 +227,25 @@ export async function mountChat(container, params, router) {
     const isUser = !!row?.classList.contains('user');
     bubbleMenu.classList.toggle('for-user',  isUser);
     bubbleMenu.classList.toggle('for-char', !isUser);
+    // Pre-measure pattern: reveal the menu invisibly so the browser lays it
+    // out (getBoundingClientRect would otherwise return zero on the same
+    // frame the element transitions out of display:none). Anchor to the
+    // bubble rect itself rather than touch coords — touch positions can lag
+    // behind the bubble on iOS while it's still tracking scroll inertia.
+    bubbleMenu.style.visibility = 'hidden';
     bubbleMenu.hidden = false;
-    // Position the menu: place above the bubble, clamp to viewport (page).
     const pageRect = chatPage.getBoundingClientRect();
+    const bubbleRect = bubble.getBoundingClientRect();
     const menuRect = bubbleMenu.getBoundingClientRect();
-    let left = x - pageRect.left - menuRect.width / 2;
-    let top  = y - pageRect.top  - menuRect.height - 8;
+    let left = bubbleRect.left - pageRect.left + bubbleRect.width / 2 - menuRect.width / 2;
+    let top  = bubbleRect.top  - pageRect.top  - menuRect.height - 8;
     if (left < 8) left = 8;
     if (left + menuRect.width > pageRect.width - 8) left = pageRect.width - menuRect.width - 8;
-    if (top < 8) top = y - pageRect.top + 12;  // not enough room above, drop below
+    // Not enough room above the bubble — drop below instead.
+    if (top < 8) top = bubbleRect.bottom - pageRect.top + 8;
     bubbleMenu.style.left = left + 'px';
     bubbleMenu.style.top  = top  + 'px';
+    bubbleMenu.style.visibility = '';
   }
 
   // ---- Handlers ----
@@ -606,6 +614,13 @@ export async function mountChat(container, params, router) {
 
     } else if (btn.dataset.action === 'delete') {
       if (!confirm('删除这一条消息?(只删本条,前后消息保留)')) return;
+      // Manual delete bypasses the archive flow that maybeCompressMemory uses,
+      // so we have to clean up favorites by hand — otherwise the favorites
+      // page shows "(已删除的消息)" for any starred bubble on this row.
+      const favs = await db.query('favorites', 'sessionId', sessionId);
+      for (const f of favs.filter(f => f.msgId === msgId)) {
+        await db.del('favorites', f.id);
+      }
       await db.del('chatMessages', msgId);
       if (replyingTo === msgId) clearReply();
       await refresh();

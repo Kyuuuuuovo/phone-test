@@ -110,18 +110,32 @@ const STRANGER_CAST_BOTTLE_SYS = `
 // Find all drifting bottles whose replyDueAt has elapsed and generate
 // replies for each in serial. Best-effort: failures log a warning and the
 // bottle stays drifting (will retry on next scan).
+//
+// Module-level lock — boot AND 「打开漂流瓶 app」 both call this, and the
+// two calls can interleave. Without the lock both runs would race on the
+// same drifting row, each invoke generateReply against it, and the second
+// write would clobber the first (or worse, double-charge for two API
+// calls). Second caller returns 0 immediately; the in-flight run owns the
+// scan until it finishes.
+let _scanning = false;
 export async function scanDueBottles(db, ai) {
-  const drifting = await db.query('bottles', 'status', 'drifting');
-  const now = Date.now();
-  const due = drifting.filter(b => (b.replyDueAt ?? 0) <= now);
-  for (const b of due) {
-    try {
-      await generateReply(db, ai, b);
-    } catch (e) {
-      console.warn(`[bottle] reply gen failed for ${b.id} — leaving drifting:`, e);
+  if (_scanning) return 0;
+  _scanning = true;
+  try {
+    const drifting = await db.query('bottles', 'status', 'drifting');
+    const now = Date.now();
+    const due = drifting.filter(b => (b.replyDueAt ?? 0) <= now);
+    for (const b of due) {
+      try {
+        await generateReply(db, ai, b);
+      } catch (e) {
+        console.warn(`[bottle] reply gen failed for ${b.id} — leaving drifting:`, e);
+      }
     }
+    return due.length;
+  } finally {
+    _scanning = false;
   }
-  return due.length;
 }
 
 async function generateReply(db, ai, bottle) {
