@@ -38,14 +38,17 @@
   bubble menu(右键 / 长按 500ms):引用 / 复制 / 收藏 / 删除;
   ⋯ 更多 → `chat-info`(置顶 toggle / 显示已读 toggle / 会话设置 / 聊天美化 / 记忆总结 / 编辑角色 / 清空 / 拉黑)
 - **监控 (`monitor` / `monitor-view`)**:列表 + 单画面卡。添加机位三步 modal:选角色 → 选模式(光明正大 / 偷窥)→ 选房间(光明正大走 `proposeRooms`,偷窥用户自填)。画面是 CCTV 风格深灰卡 + 噪点 overlay + saturate/hue 滤镜,显示 location/posture/activity/mood/caption + 红点 REC + 时间戳。spy 被察觉后顶部红条 + camera.discoveredAt 写入。快照式:刷新 = 一次 API 调用 = 一帧。
-- 已注册路由 (~33 个):
-  - `home / settings / settings-api / settings-api-detail / settings-weather / settings-theme / settings-memory / settings-data / settings-clear`
+- 已注册路由 (~36 个):
+  - `home / settings / settings-api / settings-api-detail / settings-weather / settings-theme / settings-memory / settings-embedding / settings-data / settings-clear`
   - `messaging / chat-list / chat / chat-info / chat-beautify / chat-settings / memory-manage / prompt-inspector`
   - `character-list / character-detail / worldbook-list / worldbook-detail / persona-list / persona-detail / persona-pick`
-  - `wallet / favorites-list / schedule / monitor / monitor-view / bottle`
+  - `wallet / favorites-list / schedule / monitor / monitor-view / bottle / memory`
 - **DevMode + 提示词调试 (`prompt-inspector`)**:设置 → 调试 → 开发者模式 打开后,聊天页右上角多一个齿轮 icon,跳到调试面板。面板:(a) 列出所有 apiConfig,radio 切活跃配置,**下一轮回复立刻用新配置,不需要刷新**;(b) 按真实注入顺序列出所有 prompt 分段(`buildSystemPromptParts`),每段显示 kind 标签(计算 / 数据 / 源常量 / 已覆盖)+ 是否「未注入」+ 警告(如改 OUTPUT 两段会破坏 JSON 契约);(c) override 段(humanizer / behavior / countSpec / schemasText)有「编辑」「保存」「恢复默认」,空字符串覆盖保留为「故意不注入」;(d) data 段有「去编辑 →」跳对应页;(e) 「显示完整 dump」原样输出 `buildSystemPrompt` 最终字符串。终端用户 devMode 默认关,看不见入口。
 - **桌宠**:全局悬浮球,挂在 `.phone-frame` 内、`#page-container` **兄弟节点**(跨页常驻,不走 router)。交互三档:**短点 = 冒一条氛围气泡**(强制 fresh,绕过冷却);**长按 (touch/pen 600ms) / 右键 = 进 `chat` sessionId=`__bear_session__`**;>4px 拖动 = 持久化新坐标。氛围气泡按规则(无 API / 无角色 / lastMessageAt 老旧 / 时段)挑文案,**不调 API**。位置 / 开关 / 气泡冷却进 `settings`。`__bear__` 在 character-list / contacts / 新建对话 modal / monitor 选角色 / 行程选角色 等所有"选角色"界面都被过滤(`c.id !== '__bear__'`),编辑入口只在 设置 → 桌宠 → 编辑桌宠人设(跳 `character-detail`)。
-- **漂流瓶 (`bottle`)**:网络隐喻(不是物理瓶子,UI 文案避开"海里/捞/漂着"),保留 audience 二选一,一瓶一回。两种受众模式:**contacts** = 从非内置非拉黑 character 里随机挑一个回信,注入 `ANONYMITY_FRAMING_FOR_CONTACTS` 让 ta 不知道作者是谁;**strangers** = 用 `STRANGER_PERSONA_GENERATOR_SYS` 现造一个网络上的陌生人(任何国家时区/年龄/身份/心情 — 强调多样性,不要默认温柔好人)再让 ta 回。发时只存 row(`status='drifting'`、`replyDueAt = now + 30min-4h 随机`);boot + 打开 app 时 `scanDueBottles` 找到期 drifting → 懒生成回信。"随机收一条" = AI 现造陌生人 + 写一封瓶子。回信 / 发的人支持「加好友」一键升格成正式 character。回信是**纯文本**,不走动作协议,不进 chatMessages —— 单独存在 `bottles` store。
+- **漂流瓶 (`bottle`)**:网络隐喻(不是物理瓶子,UI 文案避开"海里/捞/漂着"),保留 audience 二选一,一瓶一回。两种受众模式:**contacts** = 从非内置非拉黑 character 里随机挑一个回信,注入 `ANONYMITY_FRAMING_FOR_CONTACTS` 让 ta 不知道作者是谁;**strangers** = 用 `STRANGER_PERSONA_GENERATOR_SYS` 现造一个网络上的陌生人(任何国家时区/年龄/身份/心情 — 强调多样性,不要默认温柔好人)再让 ta 回。发时只存 row(`status='drifting'`、`replyDueAt = now + 30min-4h 随机`);boot + 打开 app 时 `scanDueBottles` 找到期 drifting → 懒生成回信(**模块级 `_scanning` 锁防 boot+app-open 并发**)。"随机收一条" = AI 现造陌生人 + 写一封瓶子。回信 / 发的人支持「加好友」一键升格成正式 character。回信是**纯文本**,不走动作协议,不进 chatMessages —— 单独存在 `bottles` store。
+- **独立记忆 app (`memory`,home 第二页入口)**:跨会话的记忆总览,4 tab:**月历**(当月格子 + 时间线/总结/纪念日三色点 + 点格子看当天细节 modal + 「加纪念日」直达)/ **时间线**(跨会话的一句话日总结 + 会话标签)/ **纪念日**(`milestones` store,可关联角色 + 每年重复)/ **总结**(跨会话 L1/L2 memories,按会话折叠分组)。不进 system prompt,纯用户视图。**chat 内的 memory-manage 还在**(session-scoped 操作 — 删 summary / 风格 override / 时间线 tab + merge / 导出文本),两者并存。
+- **向量记忆 (设置 → 向量记忆 / `settings-embedding`)**:OpenAI 兼容 `/v1/embeddings` 端点。配置后:每条 memory 生成时 fire-and-forget embed → 存 `embeddings` store(`Float32Array`,IDB 原生 structured-clone)。每次 `requestReply` 把最近 5 turns(user + assistant 混合)拼成 query → cosine top-K(**阈值 ≥ 0.35**,默认 K=5)→ 注入 prompt 的「# 相关记忆(按语义检索)」段,位置在「# 远期记忆」之前。3 个预设按钮(OpenAI / 硅基流动 BGE / DashScope Qwen)。「补齐旧总结」按钮串行 + 150ms 间隔,不会撞速率限制。默认关 — 每轮回复多 1 次 embedding API 调用,opt-in。
+- **modal helpers (`src/core/modal.js`)**:`openModal({title,fields,...})` Promise<obj|null>(收输入)、`openConfirm({title,message,danger?})` Promise<bool>(确认)、`openAlert({title,message,danger?})` Promise<void>(单按钮提示)。**全部页内 modal,不要再用 `confirm()` / `alert()`**(已经把项目里所有 22+24 处全替换了)。Esc/Enter/click-outside 都处理了。`danger:true` 把按钮/标题染红。
 
 ---
 
