@@ -42,6 +42,8 @@ import {
   ensureBearExists, pickAmbientLine,
 } from './core/pet.js';
 import { scanDueBottles } from './core/bottle.js';
+import * as notify from './core/notify.js';
+import * as scheduleNotify from './core/schedule-notify.js';
 
 // Expose modules on window for console-driven dev/debugging.
 window.app = { db, router, ai, context };
@@ -176,6 +178,13 @@ async function boot() {
   scanDueBottles(db, ai).catch(err => console.warn('[boot] bottle scan failed:', err));
   // Pet floating orb wiring (drag persistence, ambient bubble, click → chat).
   setupPet(router).catch(err => console.warn('[boot] pet setup failed:', err));
+
+  // Notification wiring — schedule-notify polls the user's own schedule
+  // entries every 60s and raises an in-frame banner when one's startTs
+  // is ±60s of now. notify just stashes a router reference so AI-reply
+  // system notifications can navigate back to the right chat on click.
+  notify.init(router);
+  scheduleNotify.start(router);
 
   await router.navigate('home');
   console.log('[boot] mounted home');

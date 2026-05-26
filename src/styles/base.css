@@ -2200,6 +2200,81 @@ label .label-text {
 .pet-bubble[hidden] { display: none; }
 .pet-bubble:hover { opacity: 0.9; }
 
+/* Schedule reminder banner — slides down from the status-bar bottom inside
+   .phone-frame. Same anchoring strategy as .pet-orb / .pet-bubble (absolute
+   children of .phone-frame so they survive router.navigate). Initial state
+   is fully translated up + zero opacity; .show flips both for the entrance
+   transition. */
+.schedule-banner {
+  position: absolute;
+  top: 36px;        /* just under the .status-bar */
+  left: 8px;
+  right: 8px;
+  z-index: 220;     /* above .pet-bubble (201) so a reminder always wins */
+  transform: translateY(-12px);
+  opacity: 0;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  pointer-events: none;
+}
+.schedule-banner.show {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+.schedule-banner .sb-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+.schedule-banner .sb-icon { font-size: 22px; line-height: 1; flex-shrink: 0; }
+.schedule-banner .sb-body { flex: 1; min-width: 0; }
+.schedule-banner .sb-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.schedule-banner .sb-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.schedule-banner .sb-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.schedule-banner .sb-go {
+  font: inherit;
+  padding: 6px 12px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.schedule-banner .sb-go:hover { filter: brightness(1.05); }
+.schedule-banner .sb-ok {
+  font: inherit;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 50%;
+}
+.schedule-banner .sb-ok:hover { background: var(--bubble-char); color: var(--fg); }
+
 /* Settings "桌宠" section */
 .settings-section-title {
   margin: 24px 0 8px;

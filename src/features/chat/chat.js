@@ -4,6 +4,7 @@
 import * as db from '../../core/db.js';
 import * as ai from '../../core/ai.js';
 import * as context from '../../core/context.js';
+import * as notify from '../../core/notify.js';
 import { openConfirm, openAlert } from '../../core/modal.js';
 
 const SVG = {
@@ -316,10 +317,16 @@ export async function mountChat(container, params, router) {
       // After AI replies, all preceding user messages count as 已读.
       await markReadUpToLatestUserMsg();
       await refresh();
+      // If the user has navigated away (different tab, minimized browser),
+      // raise a system notification so they can come back. No-op when the
+      // tab is visible or permission/setting is off. Fired before reveal
+      // because reveal awaits (up to a few seconds for multi-bubble
+      // replies) and we want the alert to land as early as possible.
+      notify.notifyAIReply(sessionId, result?.messageId).catch(() => {});
       // Reveal the new character bubbles one by one so multi-action replies
       // (which currently arrive as one DB write with N actions) don't dump
       // all bubbles into the stream at the same instant. Pacing is rough —
-      // length-based, capped 2s — but it's enough to feel like the other
+      // length-based, capped 3s — but it's enough to feel like the other
       // side is typing rather than flooding.
       await streamingReveal(result?.messageId);
     } catch (e) {

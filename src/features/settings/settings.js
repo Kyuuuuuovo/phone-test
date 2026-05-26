@@ -1,6 +1,8 @@
 // Settings hub. A list of subpages, each navigates via router.
 
 import * as db from '../../core/db.js';
+import * as notify from '../../core/notify.js';
+import { openAlert } from '../../core/modal.js';
 import { BEAR_CHARACTER_ID, DEFAULT_BEAR_AVATAR } from '../../core/pet.js';
 
 export async function mountSettings(container, params, router) {
@@ -8,6 +10,16 @@ export async function mountSettings(container, params, router) {
   const petEnabled = settings.petEnabled !== false;
   const bear = await db.get('characters', BEAR_CHARACTER_ID);
   const bearAvatar = bear?.avatar || DEFAULT_BEAR_AVATAR;
+  // Notify toggle reflects BOTH the stored intent and the live permission
+  // state — a stored true with revoked permission shouldn't look "on" in
+  // the UI, because no notification will actually fire.
+  const notifySupported = notify.isSupported();
+  const notifyPerm = notify.permission();
+  const notifyOnReply = settings.notifyOnReply === true && notifyPerm === 'granted';
+  const notifyHint = !notifySupported ? '此浏览器不支持系统通知'
+    : notifyPerm === 'denied' ? '浏览器已拒绝通知权限,需要在浏览器站点设置里手动允许'
+    : notifyPerm === 'granted' ? '页面切到其他标签时,AI 回复完会弹系统通知'
+    : '页面切到其他标签时,AI 回复完弹系统通知(需要授权一次)';
 
   container.innerHTML = `
     <div class="page">
@@ -82,6 +94,16 @@ export async function mountSettings(container, params, router) {
           </label>
         </div>
 
+        <h3 class="settings-section-title">通知</h3>
+        <div class="settings-list">
+          <label class="settings-item toggle-row">
+            <span class="settings-label">AI 回复时弹系统通知
+              <div class="settings-sub">${esc(notifyHint)}</div>
+            </span>
+            <input type="checkbox" data-toggle="notifyOnReply"${notifyOnReply ? ' checked' : ''}${(!notifySupported || notifyPerm === 'denied') ? ' disabled' : ''}>
+          </label>
+        </div>
+
         <h3 class="settings-section-title">调试</h3>
         <div class="settings-list">
           <label class="settings-item toggle-row">
@@ -117,6 +139,32 @@ export async function mountSettings(container, params, router) {
     } else if (which === 'syncScheduleToChat' || which === 'syncMonitorToChat') {
       s[which] = !!cb.checked;
       await db.set('settings', s);
+    } else if (which === 'notifyOnReply') {
+      // Toggle-on: request permission first (browsers require a user
+      // gesture, which the checkbox click counts as). Only persist
+      // `true` if permission actually lands on granted. The DOM
+      // checkbox is rolled back to off when we can't grant, so the UI
+      // stays honest about whether notifications will fire.
+      if (cb.checked) {
+        const result = await notify.requestPermission();
+        if (result !== 'granted') {
+          cb.checked = false;
+          s.notifyOnReply = false;
+          await db.set('settings', s);
+          await openAlert(container, {
+            title: '没拿到通知权限',
+            message: result === 'denied'
+              ? '浏览器记住了「拒绝」。要重新授权,需要在浏览器地址栏左侧的站点设置里把通知改回「允许」,再回到这里打开。'
+              : '权限请求被关掉了。点开关再试一次?',
+          });
+          return;
+        }
+        s.notifyOnReply = true;
+        await db.set('settings', s);
+      } else {
+        s.notifyOnReply = false;
+        await db.set('settings', s);
+      }
     }
   };
   container.addEventListener('change', onChange);
