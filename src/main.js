@@ -12,6 +12,7 @@ import { mountApiDetail }   from './features/settings/api-detail.js';
 import { mountWeatherApi }  from './features/settings/weather-api.js';
 import { mountTheme }       from './features/settings/theme.js';
 import { mountMemorySettings } from './features/settings/memory.js';
+import { mountEmbeddingSettings } from './features/settings/embedding.js';
 import { mountDataBackup }  from './features/settings/data-backup.js';
 import { mountClearData }   from './features/settings/clear-data.js';
 import { mountChatList }    from './features/chat-list/chat-list.js';
@@ -142,6 +143,7 @@ async function boot() {
   router.registerPage('settings-weather',    mountWeatherApi);
   router.registerPage('settings-theme',      mountTheme);
   router.registerPage('settings-memory',     mountMemorySettings);
+  router.registerPage('settings-embedding',  mountEmbeddingSettings);
   router.registerPage('settings-data',  mountDataBackup);
   router.registerPage('settings-clear', mountClearData);
   router.registerPage('chat-list',         mountChatList);

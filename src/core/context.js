@@ -4,6 +4,7 @@ import * as db from './db.js';
 import * as ai from './ai.js';
 import { HUMANIZER_PROMPT } from './humanizer.js';
 import { BEHAVIOR_GUIDANCE } from './behavior.js';
+import * as embedding from './embedding.js';
 
 // Output format constraints — split into two segments so they sit at different
 // positions in the prompt: count + JSON-only rule first (before per-turn data),
@@ -194,6 +195,20 @@ export async function buildSystemPromptParts(sessionId, { featureContext } = {})
     kind: 'data',
     editRoute: 'worldbook-list',
   });
+  // 6b. 相关记忆 — 按语义检索(if vector memory is enabled). Goes BEFORE
+  //     the linear L1/L2 summaries so the most-relevant facts are primed
+  //     first. Uses the last few user messages as the query text.
+  //     Linear memory preserves narrative arc; vector recall surfaces
+  //     specific facts mentioned long ago and possibly forgotten by the
+  //     linear compression. They coexist, slight overlap is OK.
+  const vectorRecall = await buildVectorRecallLines(sessionId);
+  parts.push({
+    key: 'vector-recall',
+    title: '# 相关记忆(按语义检索)',
+    body: vectorRecall,
+    kind: 'data',
+    editRoute: 'settings-embedding',
+  });
   // 7. 远期 + 近期记忆
   parts.push({
     key: 'mem-l2',
@@ -315,6 +330,44 @@ export async function buildSystemPrompt(sessionId, opts) {
     .filter(p => (p.body ?? '').trim() !== '')
     .map(p => p.title ? `${p.title}\n\n${p.body}` : p.body)
     .join('\n\n---\n\n');
+}
+
+// Vector retrieval — embed the last few user messages as a query, cosine
+// top-K across this session's memory embeddings. Returns the formatted
+// lines (or '' when disabled / no hits / unconfigured).
+//
+// Query construction: latest N user msgs concatenated. Newer first so the
+// embedding emphasizes what the user is currently talking about, but order
+// doesn't matter much to embeddings — the summed signal is what counts.
+async function buildVectorRecallLines(sessionId) {
+  const settings = (await db.get('settings', 'default')) || {};
+  if (settings.embedding?.enabled !== true) return '';
+  const QUERY_USER_MSG_COUNT = 3;
+  const allMsgs = (await db.query('chatMessages', 'sessionId', sessionId))
+    .filter(m => m.role === 'user' && !m.archived);
+  if (allMsgs.length === 0) return '';
+  allMsgs.sort((a, b) => b.createdAt - a.createdAt);
+  const recent = allMsgs.slice(0, QUERY_USER_MSG_COUNT).reverse();
+  const query = recent
+    .map(m => (m.actions || []).map(a => a.content || a.description || '').join(' '))
+    .join('\n')
+    .trim();
+  if (!query) return '';
+  let hits = [];
+  try {
+    hits = await embedding.topKMemoriesForQuery(sessionId, query);
+  } catch (e) {
+    console.warn('[context] vector recall failed (non-fatal):', e);
+    return '';
+  }
+  if (hits.length === 0) return '';
+  // Format as ranked list with similarity hint. The percentage lets the
+  // model see how strong the match is — it can de-weight a weak match
+  // ("相关度 31%") versus a strong one ("相关度 87%").
+  return hits.map(({ memory, score }) => {
+    const pct = Math.round(Math.max(0, score) * 100);
+    return `(相关度 ${pct}%)${memory.summary}`;
+  }).join('\n\n');
 }
 
 // Character's current activity — pulled from the latest activityLog row
@@ -583,7 +636,7 @@ export async function maybeCompressMemory(sessionId) {
   });
 
   const memId = db.newId();
-  await db.set('memories', {
+  const newMem = {
     id: memId,
     sessionId,
     tier: 1,
@@ -591,7 +644,12 @@ export async function maybeCompressMemory(sessionId) {
     fromMsgId: overflow[0].id,
     toMsgId: overflow[overflow.length - 1].id,
     createdAt: Date.now(),
-  });
+  };
+  await db.set('memories', newMem);
+  // Fire-and-forget embed of the new memory. Failures don't block the
+  // reply flow; embedding.embedMemory returns null when disabled /
+  // unconfigured / failing.
+  embedding.embedMemory(newMem).catch(e => console.warn('[context] embed failed:', e));
   // Mark messages as archived instead of deleting them. Keeping the rows
   // means:
   //   1. Scrolling up still shows the user the conversation history.
@@ -639,7 +697,7 @@ async function maybeRollupToL2(sessionId) {
     return null;
   }
   const newId = db.newId();
-  await db.set('memories', {
+  const newL2 = {
     id: newId,
     sessionId,
     tier: 2,
@@ -647,8 +705,12 @@ async function maybeRollupToL2(sessionId) {
     fromMsgId: toMerge[0].fromMsgId,
     toMsgId: toMerge[toMerge.length - 1].toMsgId,
     createdAt: Date.now(),
-  });
+  };
+  await db.set('memories', newL2);
   for (const m of toMerge) await db.del('memories', m.id);
+  // L2 also gets a vector — semantic retrieval should be able to find a
+  // chapter-summary just as well as a fine-grained one. Fire-and-forget.
+  embedding.embedMemory(newL2).catch(e => console.warn('[context] L2 embed failed:', e));
   return newId;
 }
 

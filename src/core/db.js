@@ -2,7 +2,7 @@
 // Data model frozen in STORES below — bump DB_VERSION when changing schema.
 
 export const DB_NAME = 'phone-app';
-export const DB_VERSION = 8;
+export const DB_VERSION = 9;
 
 // Object store definitions. Applied during onupgradeneeded.
 // keyPath = primary key field; indexes = secondary lookup paths.
@@ -134,6 +134,19 @@ export const STORES = {
     indexes: [
       { name: 'dayKey', keyPath: 'dayKey' },
       { name: 'characterId', keyPath: 'characterId' },
+    ],
+  },
+  // Embeddings — per-source-row vector store for semantic retrieval.
+  // Fields: id, sourceType ('memory'|'msg'), sourceId (memoryId or msgId),
+  // sessionId, vector (Float32Array — structured-clone-safe in IDB),
+  // dim, modelName, createdAt.
+  // Indexed by sessionId (per-session retrieval scope) and sourceId
+  // (dedup-check when re-embedding).
+  embeddings: {
+    keyPath: 'id',
+    indexes: [
+      { name: 'sessionId', keyPath: 'sessionId' },
+      { name: 'sourceId',  keyPath: 'sourceId'  },
     ],
   },
 };
