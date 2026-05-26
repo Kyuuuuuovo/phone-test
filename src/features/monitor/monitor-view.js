@@ -97,6 +97,12 @@ export async function mountMonitorView(container, params, router) {
             <button class="btn secondary change-room-btn" type="button">换机位</button>
             <button class="btn secondary change-angle-btn" type="button">转动镜头</button>
           </div>
+          <label class="cam-feed-toggle">
+            <input type="checkbox" class="feed-toggle"${camera.feedToChat === true ? ' checked' : ''}>
+            <span class="cam-feed-label">把这台的画面同步到聊天
+              <small>聊天的 system prompt 会注入「# 角色当前活动」(只描述 ta 在做什么,不提镜头)。需要总开关在 设置 → 聊天注入 也打开。</small>
+            </span>
+          </label>
           <p class="hint">每次刷新会调一次 AI 生成一帧。模式 = <b>${modeLabel}</b>(${camera.mode === 'open' ? '角色知道镜头' : '角色不知道'})。换机位 / 转动镜头会让之前的画面记录在 UI 上隐藏(数据保留)。</p>
         </div>
       </div>
@@ -122,6 +128,15 @@ export async function mountMonitorView(container, params, router) {
     }
     if (e.target.closest('.change-angle-btn')) {
       await openChangeAngleModal(container, cameraId, render);
+      return;
+    }
+    const feedTgl = e.target.closest('.feed-toggle');
+    if (feedTgl) {
+      const cam = await db.get('cameras', cameraId);
+      if (cam) {
+        cam.feedToChat = feedTgl.checked;
+        await db.set('cameras', cam);
+      }
       return;
     }
     if (e.target.closest('.refresh-btn') && !busy) {

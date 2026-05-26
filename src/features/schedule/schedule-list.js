@@ -113,6 +113,10 @@ export async function mountScheduleList(container, params, router) {
             <div class="label-text">描述(可选)</div>
             <textarea name="desc" rows="3">${esc(e.desc)}</textarea>
           </label>
+          <label class="checkbox-row">
+            <input type="checkbox" name="syncToChat"${e.syncToChat !== false ? ' checked' : ''}>
+            <span>同步到聊天的「# 当前行程」段</span>
+          </label>
           <div class="modal-actions">
             <button type="button" class="btn secondary cancel-btn">取消</button>
             <button type="submit" class="btn">${existing ? '保存' : '创建'}</button>
@@ -146,6 +150,7 @@ export async function mountScheduleList(container, params, router) {
         endTs,
         title: String(fd.get('title') || '').trim() || '(无标题)',
         desc: String(fd.get('desc') || '').trim(),
+        syncToChat: form.elements.syncToChat.checked,
         createdAt: existing?.createdAt || Date.now(),
       };
       await db.set('schedule', next);
@@ -305,11 +310,14 @@ function bucketize(entries) {
 function renderEntry(e, charMap) {
   const who = e.who === 'user' ? '我' : (charMap.get(e.characterId)?.name || '(未知角色)');
   const time = formatTimeRange(e.startTs, e.endTs);
+  // syncToChat===false → entry is muted; show a 🔇 indicator inline so the
+  // user can tell at a glance which entries won't reach the prompt.
+  const muted = e.syncToChat === false ? '<span class="entry-muted" title="此条不同步到聊天">🔇</span>' : '';
   return `
-    <div class="schedule-entry" data-entry-id="${esc(e.id)}">
+    <div class="schedule-entry${e.syncToChat === false ? ' muted' : ''}" data-entry-id="${esc(e.id)}">
       <div class="entry-time">${esc(time)}</div>
       <div class="entry-body">
-        <div class="entry-title"><span class="entry-who">${esc(who)}</span> ${esc(e.title || '(无标题)')}</div>
+        <div class="entry-title"><span class="entry-who">${esc(who)}</span> ${esc(e.title || '(无标题)')}${muted}</div>
         ${e.desc ? `<div class="entry-desc">${esc(e.desc)}</div>` : ''}
       </div>
       <button class="entry-del" title="删除">×</button>

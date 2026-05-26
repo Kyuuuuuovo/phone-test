@@ -240,6 +240,17 @@ export async function buildSystemPromptParts(sessionId, { featureContext } = {})
     kind: 'data',
     editRoute: 'monitor',
   });
+  // 8d. 角色当前活动 — derived from activityLog. Opt-in (default off).
+  //     Rule 9: the prompt body is a first-person status ("你目前的状态:
+  //     卧室 · 坐在床上 · 看书"), never mentions cameras.
+  const activityLine = await buildActivityLine(character.id);
+  parts.push({
+    key: 'activity',
+    title: '# 角色当前活动',
+    body: activityLine,
+    kind: 'data',
+    editRoute: 'monitor',
+  });
   // 9. 对话规范
   parts.push({
     key: 'humanizer',
@@ -306,6 +317,55 @@ export async function buildSystemPrompt(sessionId, opts) {
     .join('\n\n---\n\n');
 }
 
+// Character's current activity — pulled from the latest activityLog row
+// across the character's cameras that are feeding to chat. Pure first-
+// person fact statement ("你刚才在 卧室:坐在床上看书"); deliberately
+// avoids any mention of cameras / being watched.
+//
+// Rule 9 boundary: a spy camera with feedToChat=true that has NOT yet
+// been discovered is still legal to use as a data source here — what
+// the character is doing is something the character themselves knows.
+// What we must NEVER inject is "you're being recorded" / "the camera
+// caught you" — those phrases would break the design. Our format only
+// says where they are and what they're doing, both of which the
+// character is conscious of.
+//
+// Two-layer toggle:
+//   - global: settings.syncMonitorToChat (default false — opt-in)
+//   - per-camera: cameras.feedToChat (default false)
+async function buildActivityLine(characterId) {
+  const settings = (await db.get('settings', 'default')) || {};
+  if (settings.syncMonitorToChat !== true) return '';
+  const cameras = await db.query('cameras', 'characterId', characterId);
+  const feeding = cameras.filter(c => c.feedToChat === true);
+  if (feeding.length === 0) return '';
+  // Collect latest log per camera, then pick the overall freshest.
+  let latest = null;
+  for (const cam of feeding) {
+    const logs = await db.query('activityLog', 'cameraId', cam.id);
+    const cutoff = cam.viewChangedAt ?? 0;
+    const visible = logs.filter(l => (l.createdAt ?? 0) >= cutoff);
+    visible.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    const top = visible[0];
+    if (top && (!latest || (top.createdAt ?? 0) > (latest.createdAt ?? 0))) {
+      latest = top;
+    }
+  }
+  if (!latest) return '';
+  // outOfReach frames don't describe the character — skip them.
+  if (latest.payload?.outOfReach) return '';
+  const p = latest.payload || {};
+  const parts = [];
+  if (p.location) parts.push(p.location);
+  if (p.posture)  parts.push(p.posture);
+  if (p.activity) parts.push(p.activity);
+  if (parts.length === 0) return '';
+  const body = parts.join(' · ');
+  // Express in first person from the character's POV — they know where
+  // they are and what they're doing; they don't know we know.
+  return `你目前的状态:${body}。`;
+}
+
 // Camera knowledge for the character — only includes cameras the character
 // could plausibly know about:
 //   - open cameras (consented at placement)
@@ -339,7 +399,15 @@ async function buildCameraLines(characterId, userName) {
 
 // Schedule entries near current time, formatted as text lines for prompt
 // injection. Returns '' if nothing relevant. Window: past 6h → next 24h.
+//
+// Two-layer toggle (CLAUDE.md 铁律 12):
+//   - global: settings.syncScheduleToChat (default true) — turns the whole
+//     # 当前行程 segment on / off
+//   - per-entry: schedule.syncToChat (default true) — lets the user mute
+//     specific entries without disabling the whole feature
 async function buildScheduleLines(characterId) {
+  const settings = (await db.get('settings', 'default')) || {};
+  if (settings.syncScheduleToChat === false) return '';
   const all = await db.getAll('schedule');
   if (all.length === 0) return '';
   const now = Date.now();
@@ -347,6 +415,7 @@ async function buildScheduleLines(characterId) {
   const winEnd   = now + 24 * 60 * 60 * 1000;
   const relevant = all
     .filter(e => {
+      if (e.syncToChat === false) return false;  // per-entry mute
       if (e.startTs < winStart || e.startTs > winEnd) return false;
       // user-bucket events always included; character-bucket only for THIS character
       if (e.who === 'character') return e.characterId === characterId;

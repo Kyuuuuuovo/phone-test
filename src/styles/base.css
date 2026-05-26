@@ -2761,3 +2761,39 @@ label .label-text {
 .prompt-inspector-page .pi-badge.data      { background: color-mix(in srgb, var(--success) 18%, transparent); color: var(--success); }
 .prompt-inspector-page .pi-badge.computed  { background: color-mix(in srgb, var(--muted) 14%, transparent); color: var(--muted); }
 .prompt-inspector-page .pi-badge.skip      { background: rgba(255, 59, 48, 0.10); color: var(--danger); }
+
+/* Monitor: feed-to-chat toggle row under the CCTV card */
+.cam-feed-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 14px 0 6px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.cam-feed-toggle input { width: auto; flex-shrink: 0; margin-top: 2px; }
+.cam-feed-label {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg);
+}
+.cam-feed-label small {
+  display: block;
+  font-size: 12px;
+  font-weight: normal;
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+/* Schedule: muted entry — strikes the text through + dims, plus a 🔇 inline */
+.schedule-entry.muted { opacity: 0.55; }
+.schedule-entry .entry-muted {
+  margin-left: 6px;
+  font-size: 12px;
+  vertical-align: middle;
+}

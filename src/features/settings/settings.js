@@ -62,6 +62,22 @@ export async function mountSettings(container, params, router) {
           </button>
         </div>
 
+        <h3 class="settings-section-title">聊天注入</h3>
+        <div class="settings-list">
+          <label class="settings-item toggle-row">
+            <span class="settings-label">同步行程到聊天
+              <div class="settings-sub">把 [-6h, +24h] 窗内的行程注入聊天的「# 当前行程」段。每条行程也可独立关闭。</div>
+            </span>
+            <input type="checkbox" data-toggle="syncScheduleToChat"${settings.syncScheduleToChat !== false ? ' checked' : ''}>
+          </label>
+          <label class="settings-item toggle-row">
+            <span class="settings-label">同步监控到聊天
+              <div class="settings-sub">在监控里把单台机位标为「同步」后,最近的画面会注入聊天的「# 角色当前活动」段。默认关 — 这是潜在的世界状态改变,先想清楚再开。</div>
+            </span>
+            <input type="checkbox" data-toggle="syncMonitorToChat"${settings.syncMonitorToChat === true ? ' checked' : ''}>
+          </label>
+        </div>
+
         <h3 class="settings-section-title">调试</h3>
         <div class="settings-list">
           <label class="settings-item toggle-row">
@@ -94,6 +110,9 @@ export async function mountSettings(container, params, router) {
       // The chat page reads devMode at mount time, so the gear icon won't
       // appear until next chat navigation. Acceptable — toggling devMode
       // is rare and the visual change is one back-and-back away.
+    } else if (which === 'syncScheduleToChat' || which === 'syncMonitorToChat') {
+      s[which] = !!cb.checked;
+      await db.set('settings', s);
     }
   };
   container.addEventListener('change', onChange);
