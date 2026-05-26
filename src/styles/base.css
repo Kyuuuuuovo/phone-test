@@ -30,11 +30,18 @@
 }
 
 * { box-sizing: border-box; }
-/* 视窗高度 chain —— html/body/#app 都强制 100vh + min-height: 100vh,
-   兜底 phone-frame 用 flex:1 撑满。之前用 height: 100% chain 在某些
-   嵌入式浏览器 / IDE preview iframe 下不传递得很好,phone-frame 高度只有
-   一半。flex:1 是 main-axis sizing,比 height:100% 在 flex item 里更稳。 */
+/* 视窗高度 chain —— html/body/#app 都强制 100dvh(动态视窗高度,iOS Safari
+   URL bar 收起/展开会跟着改),fallback 到 100vh 给老浏览器。100vh 在 iOS
+   Safari 是"全屏含 URL bar"的高度,导致 body 比可见区高,user 能往下滚一
+   截看到空白。100dvh 跟着实际可见区走。
+   overflow: hidden on body 防御性挡住任何意外的纵向 scroll(子元素溢出
+   不应该让 body 也跟着滚)。
+   兜底 phone-frame 用 flex:1 撑满 #app main-axis。 */
 html, body { margin: 0; padding: 0; height: 100vh; min-height: 100vh; }
+body { overflow: hidden; }
+@supports (height: 100dvh) {
+  html, body { height: 100dvh; min-height: 100dvh; }
+}
 body {
   font-family: var(--font-family);
   font-size: var(--font-size);
@@ -311,6 +318,9 @@ body[data-fx-texture]:not([data-fx-texture="none"]) .page > * { position: relati
   flex-direction: column;
   align-items: center;
   overflow: hidden;
+}
+@supports (height: 100dvh) {
+  #app { height: 100dvh; min-height: 100dvh; }
 }
 
 /* Phone frame — caps width on desktop so the app always looks like a phone.

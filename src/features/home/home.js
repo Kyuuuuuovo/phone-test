@@ -1228,6 +1228,38 @@ async function migrateUnifiedGridV1(settings, widgets) {
   return await db.getAll('homeWidgets');
 }
 
+// 一次性 migration: 把任何 row > ROWS - rowSpan 的 widget / app 钉回最后一
+// 行。背景:之前我们一度试过 6 行布局,用户在那时拖了几个 item 到 row 5。
+// 后来回退 5 行,这些 item 的 row 字段仍是 5,grid-template-rows 只有 5 行
+// (row 0-4),所以 row=5 触发 grid-auto-rows 加新行,grid 总高被 6+ 行
+// 平分 → cells 缩水 → 用户报"图标小、布局错乱"。修法:扫一遍 widgets +
+// settings.tileOrder,把溢出行的 item 全部 clamp。一次性,标 rowsClampV1。
+async function migrateClampRowsV1(settings, widgets) {
+  if (settings?.rowsClampV1) return widgets;
+  for (const w of widgets) {
+    const span = widgetSpan(w);
+    const maxRow = Math.max(0, ROWS - span.rowSpan);
+    if (Number(w.row) > maxRow) {
+      w.row = maxRow;
+      await db.set('homeWidgets', w);
+    }
+  }
+  await db.updateSettings(s => {
+    if (Array.isArray(s.tileOrder)) {
+      for (const page of s.tileOrder) {
+        if (!Array.isArray(page)) continue;
+        for (const e of page) {
+          if (typeof e === 'object' && Number(e.row) > ROWS - 1) {
+            e.row = ROWS - 1;
+          }
+        }
+      }
+    }
+    s.rowsClampV1 = true;
+  });
+  return await db.getAll('homeWidgets');
+}
+
 // ── Music timer wiring ───────────────────────────────────────────────────
 function stopAllMusicTimers() {
   for (const id of _musicTimers.values()) clearInterval(id);
@@ -1328,6 +1360,10 @@ export async function mountHome(container, params, router) {
   let userWidgets = await db.getAll('homeWidgets');
   userWidgets = await migrateUnifiedGridV1(settings, userWidgets);
   settings = await db.get('settings', 'default');  // re-read after migration
+
+  // Clamp stale rows from the brief 6-row experiment (see migrateClampRowsV1).
+  userWidgets = await migrateClampRowsV1(settings, userWidgets);
+  settings = await db.get('settings', 'default');
 
   const tileOrder = Array.isArray(settings?.tileOrder) ? settings.tileOrder : [];
 
