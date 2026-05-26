@@ -335,16 +335,26 @@ export async function mountChat(container, params, router) {
     if (!msgId) return;
     const items = stream.querySelectorAll(`[data-msg-id="${cssEscape(msgId)}"]`);
     if (items.length === 0) return;
+    // display:none so unrevealed bubbles don't occupy layout (the bug
+    // where the user could see "empty frames" below the visible reply).
+    // We then flip back to '' + fade-in on each tick.
     for (const el of items) {
-      el.style.opacity = '0';
-      el.style.transform = 'translateY(8px)';
-      el.style.transition = 'opacity 0.22s ease, transform 0.22s ease';
+      el.style.display = 'none';
     }
     for (let i = 0; i < items.length; i++) {
       const el = items[i];
       const text = (el.textContent || '').trim();
-      const delay = i === 0 ? 150 : Math.min(2000, 250 + text.length * 35);
+      // First bubble: deliberate pause to feel like "typing started".
+      // Later bubbles: length-based, slower than before (felt like a dump).
+      const delay = i === 0 ? 500 : Math.min(3000, 500 + text.length * 50);
       await new Promise(r => setTimeout(r, delay));
+      el.style.display = '';
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(8px)';
+      el.style.transition = 'opacity 0.22s ease, transform 0.22s ease';
+      // RAF so the browser commits display:'' before starting the transition,
+      // otherwise opacity 0→1 collapses into the same frame as the layout.
+      await new Promise(r => requestAnimationFrame(r));
       el.style.opacity = '';
       el.style.transform = '';
       stream.scrollTop = stream.scrollHeight;

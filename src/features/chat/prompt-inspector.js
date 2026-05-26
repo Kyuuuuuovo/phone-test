@@ -56,6 +56,15 @@ export async function mountPromptInspector(container, params, router) {
   const dumpPre = container.querySelector('.pi-dump-pre');
   const dumpToggle = container.querySelector('.pi-dump-toggle');
 
+  // Bind 返回 before any awaits so it works during the initial load (which
+  // can be slow when vector recall fires an embedding API call as part of
+  // buildSystemPromptParts). Loading placeholders go into parts/api/dump
+  // so the user sees the page is alive while data fills in.
+  const onBack = () => router.back();
+  container.querySelector('.back').addEventListener('click', onBack);
+  apiList.innerHTML = `<div class="pi-empty">加载中…</div>`;
+  partsBox.innerHTML = `<div class="pi-empty">加载中…</div>`;
+
   // ── API list ─────────────────────────────────────────────────────────
   async function renderApis() {
     const configs = await db.getAll('apiConfig');
@@ -173,9 +182,6 @@ export async function mountPromptInspector(container, params, router) {
     dumpToggle.textContent = showing ? '显示完整 dump' : '隐藏 dump';
     partsBox.hidden = !showing ? true : false;
   });
-
-  const onBack = () => router.back();
-  container.querySelector('.back').addEventListener('click', onBack);
 
   return () => {
     container.querySelector('.back')?.removeEventListener('click', onBack);

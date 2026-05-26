@@ -39,10 +39,10 @@ const PAGES = [
     { id: 'character-list', label: '角色',   icon: SVG.character },
     { id: 'worldbook-list', label: '世界书', icon: SVG.book },
     { id: 'persona-list',   label: '人设',   icon: SVG.persona },
-    { id: 'schedule',       label: '行程',   icon: SVG.schedule },
+    { id: 'memory',         label: '记忆',   icon: SVG.memory },
   ],
   [
-    { id: 'memory',         label: '记忆',   icon: SVG.memory },
+    { id: 'schedule',       label: '行程',   icon: SVG.schedule },
     { id: 'diary',          label: '日记',   icon: SVG.diary },
     { id: 'twitter',        label: '推特',   icon: SVG.twitter },
     { id: 'forum',          label: '论坛',   icon: SVG.forum },
@@ -85,7 +85,6 @@ async function renderFavoritesWidget() {
     <div class="widget widget-favorites" data-target="favorites-list">
       <div class="widget-head">
         <span class="widget-title">收藏</span>
-        <span class="widget-count">${favs.length}</span>
       </div>
       <div class="widget-quote">${escHtml(text)}</div>
       <div class="widget-from">— ${escHtml(character?.name || '(未知)')}</div>
