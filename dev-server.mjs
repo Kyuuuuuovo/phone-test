@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
 
-const PORT = parseInt(process.env.PORT, 10) || 5173;
+const START_PORT = parseInt(process.env.PORT, 10) || 5173;
+const MAX_PORT_TRIES = 10;  // 5173, 5174, ..., 5182
 const ROOT = path.dirname(url.fileURLToPath(import.meta.url));
 
 const MIME = {
@@ -18,7 +19,7 @@ const MIME = {
   '.ico':  'image/x-icon',
 };
 
-http.createServer((req, res) => {
+const server = http.createServer((req, res) => {
   let urlPath = decodeURIComponent(req.url.split('?')[0]);
   if (urlPath === '/') urlPath = '/index.html';
   const filePath = path.normalize(path.join(ROOT, urlPath));
@@ -32,4 +33,22 @@ http.createServer((req, res) => {
     });
     res.end(data);
   });
-}).listen(PORT, () => console.log(`dev-server on http://localhost:${PORT}`));
+});
+
+// Try START_PORT first; if it's taken (EADDRINUSE,通常因为上次跑的 server
+// 没关干净),递增 port 重试 直到找到空闲的。最多试 10 个 port,避免无限
+// 循环。
+let port = START_PORT;
+let tries = 0;
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE' && tries < MAX_PORT_TRIES) {
+    console.log(`端口 ${port} 被占用,试下一个...`);
+    port++;
+    tries++;
+    setTimeout(() => server.listen(port), 50);
+  } else {
+    console.error('server failed:', err);
+    process.exit(1);
+  }
+});
+server.listen(port, () => console.log(`dev-server on http://localhost:${port}`));

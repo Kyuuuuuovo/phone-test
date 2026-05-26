@@ -30,7 +30,11 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; height: 100%; }
+/* 视窗高度 chain —— html/body/#app 都强制 100vh + min-height: 100vh,
+   兜底 phone-frame 用 flex:1 撑满。之前用 height: 100% chain 在某些
+   嵌入式浏览器 / IDE preview iframe 下不传递得很好,phone-frame 高度只有
+   一半。flex:1 是 main-axis sizing,比 height:100% 在 flex item 里更稳。 */
+html, body { margin: 0; padding: 0; height: 100vh; min-height: 100vh; }
 body {
   font-family: var(--font-family);
   font-size: var(--font-size);
@@ -40,14 +44,13 @@ body {
 
 /* ── Effects: gated by body[data-fx-*] attributes set by applyTheme() ────── */
 
-/* 渐变 — soft gradient as the page background. Originally targeted both
-   .phone-frame and .page, but using the `background` shorthand on
-   .phone-frame reset background-image and erased the wallpaper (set inline
-   by home.js when entering home). We now apply gradient ONLY to .page so
-   the wallpaper stays intact. On home (.page.home is transparent in
-   base.css below) gradient has no visible effect — wallpaper takes the
-   slot. On other pages with no wallpaper, gradient is the visible bg. */
-body[data-fx-gradient="on"] .page {
+/* 渐变 — soft gradient as the page background. Mutually exclusive with
+   wallpaper: when applyWallpaper() sets one, body gets
+   [data-fx-wallpaper="on"] and this rule no longer matches — wallpaper wins
+   (it covers the whole .phone-frame including status bar + dock area, so
+   gradient on .page alone would look mismatched anyway). The theme editor
+   grays out the gradient toggle when a wallpaper is set. */
+body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .page {
   background: linear-gradient(135deg, var(--gradient-from), var(--gradient-to));
 }
 
@@ -301,7 +304,14 @@ body[data-fx-texture="noise"] .page::before { background-image: radial-gradient(
 body[data-fx-texture]:not([data-fx-texture="none"]) .page { position: relative; }
 body[data-fx-texture]:not([data-fx-texture="none"]) .page > * { position: relative; z-index: 1; }
 
-#app { height: 100%; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
+#app {
+  height: 100vh;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: hidden;
+}
 
 /* Phone frame — caps width on desktop so the app always looks like a phone.
    clamp(min, preferred, max): min(400px) guards against the aspect formula
@@ -316,7 +326,11 @@ body[data-fx-texture]:not([data-fx-texture="none"]) .page > * { position: relati
   max-width: clamp(400px, calc((100vh - 24px) * 9 / 19.5), 480px);
   width: 100%;
   margin: 0 auto;
-  height: 100%;
+  /* flex:1 + min-height:0 让 phone-frame 撑满 #app main-axis(vertical),
+     比 height:100% 在 flex item 里更稳。之前在某些嵌入式预览(IDE iframe
+     等)下 height:100% 只算到 #app 内容高,不 stretch 到 viewport。 */
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--bg);
@@ -329,6 +343,28 @@ body[data-fx-texture]:not([data-fx-texture="none"]) .page > * { position: relati
      viewport coordinates, leaving the orb stuck on the left half of the
      screen and the bubble drifting off the orb. */
   position: relative;
+}
+/* 非 home 页面在 .phone-frame 上盖一层不透明的 var(--bg) 把壁纸挡住 —— 否则
+   .status-bar 是 transparent,壁纸会从状态栏背后漏出来,user 进 app 还能看
+   到 home 壁纸残留。home 时 backdrop 隐藏,壁纸完全显示。 */
+.phone-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  z-index: 0;
+  pointer-events: none;
+}
+body[data-route="home"] .phone-frame::before { display: none; }
+/* status-bar / page-container 需要在 backdrop 之上,但它们是 flex flow 的
+   一部分,设 position: relative 让 z-index 生效。pet-orb / pet-bubble 本
+   来就是 position: absolute(z-index 200/201,已在 backdrop 之上),不要
+   误改它们的 position —— 之前一并改成 relative 后 bubble 显示就把
+   page-container 挤掉 100px。 */
+.phone-frame > .status-bar,
+.phone-frame > #page-container {
+  position: relative;
+  z-index: 1;
 }
 @supports (height: 100dvh) {
   .phone-frame {
@@ -533,34 +569,57 @@ label .label-text {
 .page.home.editing .widget.user-widget .widget-del { opacity: 1; }
 /* The element is lifted via position:fixed + inline left/top (see home.js).
    We just kill the jiggle, dim slightly, and add a stronger shadow. The
-   transform is owned by inline style now so don't set it here. */
+   transform is owned by inline style now so don't set it here.
+   `transition: left/top 0.12s` 给 snap-to-cell 缓动 —— pointer 移动时
+   inline left/top 跳到目标 cell 的左上角,transition 让这个跳变成 ease
+   平滑过渡,user 视觉上看到 item 一格一格"吸"到 grid 上。 */
 .page.home.editing .widget.user-widget.dragging,
 .page.home.editing .app-icon.dragging {
   cursor: grabbing;
   opacity: 0.85;
   animation: none;
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
+  transition: left 0.12s ease-out, top 0.12s ease-out;
+  z-index: 100;
 }
-/* Placeholder that occupies the dragged widget's old grid slot so the
-   row layout doesn't collapse while dragging. Subtle by design — a thin
-   dashed outline with no fill, so it doesn't read as a competing "card"
-   next to the floating widget the user is holding. */
-.widget-placeholder {
+/* 空 cell outline —— 永远在 grid 里放 20 个透明的 .grid-slot,这样:
+   1. 编辑模式时让 user 看到 4×5 的格子边界,知道 widget 占多大
+   2. 不需要 mount/unmount slot div 跟随 edit mode 切换
+   z-index: 0 让 slot 永远在 items 之下;items 没显式 z-index,默认 auto 比 0 高 */
+.grid-slot {
+  border: 1px dashed transparent;
+  border-radius: var(--radius-md);
+  pointer-events: none;
+  min-width: 0;
+  min-height: 0;
+  z-index: 0;
+}
+.page.home.editing .grid-slot {
+  border-color: color-mix(in srgb, var(--fg) 18%, transparent);
+}
+/* widget / app 在编辑模式也加显眼一点的 outline —— 这样它们覆盖了几个
+   cell 一目了然(outline 框出真实占地范围)。 */
+.page.home.editing .app-grid.unified-grid > .user-widget,
+.page.home.editing .app-grid.unified-grid > .app-icon {
+  outline: 1.5px dashed color-mix(in srgb, var(--accent) 50%, transparent);
+  outline-offset: -2px;
+  border-radius: var(--radius-md);
+}
+
+/* Drag placeholder — single class for both widgets and apps. Sized inline
+   via grid-column / grid-row so it covers the exact target slot during a
+   drag. Visual is intentionally subtle so it reads as "this is where it'll
+   land" rather than a competing card. .invalid variant turns red when the
+   pointer is over an occupied / off-grid cell where drop will bounce. */
+.grid-placeholder {
   border-radius: var(--radius-lg);
   background: transparent;
-  border: 1px dashed color-mix(in srgb, var(--fg) 12%, transparent);
+  border: 1.5px dashed color-mix(in srgb, var(--fg) 18%, transparent);
   pointer-events: none;
 }
-.widget-placeholder.size-small  { grid-column: span 1; }
-.widget-placeholder.size-medium,
-.widget-placeholder.size-large  { grid-column: span 2; }
-/* Tile placeholder for dragging .app-icon. Single grid cell. Matches the
-   subtle widget-placeholder so both reorder UX feel consistent. */
-.tile-placeholder {
-  border-radius: var(--radius-lg);
-  background: transparent;
-  border: 1px dashed color-mix(in srgb, var(--fg) 12%, transparent);
-  pointer-events: none;
+.grid-placeholder.invalid {
+  border-color: color-mix(in srgb, var(--danger) 60%, transparent);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
 }
 @keyframes home-jiggle {
   from { transform: rotate(-0.7deg); }
@@ -628,48 +687,71 @@ label .label-text {
   border: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.10);
 }
+/* Dock 用 flex 而不是 grid —— 主 grid 的 `.app-icon .icon { width: clamp(44px,
+   78%, 68px) }` 在 grid container 里 78% 算 cell 宽度,稳;但 dock 容器宽度
+   大,78% 算下来 icon 巨大,两个 icon 各自靠 dock 两侧。flex + center 让 2
+   个 icon 紧贴居中,gap 32px 留间距。 */
 .dock-grid {
-  grid-template-columns: repeat(2, max-content) !important;
+  display: flex !important;
   justify-content: center;
-  gap: 32px;
+  align-items: center;
+  gap: 40px;
+}
+.dock-grid .app-icon .icon {
+  /* dock icon 用固定尺寸,不跟主 grid 的 cell 大小走 */
+  width: 50px;
+  aspect-ratio: 1 / 1;
+  height: auto;
 }
 
-/* Home widget row — grid-based so small widgets sit side-by-side and
-   medium/large take the full width. */
-.widget-row {
+/* 统一 slot grid — apps 和 widgets 共用 4 列 × 5 行的方格,每个 item 通过
+   inline `grid-column / grid-row` 指定位置。空 slot = 无元素 = 看到背景。
+   aspect-ratio: 4/5 + repeat(5, 1fr) 保证每个 cell 接近正方形(扣除 gap
+   误差)。grid 宽度由父容器决定,高度按 5/4 算出 —— 这样不管 phone-frame
+   高度怎么变,cells 形状都稳定。max-height: 100% 防止 grid 高过 home-page
+   时溢出 dock。 */
+.app-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 18px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
 }
-.widget-row.below-row { margin: 18px 0 0; }
-/* Below-row is always rendered (so users can cross-row-drag widgets from
-   above to below). It's hidden when empty by default. The dashed drop
-   zone only shows while a widget is actively being dragged — that way
-   the empty box doesn't float there in plain edit mode and confuse the
-   user with an unexplained outline. */
-.widget-row.below-row:empty { display: none; }
-.page.home.dragging-widget .widget-row.below-row:empty {
-  display: block;
-  min-height: 56px;
-  margin: 18px 0 0;
-  border: 1.5px dashed color-mix(in srgb, var(--fg) 18%, transparent);
-  border-radius: var(--radius-lg);
+.app-grid.unified-grid {
+  /* 严格正方形 cells —— aspect-ratio: 4/5 让 grid 整体 4:5 比例,4 cols × 5
+     rows 配 1fr 等分,cells 自然是 (gridWidth/4) × (gridHeight/5) = 接近
+     正方形。grid 尺寸只跟 width(home-page 内容宽)挂钩,不受同级 flex
+     item 影响。
+     之前有 max-height: 100%,编辑模式下 widget-add 按钮显示出来占空间,
+     home-page 给 grid 的"可用高"变小,max-height 触发让 grid 等比缩小,
+     所有 cells / widgets 跟着变小,user 看到"拖动后 widget 缩水"bug。
+     去掉 max-height,grid 大小由 width × 5/4 锁死,不会被 widget-add 推
+     缩。如果 widget-add 出现后总高超出 home-page,home-page 的
+     overflow-y: hidden 会截掉超出部分(几乎不会发生,grid 4:5 比例下
+     总高约 width × 5/4,home-page 通常给得起)。 */
+  grid-template-rows: repeat(5, minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  min-height: 0;
+  flex-shrink: 0;
+  position: relative;
 }
-.widget.size-small  { grid-column: span 1; }
-.widget.size-medium,
-.widget.size-large,
-.widget-add { grid-column: span 2; }
-/* Favorites and the empty-state of any widget default to full-row unless
-   an explicit size class overrides them. The user-addable favorites
-   widget carries size-small so it follows the .size-small rule above. */
-.widget-favorites:not(.size-small),
-.widget-empty:not(.size-small) { grid-column: span 2; }
-/* Override default heights when size is small/large */
-.widget.size-small.widget-image { height: 90px; }
-.widget.size-large.widget-image { height: 180px; }
-.widget.size-small.widget-note  { max-height: 90px; }
-.widget.size-large.widget-note  { max-height: 200px; }
+/* 防止 widget 内容撑爆 grid cell。每个 widget 都 overflow:hidden 自己内容
+   (已设),但 grid item 仍可以被 min-content 撑大 —— 加 min-width/min-height
+   都设 0 让 grid 自由 squeeze。 */
+.app-grid.unified-grid > .widget,
+.app-grid.unified-grid > .app-icon {
+  min-width: 0;
+  min-height: 0;
+}
+/* Each widget fills its assigned grid area. Removes the old per-type fixed
+   heights (.widget.widget-image { height: 120px } etc) that fought the
+   grid sizing. Content layout inside each widget uses padding + flex.
+   --widget-alpha (0..1, default 1) is set inline per widget; opacity
+   property makes the WHOLE widget more or less transparent so the user
+   can dial the strength of any widget down without breaking its internal
+   styling. Excluded for polaroid since photos shouldn't fade. */
+.widget { height: 100%; min-height: 0; }
+.widget.user-widget { opacity: var(--widget-alpha, 1); }
 .widget {
   padding: 14px 16px;
   border-radius: var(--radius-lg);
@@ -747,10 +829,29 @@ label .label-text {
   transition: opacity 0.15s;
   z-index: 2;
 }
-.widget.user-widget:hover .widget-del { opacity: 1; }
-.widget.widget-image {
-  height: 120px;  /* fixed height — keeps the home page one-screen */
+/* 编辑按钮 —— 跟 × 一样的小圆按钮,但在 widget 左上角(× 在右上角),
+   编辑模式才显示,点击打开 widget editor(改 size / 透明度 / 内容)。 */
+.widget.user-widget .widget-edit {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
 }
+.widget.user-widget:hover .widget-del,
+.widget.user-widget:hover .widget-edit { opacity: 1; }
+.page.home.editing .widget.user-widget .widget-edit { opacity: 1; }
 .widget.widget-image img {
   width: 100%;
   height: 100%;
@@ -759,7 +860,6 @@ label .label-text {
 }
 .widget.widget-note {
   padding: 14px 16px;
-  max-height: 120px;
   overflow: hidden;
 }
 .widget.widget-note .widget-note-text {
@@ -783,7 +883,6 @@ label .label-text {
    the surrounding container is invisible. */
 .widget.widget-polaroid {
   position: relative;
-  height: 120px;
   padding: 0;
   background: transparent !important;
   border: none !important;
@@ -802,8 +901,11 @@ label .label-text {
 }
 .widget.widget-polaroid .polaroid-photo {
   position: absolute;
-  width: 78px;
-  height: 92px;
+  /* 56% / 70% of container (was fixed 78×92px) — scales to fill the slot
+     instead of leaving large empty margins. min/max clamps prevent the
+     photos from getting tiny in a small cell or absurd in a big one. */
+  width: clamp(78px, 56%, 140px);
+  height: clamp(92px, 70%, 170px);
   object-fit: cover;
   background: #fff;
   border: 4px solid #fff;
@@ -827,17 +929,23 @@ label .label-text {
   color: var(--muted);
   font-size: 13px;
 }
+/* Polaroid is supposed to read as 3 floating photos on the wallpaper — the
+   glass modes' ::after sheen draws a half-height white gradient over the
+   widget area, which on a transparent polaroid container becomes a ghostly
+   rectangle behind the photos. Suppress it. */
+body[data-fx-glass="liquid"] .widget.widget-polaroid::after,
+body[data-fx-glass="metal"] .widget.widget-polaroid::after {
+  display: none;
+}
 
-/* Anniversary — "遇见 XXX 已经 N 天". Size-small (1 widget-col); fits the
-   label + the big day count comfortably. Height matches the 120px the
-   other small user widgets (favorites / polaroid) use so they line up. */
+/* Anniversary — "遇见 XXX 已经 N 天". Compact 2×1 slot (90px tall); the label
+   + big day count fit if we keep the font compact and trim vertical padding. */
 .widget.widget-anniversary {
-  padding: 12px 14px;
-  height: 120px;
+  padding: 10px 14px;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 4px;
+  gap: 2px;
 }
 .widget.widget-anniversary .anniv-label {
   font-size: 11px;
@@ -852,7 +960,7 @@ label .label-text {
   color: var(--accent);
 }
 .widget.widget-anniversary .anniv-count {
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -862,11 +970,187 @@ label .label-text {
   font-weight: 500;
 }
 
-/* Favorites widget — full row width, compact height (~app-icon scale).
-   Two-line layout: single-line quote + small "— name" caption. No
-   "收藏" title row (the widget is the favorites widget, no label needed). */
+/* Music widget — port of phone-app-demos/01-music-widget.html. Earphone SVG
+   (with user + character avatars on the buds) sitting above a mini player
+   card (cover + song/artist/lyric + progress). Sized 4×3 in the unified
+   grid (full row × 3 row-spans = ~290px tall). Wire color follows --accent
+   so it threads through the active theme; bg uses an accent-tinted blend
+   so the widget reads as "music-y" without forcing pink onto every theme. */
+.widget.widget-music {
+  --wire-color: var(--accent);
+  --wire-knot: color-mix(in srgb, var(--accent) 70%, black 30%);
+  background: linear-gradient(160deg,
+    color-mix(in srgb, var(--accent) 14%, white) 0%,
+    color-mix(in srgb, var(--accent) 24%, white) 100%);
+  padding: 8px 10px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+/* Re-assert music bg inside glass modes — without this the [data-fx-glass]
+   surface gradient overrides the music tint. */
+body[data-fx-glass="liquid"] .widget.widget-music,
+body[data-fx-glass="metal"] .widget.widget-music,
+body[data-fx-glass="frosted"] .widget.widget-music {
+  background-image: linear-gradient(160deg,
+    color-mix(in srgb, var(--accent) 14%, white) 0%,
+    color-mix(in srgb, var(--accent) 24%, white) 100%);
+}
+/* Glass sheen ::after would draw a half-height white gradient over the
+   earphone SVG; same suppression as polaroid. */
+body[data-fx-glass="liquid"] .widget.widget-music::after,
+body[data-fx-glass="metal"] .widget.widget-music::after { display: none; }
+
+.widget.widget-music .widget-svg {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  display: block;
+}
+.widget.widget-music .mini-player {
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 10px;
+  padding: 6px 8px;
+  margin-top: -4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--accent) 28%, transparent);
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+}
+.widget.widget-music .mp-cover {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff9ec4 0%, #c490e6 50%, #6b8af2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 3px 8px rgba(196, 144, 230, 0.4), inset 0 -2px 4px rgba(0, 0, 0, 0.08);
+  position: relative;
+  color: #fff;
+}
+.widget.widget-music .mp-cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.35), transparent 45%);
+  pointer-events: none;
+}
+.widget.widget-music .mp-cover svg {
+  width: 14px;
+  height: 14px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+  z-index: 1;
+}
+.widget.widget-music .mp-cover.playing { animation: mp-spin 18s linear infinite; }
+@keyframes mp-spin { to { transform: rotate(360deg); } }
+
+.widget.widget-music .mp-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.widget.widget-music .mp-song {
+  font-size: 12px;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--fg) 88%, var(--accent));
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.widget.widget-music .mp-artist {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.widget.widget-music .mp-lyric {
+  font-size: 10px;
+  color: var(--wire-color);
+  font-style: italic;
+  line-height: 1.3;
+  min-height: 13px;
+  margin-top: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 0.4s ease;
+}
+.widget.widget-music .mp-lyric.fade { opacity: 0; }
+.widget.widget-music .mp-progress {
+  height: 2px;
+  background: color-mix(in srgb, var(--wire-color) 22%, transparent);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 3px;
+  position: relative;
+}
+.widget.widget-music .mp-progress-fill {
+  height: 100%;
+  width: 38%;
+  background: var(--wire-color);
+  border-radius: 2px;
+  position: relative;
+}
+.widget.widget-music .mp-progress-fill::after {
+  content: '';
+  position: absolute;
+  right: -3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 7px;
+  height: 7px;
+  background: var(--wire-color);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px #fff;
+}
+
+/* Cover upload control inside the music editor — round preview + two buttons. */
+.cover-uploader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+}
+.cover-preview {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff9ec4 0%, #c490e6 50%, #6b8af2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 20px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.cover-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cover-controls {
+  display: flex;
+  gap: 6px;
+}
+.cover-controls .btn { padding: 6px 10px; font-size: 12px; }
+
+/* Favorites widget — full-row strip (4×1 in the unified grid). Two-line
+   layout (quote + name) auto-centers in the 90px slot via flex. */
 .widget.widget-favorites {
-  height: 64px;
   padding: 10px 14px;
   display: flex;
   flex-direction: column;
@@ -912,9 +1196,12 @@ label .label-text {
 .anniv-char-block[hidden],
 .anniv-custom-block[hidden] { display: none; }
 
-/* Add-widget button — dashed-border placeholder slot */
+/* Add-widget button — floats below the grid in edit mode (or always when
+   no user widgets exist yet). Not part of the grid so it doesn't need to
+   occupy a slot. */
 .widget-add {
-  padding: 14px;
+  margin: 14px 0 0;
+  padding: 12px;
   border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--surface) 40%, transparent);
   border: 1.5px dashed color-mix(in srgb, var(--fg) 25%, transparent);
@@ -923,6 +1210,7 @@ label .label-text {
   cursor: pointer;
   text-align: center;
   transition: all 0.15s;
+  align-self: stretch;
 }
 .widget-add:hover {
   background: color-mix(in srgb, var(--surface) 60%, transparent);
@@ -930,32 +1218,26 @@ label .label-text {
   border-color: color-mix(in srgb, var(--fg) 45%, transparent);
 }
 
-/* Type picker (in the add modal) */
+/* Type picker (in the add modal) — 3 columns × 2 rows fits 6 types (collections /
+   image / note / polaroid / anniversary / music) without horizontal cramping. */
 .widget-type-picker {
-  display: flex;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
   margin: 8px 0 12px;
 }
 .widget-type-btn {
-  flex: 1;
-  padding: 18px 12px;
+  padding: 14px 8px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--surface);
   cursor: pointer;
   font: inherit;
+  font-size: 14px;
   color: var(--fg);
   text-align: center;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 }
 .widget-type-btn:hover { background: var(--bubble-char); }
-.widget-type-btn .type-icon { font-size: 28px; }
-.widget-type-btn .type-hint {
-  font-size: 11px;
-  color: var(--muted);
-}
 
 /* Home page app grid */
 .app-grid {
@@ -967,15 +1249,24 @@ label .label-text {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 12px 4px;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 2px;
   background: none;
   border: none;
   color: var(--fg);
+  min-width: 0;
+  min-height: 0;
 }
+/* iOS-style "squircle" tile —— 圆角正方形,占 cell 大头(min(85% 宽, 1fr 高
+   - label 空间)),label 在下方小字。aspect-ratio: 1 让 tile 始终正方形,
+   width clamp 防止 tile 在大/小 cell 里失控。border-radius: 22% 接近 iOS
+   的 squircle 曲率(连续圆角)。 */
 .app-icon .icon {
-  width: 56px;
-  height: 56px;
+  width: clamp(44px, 78%, 68px);
+  aspect-ratio: 1 / 1;
+  height: auto;
+  border-radius: 22%;
   border-radius: var(--radius-lg);
   /* E23 — iOS-style icon: vertical gradient (top lighter, bottom slightly
      darker) + inset top highlight + soft drop shadow. backdrop-filter still
@@ -999,11 +1290,18 @@ label .label-text {
   transition: transform 0.15s ease, box-shadow 0.2s ease;
   overflow: hidden;
 }
-.app-icon .icon svg { width: 30px; height: 30px; display: block; }
+/* SVG glyph inside the squircle —— 比 tile 小一圈,跟 iOS 视觉一致(tile
+   是底色,glyph 在中间留空白)。% 让 glyph 跟着 tile 一起缩放。 */
+.app-icon .icon svg { width: 55%; height: 55%; display: block; }
 .app-icon .label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--fg);
   text-shadow: 0 1px 2px color-mix(in srgb, var(--surface) 60%, transparent);
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 .app-icon:hover .icon { transform: scale(1.04); }
 .app-icon:active .icon { transform: scale(0.95); }
@@ -1090,10 +1388,28 @@ label .label-text {
   padding: 10px 12px;
 }
 .theme-editor-page .theme-mini-preview {
+  position: relative;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background-color: var(--outside-bg);
+  background-size: cover;
+  background-position: center;
+  margin-bottom: 10px;
+  min-height: 120px;
+}
+/* Inner surface mirrors .page bg semantics so 壁纸透出 slider visibly fades
+   the surface toward transparent (revealing the wallpaper underneath). */
+.theme-editor-page .mini-page-surface {
+  padding: 10px;
+  background: color-mix(in srgb, var(--bg), transparent calc(var(--surface-alpha-shift) * 100%));
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-bottom: 10px;
+}
+/* Gradient preview applies inside the mini-page-surface when active and no
+   wallpaper is set — mirrors the real .page rule. */
+body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mini-page-surface {
+  background: linear-gradient(135deg, var(--gradient-from), var(--gradient-to));
 }
 .theme-editor-page .mini-tile-row {
   display: flex;
@@ -1362,6 +1678,8 @@ label .label-text {
   margin-bottom: 12px;
 }
 .checkbox-row input { width: auto; }
+.checkbox-row.disabled-row { opacity: 0.55; cursor: not-allowed; }
+.checkbox-row.disabled-row input { cursor: not-allowed; }
 .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 
 /* Chat list */
@@ -1499,6 +1817,9 @@ label .label-text {
   justify-content: center;
   z-index: 100;
   padding: 60px 16px 16px;
+  /* 内容比 backdrop 高时(比如音乐编辑器有 8 个字段),允许 backdrop 自身
+     纵向滚动,user 能滑到底部看到 取消 / 添加 按钮。 */
+  overflow-y: auto;
 }
 .modal {
   background: var(--surface);
@@ -1507,6 +1828,8 @@ label .label-text {
   max-width: 360px;
   padding: 16px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  /* 给 backdrop 留底部 margin,user 滚到底时模态底下还有点空,不会贴边。 */
+  margin-bottom: 16px;
 }
 .modal-header { font-size: 17px; font-weight: 600; margin-bottom: 12px; }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
@@ -2300,6 +2623,12 @@ label .label-text {
   z-index: 70;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
 }
+/* 玻璃主题(liquid/metal)那组规则给 .bubble-menu 一并设了 position: relative
+   是为了配合顶部高光 ::after 定位 — 但 .bubble-menu 根本不在 ::after 选择器列表
+   里,这条 relative 对它纯属误伤,会把绝对定位推翻,菜单掉到 .chat-page flex
+   列底部(输入框下面)。强制拉回 absolute。 */
+body[data-fx-glass="liquid"] .bubble-menu,
+body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
 .bubble-menu[hidden] { display: none; }
 .bubble-menu button {
   display: block;

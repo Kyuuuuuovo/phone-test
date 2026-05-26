@@ -4,7 +4,7 @@ import * as db from './core/db.js';
 import * as router from './core/router.js';
 import * as ai from './core/ai.js';
 import * as context from './core/context.js';
-import { applyTheme as applyThemeObj } from './core/theme.js';
+import { applyTheme as applyThemeObj, applyWallpaper } from './core/theme.js';
 import { mountHome }        from './features/home/home.js';
 import { mountSettings }    from './features/settings/settings.js';
 import { mountApiSettings } from './features/settings/api-settings.js';
@@ -126,19 +126,24 @@ async function startBattery() {
 async function applyTheme() {
   const settings = await db.get('settings', 'default');
   applyThemeObj(settings?.theme);
-  // Wallpaper is intentionally NOT applied here — it only shows on home.
-  // home.js owns the lifecycle (apply on mount, clear on teardown) so when
-  // the user opens an app, the wallpaper is hidden and they see the app's
-  // own bg instead. Previous globally-applied attempt leaked the wallpaper
-  // into every page including settings, which the user found distracting.
+  // 壁纸全局 apply 到 .phone-frame —— 其他 page 默认 var(--bg) 不透明,
+  // 自然会盖住壁纸,只有 .page.home 是 transparent 才能透出来。如果 user
+  // 调高 surfaceAlpha,所有 page 都会变半透明,壁纸就 全 app 透出。这样
+  // reload 后壁纸不丢(之前 home.js own lifecycle 的设计,但 reload 时
+  // home 还没 mount,壁纸就空着)。
+  applyWallpaper(settings?.wallpaper || null);
 }
 
 async function boot() {
   await db.init();
   console.log('[boot] db ready');
 
-  await applyTheme();
+  // 先渲染 shell —— applyTheme 里的 applyWallpaper 需要 .phone-frame 已经在
+  // DOM 里(它把背景图设到 frame 上)。之前是 applyTheme 先跑、renderShell
+  // 后跑,所以 boot 时 wallpaper 设不上,要等到下次 user 上传/清除壁纸才
+  // apply,reload 后壁纸丢失。
   renderShell();
+  await applyTheme();
   startClock();
   startBattery();
 

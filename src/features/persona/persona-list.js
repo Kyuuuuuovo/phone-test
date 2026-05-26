@@ -35,9 +35,12 @@ export async function mountPersonaList(container, params, router) {
         ${personas.map(p => {
           const sub = (p.persona || '').slice(0, 60) || '(没有人设描述)';
           const meta = refCount.get(p.id) ? `${refCount.get(p.id)} 个对话在用` : '';
+          const avatarHtml = p.avatar
+            ? `<div class="entity-avatar"><img src="${esc(p.avatar)}" alt=""></div>`
+            : `<div class="entity-avatar">${esc((p.name ?? '?').slice(0, 1))}</div>`;
           return `
             <button class="entity-row" data-id="${esc(p.id)}">
-              <div class="entity-avatar">${esc((p.name ?? '?').slice(0, 1))}</div>
+              ${avatarHtml}
               <div class="entity-info">
                 <div class="entity-name">${esc(p.name || '(未命名)')}</div>
                 <div class="entity-sub">${esc(sub)}</div>

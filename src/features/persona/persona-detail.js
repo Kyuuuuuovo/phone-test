@@ -1,4 +1,6 @@
 // Edit one player persona. Delete also nulls any chatSessions.personaId that referenced it.
+// Persona avatar is shown wherever the user appears as themselves — currently the
+// music widget's left earbud (matching the character on the right).
 
 import * as db from '../../core/db.js';
 import { openConfirm } from '../../core/modal.js';
@@ -15,6 +17,8 @@ export async function mountPersonaDetail(container, params, router) {
     return () => {};
   }
 
+  let avatarData = persona.avatar || null;
+
   container.innerHTML = `
     <div class="page">
       <header class="page-header">
@@ -23,6 +27,14 @@ export async function mountPersonaDetail(container, params, router) {
       </header>
       <div class="page-body">
         <form class="settings-form" autocomplete="off">
+          <div class="avatar-uploader">
+            ${renderAvatarPreview(avatarData, persona.name)}
+            <div class="avatar-controls">
+              <button type="button" class="btn secondary upload-avatar">上传头像</button>
+              <button type="button" class="btn secondary clear-avatar"${avatarData ? '' : ' disabled'}>清除</button>
+              <input type="file" accept="image/*" class="avatar-file" hidden>
+            </div>
+          </div>
           <label>
             <div class="label-text">名称(自己看的)</div>
             <input name="name" required value="${esc(persona.name)}">
@@ -41,14 +53,26 @@ export async function mountPersonaDetail(container, params, router) {
     </div>
   `;
 
-  const form      = container.querySelector('form');
-  const status    = container.querySelector('.form-status');
-  const backBtn   = container.querySelector('.back');
-  const deleteBtn = container.querySelector('.delete-btn');
+  const form        = container.querySelector('form');
+  const status      = container.querySelector('.form-status');
+  const backBtn     = container.querySelector('.back');
+  const uploadBtn   = container.querySelector('.upload-avatar');
+  const clearBtn    = container.querySelector('.clear-avatar');
+  const fileInput   = container.querySelector('.avatar-file');
+  const avatarBox   = container.querySelector('.avatar-uploader');
+  const deleteBtn   = container.querySelector('.delete-btn');
 
   function setStatus(text, kind) {
     status.textContent = text;
     status.className = `form-status${kind ? ' ' + kind : ''}`;
+  }
+
+  function refreshAvatarPreview() {
+    const old = avatarBox.querySelector('.avatar-preview');
+    const fresh = document.createElement('div');
+    fresh.innerHTML = renderAvatarPreview(avatarData, form.elements.name.value);
+    old.replaceWith(fresh.firstElementChild);
+    clearBtn.disabled = !avatarData;
   }
 
   const onBack = () => router.back();
@@ -59,10 +83,37 @@ export async function mountPersonaDetail(container, params, router) {
     Object.assign(persona, {
       name:    String(fd.get('name')    || '').trim() || '(未命名)',
       persona: String(fd.get('persona') || '').trim(),
+      avatar:  avatarData,
       updatedAt: Date.now(),
     });
     await db.set('personas', persona);
     setStatus('已保存', 'success');
+  };
+
+  const onUpload = () => fileInput.click();
+
+  const onFile = () => {
+    const file = fileInput.files?.[0];
+    fileInput.value = '';
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setStatus(`图片太大(${(file.size/1024/1024).toFixed(1)} MB),建议 < 2 MB`, 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      avatarData = reader.result;
+      refreshAvatarPreview();
+      setStatus('头像已加载,点保存写入', 'success');
+    };
+    reader.onerror = () => setStatus('读取图片失败', 'error');
+    reader.readAsDataURL(file);
+  };
+
+  const onClearAvatar = () => {
+    avatarData = null;
+    refreshAvatarPreview();
+    setStatus('头像已清除,点保存写入', 'success');
   };
 
   const onDelete = async () => {
@@ -76,7 +127,6 @@ export async function mountPersonaDetail(container, params, router) {
       confirmLabel: '删除',
       danger: true,
     })) return;
-    // Null out references in chatSessions
     for (const s of sessions) {
       s.personaId = null;
       await db.set('chatSessions', s);
@@ -87,13 +137,27 @@ export async function mountPersonaDetail(container, params, router) {
 
   backBtn.addEventListener('click', onBack);
   form.addEventListener('submit', onSubmit);
+  uploadBtn.addEventListener('click', onUpload);
+  fileInput.addEventListener('change', onFile);
+  clearBtn.addEventListener('click', onClearAvatar);
   deleteBtn.addEventListener('click', onDelete);
 
   return () => {
     backBtn.removeEventListener('click', onBack);
     form.removeEventListener('submit', onSubmit);
+    uploadBtn.removeEventListener('click', onUpload);
+    fileInput.removeEventListener('change', onFile);
+    clearBtn.removeEventListener('click', onClearAvatar);
     deleteBtn.removeEventListener('click', onDelete);
   };
+}
+
+function renderAvatarPreview(data, name) {
+  if (data) {
+    return `<div class="avatar-preview"><img src="${esc(data)}" alt=""></div>`;
+  }
+  const initial = (name || '?').slice(0, 1);
+  return `<div class="avatar-preview placeholder">${esc(initial)}</div>`;
 }
 
 function esc(s) {

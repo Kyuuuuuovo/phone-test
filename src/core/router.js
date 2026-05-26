@@ -25,6 +25,9 @@ export async function navigate(id, params = {}) {
   }
   if (_container) _container.innerHTML = '';
   stack.push({ id, params });
+  // 让 CSS 知道当前 page —— 比如 .phone-frame::before 在非 home 时铺一层
+  // var(--bg) 盖住壁纸,这样状态栏背景透明也不会透出壁纸到 app 里。
+  document.body.dataset.route = id;
   _teardown = await mount(_container, params, { navigate, back });
 }
 

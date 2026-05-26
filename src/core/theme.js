@@ -246,6 +246,11 @@ export function applyTheme(theme) {
   const body = document.body;
   body.dataset.notch        = t.notch ? 'on' : 'off';
   body.dataset.fxGlass      = t.effects.glass || 'none';
+  // Gradient is suppressed when a wallpaper is set — they fight for the same
+  // visual slot (.page background) and stacking them either hides the
+  // wallpaper or muddies it. The CSS rule already requires
+  // [data-fx-wallpaper="off"]; this just keeps the body attr coherent so the
+  // theme editor's "is gradient currently visible" check sees the right state.
   body.dataset.fxGradient   = t.effects.gradient ? 'on' : 'off';
   body.dataset.fxTexture    = t.effects.texture || 'none';
   body.dataset.fxTransparent = (t.effects.transparency || 0) > 0 ? 'on' : 'off';
@@ -282,6 +287,9 @@ export function applyWallpaper(url) {
     frame.style.backgroundSize     = '';
     frame.style.backgroundPosition = '';
   }
+  // Body data attr so CSS can mutex gradient-vs-wallpaper. Gradient targets
+  // .page and would otherwise cover the wallpaper (set on .phone-frame).
+  document.body.dataset.fxWallpaper = url ? 'on' : 'off';
 }
 
 // Add or replace the <link> that loads the user's custom font import URL.

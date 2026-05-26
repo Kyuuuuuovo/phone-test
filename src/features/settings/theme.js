@@ -22,7 +22,7 @@ import * as db from '../../core/db.js';
 import { openConfirm, openModal } from '../../core/modal.js';
 import {
   DEFAULT_THEME, FONT_OPTIONS, TEXTURE_OPTIONS, GLASS_OPTIONS, THEME_PRESETS,
-  normalizeTheme, applyTheme,
+  normalizeTheme, applyTheme, applyWallpaper,
 } from '../../core/theme.js';
 
 export async function mountTheme(container, params, router) {
@@ -49,6 +49,13 @@ export async function mountTheme(container, params, router) {
   }
 
   function render() {
+    // Mini-preview shows the current wallpaper behind a translucent page
+    // surface so "壁纸透出" (surfaceAlpha) is actually visible in the
+    // preview — without a wallpaper backdrop, the slider had no effect on
+    // the preview frame and users couldn't tell what it did.
+    const previewStyle = currentWallpaper
+      ? `style="background-image: url('${esc(currentWallpaper)}');"`
+      : '';
     container.innerHTML = `
       <div class="page theme-editor-page">
         <header class="page-header">
@@ -66,19 +73,21 @@ export async function mountTheme(container, params, router) {
           ${renderTab()}
         </div>
         <div class="theme-sticky">
-          <div class="theme-mini-preview">
-            <div class="mini-tile-row">
-              <div class="mini-tile"></div>
-              <div class="mini-tile"></div>
-              <div class="mini-tile"></div>
-            </div>
-            <div class="mini-chat">
-              <div class="mini-bubble char">嗨,在吗?</div>
-              <div class="mini-bubble user">在</div>
-            </div>
-            <div class="mini-dock">
-              <div class="mini-dock-icon"></div>
-              <div class="mini-dock-icon"></div>
+          <div class="theme-mini-preview" ${previewStyle}>
+            <div class="mini-page-surface">
+              <div class="mini-tile-row">
+                <div class="mini-tile"></div>
+                <div class="mini-tile"></div>
+                <div class="mini-tile"></div>
+              </div>
+              <div class="mini-chat">
+                <div class="mini-bubble char">嗨,在吗?</div>
+                <div class="mini-bubble user">在</div>
+              </div>
+              <div class="mini-dock">
+                <div class="mini-dock-icon"></div>
+                <div class="mini-dock-icon"></div>
+              </div>
             </div>
           </div>
           <div class="theme-actions-bar">
@@ -115,6 +124,7 @@ export async function mountTheme(container, params, router) {
         `).join('')}
         <button type="button" class="model-chip preset-save-current" title="把当前主题存成预设">+ 存为预设</button>
       </div>
+      <p class="hint" style="font-size:11px;margin-top:14px;">预设包含颜色、字体、圆角、特效。<b>壁纸不在预设里</b> — 单独在「壁纸」tab 设,切预设不影响。</p>
     `;
   }
 
@@ -200,9 +210,9 @@ export async function mountTheme(container, params, router) {
       </label>
 
       <h3 class="section-title">渐变 / 纹理</h3>
-      <label class="checkbox-row">
-        <input type="checkbox" data-fx="gradient"${draft.effects.gradient ? ' checked' : ''}>
-        <span>启用渐变背景</span>
+      <label class="checkbox-row${currentWallpaper ? ' disabled-row' : ''}">
+        <input type="checkbox" data-fx="gradient"${draft.effects.gradient ? ' checked' : ''}${currentWallpaper ? ' disabled' : ''}>
+        <span>启用渐变背景${currentWallpaper ? ' <span class="muted-hint">已设壁纸,渐变不生效</span>' : ''}</span>
       </label>
       ${colorRow('渐变结束色', 'effects.gradientTo')}
       <label>
@@ -214,7 +224,7 @@ export async function mountTheme(container, params, router) {
       <label>
         <div class="label-text">聊天背景遮罩:<span class="transparency-readout">${draft.effects.transparency}</span>%</div>
         <input type="range" min="0" max="100" step="5" data-fx="transparency" value="${draft.effects.transparency}">
-        <p class="hint">在聊天页,主题背景色叠加到「聊天美化」里设的图片上的不透明度。0% = 完全看到图片;100% = 完全盖住。</p>
+        <p class="hint">在聊天页,「颜色」tab 里的「页面背景」色盖在「聊天美化」设的图片上的不透明度。0% = 完全看到图片;100% = 页面背景色完全盖住图片。</p>
       </label>
     `;
   }
@@ -393,9 +403,33 @@ export async function mountTheme(container, params, router) {
       const reader = new FileReader();
       reader.onload = async () => {
         currentWallpaper = reader.result;
-        await db.updateSettings(s => { s.wallpaper = currentWallpaper; });
+        // 如果 surfaceAlpha 还是 0(默认),自动把 .page 调成半透明 —— 否则
+        // user 上传壁纸后,只有 home(.page.home transparent 已经特判)能
+        // 看到壁纸,其他 page(settings / chat-list 等)的 .page bg 不透明
+        // 完全盖住壁纸,user 会觉得"上传完外观下面看不到壁纸,点进 app
+        // 也没壁纸"。30% 是一个温和的默认,文字仍然可读、壁纸隐约透出。
+        const currentAlpha = draft?.effects?.surfaceAlpha ?? 0;
+        const autoBumped = currentAlpha < 20;
+        if (autoBumped) {
+          if (!draft.effects) draft.effects = {};
+          draft.effects.surfaceAlpha = 30;
+        }
+        await db.updateSettings(s => {
+          s.wallpaper = currentWallpaper;
+          if (autoBumped) {
+            if (!s.theme) s.theme = {};
+            if (!s.theme.effects) s.theme.effects = {};
+            s.theme.effects.surfaceAlpha = 30;
+          }
+        });
+        // Apply now so the gradient mutex (body[data-fx-wallpaper]) kicks
+        // in immediately + the new surfaceAlpha shows in main view.
+        applyWallpaper(currentWallpaper);
+        applyTheme(draft);
         render();
-        status('壁纸已保存(回首页查看)', 'success');
+        status(autoBumped
+          ? '壁纸已保存。已自动把「壁纸透出」调到 30%,所有 app 都能透出壁纸'
+          : '壁纸已保存(回首页查看)', 'success');
       };
       reader.onerror = () => status('读取图片失败', 'error');
       reader.readAsDataURL(file);
@@ -403,6 +437,7 @@ export async function mountTheme(container, params, router) {
     clearBtn.addEventListener('click', async () => {
       currentWallpaper = null;
       await db.updateSettings(s => { s.wallpaper = null; });
+      applyWallpaper(null);
       render();
       status('壁纸已清除', 'success');
     });
