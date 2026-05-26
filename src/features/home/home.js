@@ -62,13 +62,19 @@ const PAGES = [
   ],
 ];
 
-// Dock — frequently-used, always visible.
-const DOCK = [
+// Dock — 4-slot grid at the bottom. apps in dock are the "always visible"
+// shortcuts. settings.dockOrder = [appId|null, appId|null, appId|null, appId|null]
+// holds which app is in which slot;default centers 微信/设置 at slots 1,2.
+// Apps in the dock are taken from a global registry (DOCK_CATALOG + PAGES
+// flat) so the user can swap a page app into the dock and vice versa.
+const DOCK_CATALOG = [
   { id: 'messaging', label: '微信', icon: SVG.chat },
   { id: 'settings',  label: '设置', icon: SVG.gear },
 ];
+const DOCK_DEFAULT = [null, 'messaging', 'settings', null];
 
-const COLS = 4;  // home grid has 4 columns
+const COLS = 4;  // home grid has 4 columns (dock also 4)
+const DOCK_SLOTS = 4;
 
 // (col-span, row-span) for each widget. New data layout: widgets store
 // colSpan/rowSpan directly (1..4 / 1..5), letting the user pick any combo
@@ -239,23 +245,74 @@ function renderPolaroidWidget(w, gs) {
 
 // Anniversary — "遇见 XXX 已经 N 天". data: { name?, characterId?, startTs }.
 async function renderAnniversaryWidget(w, gs) {
-  const startTs = Number(w.data?.startTs);
-  const days = Number.isFinite(startTs)
-    ? Math.max(0, Math.floor((Date.now() - startTs) / 86400000))
-    : 0;
-  let displayName = String(w.data?.name || '').trim();
-  if (w.data?.characterId) {
-    const c = await db.get('characters', w.data.characterId);
-    if (c?.name) displayName = c.name;
+  // 三种模式:
+  //  1) custom    — data.name + data.startTs    → "遇见 X 已经 N 天"
+  //  2) character — data.characterId + data.startTs → "遇见 [角色名] 已经 N 天"
+  //  3) milestone — data.milestoneId            → 按 milestone.recurring / dayKey 算
+  // 模式判定:有 milestoneId 走 milestone 分支(忽略 startTs),否则按之前
+  // character/custom 走 startTs 起算。milestone 被删时显示 "[已删除]"。
+  let label = '__', count = 0, unit = '天';
+
+  if (w.data?.milestoneId) {
+    const m = await db.get('milestones', w.data.milestoneId);
+    if (!m) {
+      label = '[纪念日已删除]'; count = 0; unit = '';
+    } else {
+      const view = computeMilestoneDisplay(m);
+      label = view.label;
+      count = view.count;
+      unit  = view.unit;
+    }
+  } else {
+    const startTs = Number(w.data?.startTs);
+    count = Number.isFinite(startTs)
+      ? Math.max(0, Math.floor((Date.now() - startTs) / 86400000))
+      : 0;
+    let displayName = String(w.data?.name || '').trim();
+    if (w.data?.characterId) {
+      const c = await db.get('characters', w.data.characterId);
+      if (c?.name) displayName = c.name;
+    }
+    label = `遇见 ${displayName || '__'} 已经`;
   }
+
   return `
     <div class="widget widget-anniversary user-widget" style="${gs}" data-widget-id="${escHtml(w.id)}">
-      <div class="anniv-label">遇见 ${escHtml(displayName || '__')} 已经</div>
-      <div class="anniv-days"><span class="anniv-count">${days}</span><span class="anniv-unit">天</span></div>
+      <div class="anniv-label">${escHtml(label)}</div>
+      <div class="anniv-days"><span class="anniv-count">${escHtml(String(count))}</span>${unit ? `<span class="anniv-unit">${escHtml(unit)}</span>` : ''}</div>
       <button class="widget-edit" title="编辑" aria-label="编辑">⚙</button>
       <button class="widget-del" title="删除">×</button>
     </div>
   `;
+}
+
+// 把 milestone row 翻译成 widget 三段显示 { label, count, unit }。
+// - 非 recurring + 过去: 距 [title] 已 N 天      → label='[title] 已', count=N, unit='天'
+// - 非 recurring + 未来: 距 [title] 还有 N 天    → label='距 [title] 还有', count=N, unit='天'
+// - 非 recurring + 今天: [title] 就是今天        → label='[title]',  count='今天', unit=''
+// - recurring + 未来:    下次 [title] 还有 N 天  → label='下次 [title] 还有', count=N, unit='天'
+// - recurring + 今天:    今天就是 [title]        → label='今天就是 [title]', count='', unit=''
+function computeMilestoneDisplay(m) {
+  const title = String(m.title || '').trim() || '未命名';
+  const [y, mo, d] = String(m.dayKey || '').split('-').map(n => parseInt(n, 10));
+  if (!y || !mo || !d) return { label: title, count: 0, unit: '天' };
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const MS = 86400000;
+
+  if (m.recurring) {
+    let next = new Date(now.getFullYear(), mo - 1, d);
+    if (next.getTime() < today.getTime()) next = new Date(now.getFullYear() + 1, mo - 1, d);
+    const days = Math.round((next.getTime() - today.getTime()) / MS);
+    if (days === 0) return { label: `今天就是 ${title}`, count: '', unit: '' };
+    return { label: `下次 ${title} 还有`, count: days, unit: '天' };
+  }
+
+  const target = new Date(y, mo - 1, d);
+  const diff = Math.round((target.getTime() - today.getTime()) / MS);
+  if (diff > 0)  return { label: `距 ${title} 还有`, count: diff, unit: '天' };
+  if (diff === 0) return { label: title, count: '今天', unit: '' };
+  return { label: `${title} 已`, count: Math.abs(diff), unit: '天' };
 }
 
 // Music widget — port of phone-app-demos/01-music-widget.html. Two avatar
@@ -383,9 +440,9 @@ function escAttr(s) {
 }
 
 function tileHtml(t, row, col) {
-  // Pass null row/col for dock tiles (or any tile that should flow naturally
-  // without explicit grid placement) — the dock uses its own flex-ish grid
-  // template and shouldn't have grid-column/row inline styles fighting it.
+  // Pass null row/col for items in a non-positioned grid (rare now that even
+  // the dock uses positioned cells). When provided, place via inline grid
+  // coords as 1×1.
   const style = (Number.isFinite(row) && Number.isFinite(col))
     ? ` style="${gridStyle(row, col, 1, 1)}"`
     : '';
@@ -395,6 +452,17 @@ function tileHtml(t, row, col) {
       <div class="label">${t.label}</div>
     </button>
   `;
+}
+
+// Resolve any app id back to its {id, label, icon} entry. Apps live in
+// either PAGES (per-page) or DOCK_CATALOG (dock-only by default). Drag
+// between dock ↔ pages requires both registries to be searchable by id.
+function resolveTile(id) {
+  for (const page of PAGES) {
+    const t = page.find(x => x.id === id);
+    if (t) return t;
+  }
+  return DOCK_CATALOG.find(x => x.id === id) || null;
 }
 
 // ── Add-widget modal ─────────────────────────────────────────────────────
@@ -502,31 +570,78 @@ function parseSizePreset(sizeStr) {
   return { colSpan: Number(m[1]), rowSpan: Number(m[2]) };
 }
 
-// Place a new widget at the first row past every existing item on page 0
-// (widgets AND apps — we have to check both, otherwise a widget can land
-// on the same row as the apps and visually cover them). User can then drag
-// it anywhere in edit mode.
-async function saveNewWidget(partial, router) {
-  const all = await db.getAll('homeWidgets');
-  const settings = await db.get('settings', 'default');
-  let maxBottom = 0;
-  for (const w of all) {
-    const span = widgetSpan(w);
-    const bottom = (Number(w.row) || 0) + span.rowSpan;
-    if (bottom > maxBottom) maxBottom = bottom;
+const ROWS = 6;  // 4 cols × 6 rows — bumped from 5 after move add-widget btn out (B#7)
+
+// Build a 4×ROWS boolean occupancy grid from page-0 items (widgets + apps).
+// Out-of-bounds cells are treated as occupied so placement clamps inside the
+// visible grid.
+function buildOccupancy(widgets, page0AppEntries) {
+  const occ = Array.from({ length: ROWS }, () => new Array(COLS).fill(false));
+  const mark = (r, c, w, h) => {
+    for (let rr = r; rr < r + h; rr++) {
+      for (let cc = c; cc < c + w; cc++) {
+        if (rr >= 0 && rr < ROWS && cc >= 0 && cc < COLS) occ[rr][cc] = true;
+      }
+    }
+  };
+  for (const w of widgets) {
+    const sp = widgetSpan(w);
+    mark(Number(w.row) || 0, Number(w.col) || 0, sp.colSpan, sp.rowSpan);
   }
-  const page0Entries = Array.isArray(settings?.tileOrder?.[0]) ? settings.tileOrder[0] : [];
-  for (const e of page0Entries) {
-    if (typeof e === 'object' && Number.isFinite(e?.row)) {
-      const bottom = e.row + 1;
-      if (bottom > maxBottom) maxBottom = bottom;
+  for (const e of page0AppEntries) {
+    if (typeof e === 'object' && Number.isFinite(e?.row) && Number.isFinite(e?.col)) {
+      mark(e.row, e.col, 1, 1);
     }
   }
-  const row = maxBottom;
+  return occ;
+}
+
+// Scan the 4×ROWS grid top-to-bottom, left-to-right for the first cell where
+// a (w × h) widget fits entirely inside both the grid bounds and unoccupied
+// cells. Returns { row, col } or null when nothing fits.
+function findFirstFreeCell(occ, w, h) {
+  for (let r = 0; r <= ROWS - h; r++) {
+    for (let c = 0; c <= COLS - w; c++) {
+      let ok = true;
+      for (let rr = r; rr < r + h && ok; rr++) {
+        for (let cc = c; cc < c + w && ok; cc++) {
+          if (occ[rr][cc]) ok = false;
+        }
+      }
+      if (ok) return { row: r, col: c };
+    }
+  }
+  return null;
+}
+
+// Find a free slot for a new widget. Falls back to alert if 4×ROWS is full so
+// we never silently overflow — overflow either compresses every cell
+// (when grid-auto-rows kicks in) or hides the widget under home-page's
+// overflow:hidden. Both bugs were trivially repro'd on mobile.
+async function saveNewWidget(partial, router) {
+  const widgets = await db.getAll('homeWidgets');
+  const settings = await db.get('settings', 'default');
+  const page0Entries = Array.isArray(settings?.tileOrder?.[0]) ? settings.tileOrder[0] : [];
+  const occ = buildOccupancy(widgets, page0Entries);
+
+  // partial usually carries colSpan/rowSpan from the editor — fall back to
+  // widgetSpan for safety (e.g. a future caller that forgets to include them).
+  const span = (Number.isFinite(partial.colSpan) && Number.isFinite(partial.rowSpan))
+    ? { colSpan: partial.colSpan, rowSpan: partial.rowSpan }
+    : widgetSpan(partial);
+  const slot = findFirstFreeCell(occ, span.colSpan, span.rowSpan);
+  if (!slot) {
+    await openAlert(document.body, {
+      title: '桌面已满',
+      message: `没找到 ${span.colSpan}×${span.rowSpan} 的空格。先删一个 widget,或把现有的拖到一块腾位置。`,
+      danger: true,
+    });
+    return;
+  }
   await db.set('homeWidgets', {
     id: db.newId(),
-    row,
-    col: 0,
+    row: slot.row,
+    col: slot.col,
     createdAt: Date.now(),
     ...partial,
   });
@@ -642,26 +757,42 @@ async function pickPolaroidPhotosAndSave(container, router) {
 
 async function renderAnniversaryEditor(modal, container, router, existing) {
   const chars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
+  const milestones = await db.getAll('milestones');
+  milestones.sort((a, b) => String(a.dayKey || '').localeCompare(String(b.dayKey || '')));
   const today = new Date();
   const defaultDate = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
 
   // Pre-fill from existing widget if editing.
+  const initMilestoneId = existing?.data?.milestoneId || '';
   const initStartTs   = existing?.data?.startTs;
   const initDateStr   = Number.isFinite(initStartTs)
     ? new Date(initStartTs).toISOString().slice(0, 10)
     : defaultDate;
   const initChar      = existing?.data?.characterId || '';
   const initName      = existing?.data?.name || '';
-  const initMode      = initChar ? 'character' : (initName ? 'custom' : (chars.length > 0 ? 'character' : 'custom'));
+  // Mode 优先级:milestoneId > characterId > 有自定义名 > fallback
+  // (默认 character 当有角色,否则 custom — milestone 必须 user 主动切换才用,
+  // 因为创建顺序通常是先有角色 / 先想个名字)
+  let initMode = 'custom';
+  if (initMilestoneId)      initMode = 'milestone';
+  else if (initChar)        initMode = 'character';
+  else if (initName)        initMode = 'custom';
+  else if (chars.length > 0) initMode = 'character';
   const initSpan      = existing ? widgetSpan(existing) : null;
   const initAlpha     = existing?.transparency;
+
+  function milestoneLabel(m) {
+    const title = String(m.title || '(未命名)').trim();
+    const tag = m.recurring ? ' · 每年' : '';
+    return `${title} (${m.dayKey})${tag}`;
+  }
 
   modal.innerHTML = `
     <div class="modal">
       <div class="modal-header">${existing ? '编辑纪念日' : '纪念日'}</div>
       <form class="anniv-form">
         <label>
-          <div class="label-text">对象${chars.length === 0 ? ' <span class="muted-hint">(还没有角色,先去角色管理创建一个就能选)</span>' : ''}</div>
+          <div class="label-text">类型</div>
           <div class="anniv-mode-row">
             <label class="radio-inline">
               <input type="radio" name="mode" value="character"${initMode === 'character' ? ' checked' : ''}${chars.length === 0 ? ' disabled' : ''}>
@@ -671,7 +802,13 @@ async function renderAnniversaryEditor(modal, container, router, existing) {
               <input type="radio" name="mode" value="custom"${initMode === 'custom' ? ' checked' : ''}>
               <span>自定义</span>
             </label>
+            <label class="radio-inline">
+              <input type="radio" name="mode" value="milestone"${initMode === 'milestone' ? ' checked' : ''}${milestones.length === 0 ? ' disabled' : ''}>
+              <span>关联纪念日</span>
+            </label>
           </div>
+          ${chars.length === 0 ? `<div class="muted-hint">(还没有角色,先去角色管理创建一个就能选)</div>` : ''}
+          ${milestones.length === 0 ? `<div class="muted-hint">(还没有纪念日,先去记忆 app → 纪念日 加一个就能挂在桌面)</div>` : ''}
         </label>
         <label class="anniv-char-block"${initMode === 'character' ? '' : ' hidden'}>
           <div class="label-text">选哪个角色</div>
@@ -683,9 +820,15 @@ async function renderAnniversaryEditor(modal, container, router, existing) {
           <div class="label-text">叫 ta 什么(比如:小猫 / 阿七)</div>
           <input type="text" name="name" maxlength="20" placeholder="名字 / 昵称" value="${escAttr(initName)}">
         </label>
-        <label>
+        <label class="anniv-milestone-block"${initMode === 'milestone' ? '' : ' hidden'}>
+          <div class="label-text">选一个纪念日</div>
+          <select name="milestoneId">
+            ${milestones.map(m => `<option value="${escHtml(m.id)}"${m.id === initMilestoneId ? ' selected' : ''}>${escHtml(milestoneLabel(m))}</option>`).join('')}
+          </select>
+        </label>
+        <label class="anniv-date-block"${initMode === 'milestone' ? ' hidden' : ''}>
           <div class="label-text">从哪天开始算</div>
-          <input type="date" name="startDate" required value="${initDateStr}">
+          <input type="date" name="startDate" value="${initDateStr}">
         </label>
         ${sizeSelectHtml(initSpan?.colSpan, initSpan?.rowSpan, '2x1')}
         ${transparencyFieldHtml(initAlpha)}
@@ -701,27 +844,37 @@ async function renderAnniversaryEditor(modal, container, router, existing) {
   modal.querySelectorAll('input[name="mode"]').forEach(r => {
     r.addEventListener('change', () => {
       const mode = modal.querySelector('input[name="mode"]:checked').value;
-      modal.querySelector('.anniv-char-block').hidden   = (mode !== 'character');
-      modal.querySelector('.anniv-custom-block').hidden = (mode !== 'custom');
+      modal.querySelector('.anniv-char-block').hidden      = (mode !== 'character');
+      modal.querySelector('.anniv-custom-block').hidden    = (mode !== 'custom');
+      modal.querySelector('.anniv-milestone-block').hidden = (mode !== 'milestone');
+      // milestone 模式不需要起始日期(用 milestone 自己的 dayKey)
+      modal.querySelector('.anniv-date-block').hidden      = (mode === 'milestone');
     });
   });
   modal.querySelector('form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(modal.querySelector('form'));
     const mode = String(fd.get('mode') || 'custom');
-    const startDateStr = String(fd.get('startDate') || '').trim();
-    if (!startDateStr) return;
-    const startTs = new Date(`${startDateStr}T12:00:00`).getTime();
-    if (!Number.isFinite(startTs)) return;
-    const data = { startTs };
-    if (mode === 'character') {
-      const cid = String(fd.get('characterId') || '');
-      if (!cid) return;
-      data.characterId = cid;
+    const data = {};
+    if (mode === 'milestone') {
+      const mid = String(fd.get('milestoneId') || '');
+      if (!mid) return;
+      data.milestoneId = mid;
     } else {
-      const name = String(fd.get('name') || '').trim();
-      if (!name) return;
-      data.name = name;
+      const startDateStr = String(fd.get('startDate') || '').trim();
+      if (!startDateStr) return;
+      const startTs = new Date(`${startDateStr}T12:00:00`).getTime();
+      if (!Number.isFinite(startTs)) return;
+      data.startTs = startTs;
+      if (mode === 'character') {
+        const cid = String(fd.get('characterId') || '');
+        if (!cid) return;
+        data.characterId = cid;
+      } else {
+        const name = String(fd.get('name') || '').trim();
+        if (!name) return;
+        data.name = name;
+      }
     }
     const span = parseSizePreset(fd.get('sizePreset')) || { colSpan: 2, rowSpan: 1 };
     const transparency = Number(fd.get('transparency')) || 100;
@@ -1104,10 +1257,13 @@ function startMusicTimers(container) {
 }
 
 // ── Drag helpers ─────────────────────────────────────────────────────────
-// Translate a pointer position into a (row, col) cell within the given
-// grid element. Clamps to grid bounds. Used while dragging to figure out
-// where the placeholder should sit.
-function pointerToCell(gridEl, clientX, clientY) {
+// Snapshot the grid's pixel geometry so we can convert pointer → cell and
+// cell → pixel coords without re-querying the DOM. These values are stable
+// for the duration of a drag (grid doesn't reflow mid-drag), so a single
+// `gridGeometry(gridEl)` at dragstart feeds every pointermove tick.
+// Previously each pointermove ran getComputedStyle + getBoundingClientRect
+// at ~60Hz — the visible "drag stutter" on mobile was largely from that.
+function gridGeometry(gridEl) {
   const rect = gridEl.getBoundingClientRect();
   const cs = getComputedStyle(gridEl);
   const gap = parseFloat(cs.rowGap || cs.gap) || 10;
@@ -1115,13 +1271,23 @@ function pointerToCell(gridEl, clientX, clientY) {
   // 比如 "92.5px 92.5px 92.5px 92.5px 92.5px"。第一个 track 的像素值就是
   // row height(所有行 1fr 等分,值一样)。如果 grid 还没 laid out,fallback
   // 到 col width(cells 大约正方形)。
-  const tracks = cs.gridTemplateRows.split(' ').map(s => parseFloat(s)).filter(Number.isFinite);
-  const colWidth = (rect.width - gap * (COLS - 1)) / COLS;
-  const rowHeight = tracks[0] || colWidth || 90;
+  const rowTracks = cs.gridTemplateRows.split(' ').map(s => parseFloat(s)).filter(Number.isFinite);
+  const colTracks = cs.gridTemplateColumns.split(' ').map(s => parseFloat(s)).filter(Number.isFinite);
+  const colW = colTracks[0] || ((rect.width - gap * (COLS - 1)) / COLS);
+  const rowH = rowTracks[0] || colW || 90;
+  return { rect, gap, colW, rowH };
+}
+
+// Translate a pointer position into a (row, col) cell. Accepts either a
+// grid element (re-snapshots geometry — used outside drag) or a pre-cached
+// geometry object (used inside the hot pointermove loop).
+function pointerToCell(gridOrGeom, clientX, clientY) {
+  const geom = gridOrGeom.rect ? gridOrGeom : gridGeometry(gridOrGeom);
+  const { rect, gap, colW, rowH } = geom;
   const x = Math.max(0, clientX - rect.left);
   const y = Math.max(0, clientY - rect.top);
-  const col = Math.max(0, Math.min(COLS - 1, Math.floor(x / (colWidth + gap))));
-  const row = Math.max(0, Math.floor(y / (rowHeight + gap)));
+  const col = Math.max(0, Math.min(COLS - 1, Math.floor(x / (colW + gap))));
+  const row = Math.max(0, Math.floor(y / (rowH + gap)));
   return { row, col };
 }
 
@@ -1165,11 +1331,32 @@ export async function mountHome(container, params, router) {
 
   const tileOrder = Array.isArray(settings?.tileOrder) ? settings.tileOrder : [];
 
+  // Dock — first-mount init. Defaults centers 微信/设置 at slots 1/2;the
+  // outer slots 0/3 stay empty so user can drag an app in. After init, dock
+  // contents are user-controllable like any other surface (B#6 dock 可拖).
+  if (!Array.isArray(settings?.dockOrder)) {
+    await db.updateSettings(s => { s.dockOrder = [...DOCK_DEFAULT]; });
+    settings = await db.get('settings', 'default');
+  }
+  const dockOrder = (settings.dockOrder || [...DOCK_DEFAULT]).slice(0, DOCK_SLOTS);
+  while (dockOrder.length < DOCK_SLOTS) dockOrder.push(null);
+  const dockIds = new Set(dockOrder.filter(Boolean));
+
+  // Build dock items list (col index = slot).
+  const dockItems = dockOrder.map((id, col) => {
+    if (!id) return null;
+    const tile = resolveTile(id);
+    if (!tile) return null;
+    return { kind: 'app', tile, row: 0, col, colSpan: 1, rowSpan: 1 };
+  }).filter(Boolean);
+
   // Build a flat list of items per page: apps + widgets (widgets only on
   // page 0). Each item has { kind, row, col, colSpan, rowSpan, ...data }.
+  // Apps currently in the dock are excluded from page rendering so they
+  // don't show in two places at once.
   const pageItemsList = [];
   for (let p = 0; p < PAGES.length; p++) {
-    const apps = resolveTilesForPage(p, tileOrder);
+    const apps = resolveTilesForPage(p, tileOrder).filter(a => !dockIds.has(a.id));
     const appItems = apps.map(a => ({
       kind: 'app', tile: a, row: a.row, col: a.col, colSpan: 1, rowSpan: 1,
     }));
@@ -1189,11 +1376,11 @@ export async function mountHome(container, params, router) {
   }
 
   // Render HTML per page — each item carries its inline grid coords.
-  // We also render 20 empty .grid-slot divs (4 cols × 5 rows) into every
-  // page so the user can see the cell outlines in edit mode and know how
-  // big a widget would be. CSS shows the outlines only when .editing is
-  // on (.grid-slot is transparent otherwise).
-  const slotHtmls = Array.from({ length: 20 }, (_, i) => {
+  // We also render ROWS*COLS empty .grid-slot divs into every page so the
+  // user can see the cell outlines in edit mode and know how big a widget
+  // would be. CSS shows the outlines only when .editing is on
+  // (.grid-slot is transparent otherwise).
+  const slotHtmls = Array.from({ length: ROWS * COLS }, (_, i) => {
     const r = Math.floor(i / COLS);
     const c = i % COLS;
     return `<div class="grid-slot" style="grid-column: ${c + 1}; grid-row: ${r + 1};" aria-hidden="true"></div>`;
@@ -1207,25 +1394,31 @@ export async function mountHome(container, params, router) {
     return `
       <div class="home-page" data-page-idx="${pageIdx}">
         <div class="app-grid unified-grid" data-grid-page="${pageIdx}">${slotHtmls}${itemHtmls.join('')}</div>
-        ${pageIdx === 0 ? `<button class="widget-add" type="button" title="添加桌面装饰">＋ 添加装饰</button>` : ''}
       </div>
     `;
   }));
 
-  // Show the add-button by default (outside edit mode) iff there are no
-  // user-owned widgets — gives users a way in without entering edit mode
-  // first. Once they add anything, the button hides outside edit mode.
-  const hasNoUserWidgets = userWidgets.length === 0;
-
+  // Edit toolbar — only visible in editing mode. 左 + 添加装饰, 右 完成。
+  // 之前 add-widget 按钮挂在每个 page 底部占 0.5 行,完成按钮在右上角
+  // 跟 row 0 widget 的 × 重叠(B#3)。统一移到顶部一条 toolbar 里解决两
+  // 个事 + 把 add-widget 暴露到所有页(B#4)。toolbar 是 flex 0 0 auto,
+  // 只在 .editing 时占空间,平时高度 0。
   container.innerHTML = `
-    <div class="page home${hasNoUserWidgets ? ' no-user-widgets' : ''}">
-      <button class="edit-done" type="button">完成</button>
+    <div class="page home">
+      <div class="home-edit-toolbar">
+        <button class="widget-add" type="button" title="添加桌面装饰">＋ 添加装饰</button>
+        <button class="edit-done" type="button">完成</button>
+      </div>
       <div class="home-pages">${pagesHtml.join('')}</div>
       <div class="home-pager${showPager ? '' : ' single'}">
         ${PAGES.map((_, i) => `<button class="dot${i === 0 ? ' active' : ''}" data-page="${i}" aria-label="第 ${i+1} 页"></button>`).join('')}
       </div>
       <div class="home-dock">
-        <div class="app-grid dock-grid">${DOCK.map(t => tileHtml(t)).join('')}</div>
+        <div class="app-grid dock-grid" data-grid-page="dock">${
+          Array.from({ length: DOCK_SLOTS }, (_, c) =>
+            `<div class="grid-slot" style="grid-column: ${c + 1}; grid-row: 1;" aria-hidden="true"></div>`
+          ).join('')
+        }${dockItems.map(it => tileHtml(it.tile, it.row, it.col)).join('')}</div>
       </div>
     </div>
   `;
@@ -1237,7 +1430,7 @@ export async function mountHome(container, params, router) {
   const dots    = Array.from(container.querySelectorAll('.home-pager .dot'));
   const homeEl  = container.querySelector('.page.home');
 
-  // Grid 现在用 `repeat(5, minmax(0, 1fr))` 撑满 home-page,行/列大小由
+  // Grid 现在用 `repeat(ROWS, minmax(0, 1fr))` 撑满 home-page,行/列大小由
   // CSS Grid 自动算,不再需要 JS 计算 --cell-size 同步。pointerToCell 和
   // 拖拽 snap 直接读 getComputedStyle 的 gridTemplateRows 拿实际像素值。
 
@@ -1283,34 +1476,26 @@ export async function mountHome(container, params, router) {
   const onScroll = () => setActiveDot();
   pagesEl.addEventListener('scroll', onScroll, { passive: true });
 
-  // Build a fresh items snapshot for the given grid element. Each entry
-  // carries the *current* DOM element so we can swap inline styles on swap.
-  // Exclude .grid-placeholder (drag visual) and .grid-slot (cell-outline
-  // helpers that aren't draggable items).
+  // Build an items snapshot for the given grid by joining its DOM children
+  // to the page's pageItemsList — the in-memory model already has every
+  // item's (row, col, colSpan, rowSpan) from when we rendered, so we don't
+  // need to read the DOM back via getComputedStyle / inline-style regex.
+  // The DOM is purely a result of the data; treating it as the source of
+  // truth (the previous impl) broke any time inline style format shifted.
   function snapshotItems(gridEl) {
-    return [...gridEl.children].filter(el =>
-      !el.classList.contains('grid-placeholder') &&
-      !el.classList.contains('grid-slot')
-    ).map(el => {
-      const cs = getComputedStyle(el);
-      // Parse `grid-column-start` (e.g. "2") and span (e.g. "2") from the
-      // browser-resolved values. Fallback to 1.
-      const colStart = parseInt(cs.gridColumnStart, 10) || 1;
-      const rowStart = parseInt(cs.gridRowStart, 10)    || 1;
-      // Determine spans by reading the original inline style — getComputedStyle
-      // returns resolved track placements, but we want the user-set span. Easier:
-      // parse the inline style.
-      const inline = el.getAttribute('style') || '';
-      const colSpanMatch = inline.match(/grid-column:\s*\d+\s*\/\s*span\s*(\d+)/);
-      const rowSpanMatch = inline.match(/grid-row:\s*\d+\s*\/\s*span\s*(\d+)/);
-      return {
-        el,
-        row: rowStart - 1,
-        col: colStart - 1,
-        colSpan: colSpanMatch ? parseInt(colSpanMatch[1], 10) : 1,
-        rowSpan: rowSpanMatch ? parseInt(rowSpanMatch[1], 10) : 1,
-      };
-    });
+    const key = gridEl.dataset.gridPage;
+    // 'dock' surface uses the separate dockItems list; numbered pages use
+    // pageItemsList[idx]. Either way it's just a Map-like lookup.
+    const items = key === 'dock' ? dockItems : (pageItemsList[Number(key)] || []);
+    const out = [];
+    for (const it of items) {
+      const el = it.kind === 'widget'
+        ? gridEl.querySelector(`[data-widget-id="${CSS.escape(it.widget.id)}"]`)
+        : gridEl.querySelector(`[data-target="${CSS.escape(it.tile.id)}"]`);
+      if (!el) continue;
+      out.push({ el, row: it.row, col: it.col, colSpan: it.colSpan, rowSpan: it.rowSpan });
+    }
+    return out;
   }
 
   const onPointerDown = (e) => {
@@ -1318,18 +1503,43 @@ export async function mountHome(container, params, router) {
     //    (within a page grid, NOT the dock) starts a drag.
     if (editMode) {
       const widgetEl = e.target.closest('.user-widget');
+      // B#6: dock app-icon 也允许起拖(之前 :not(.dock-grid) 排除了)。
+      // dock 不接 widget(widgets 在 dock 没意义),所以 widget closest 优先。
       const tileEl = !widgetEl
-        ? e.target.closest('.app-grid:not(.dock-grid) .app-icon')
+        ? e.target.closest('.app-grid .app-icon')
         : null;
       const targetEl = widgetEl || tileEl;
-      if (targetEl && !e.target.closest('.widget-del')) {
+      // 排除 ⚙ / × 两个按钮 —— 这俩点击要触发它们自己的 handler(打开编辑 modal /
+       // 删除),pointerdown 抢去当 drag 起手了,后续 click 就不来了。之前只排了
+       // × 没排 ⚙,所以编辑模式下点 ⚙ 完全无响应(bug #2)。
+      if (targetEl
+          && !e.target.closest('.widget-del')
+          && !e.target.closest('.widget-edit')) {
         e.preventDefault();
         const gridEl = targetEl.closest('.unified-grid');
         if (!gridEl) return;
-        const items = snapshotItems(gridEl);
+        const originPage = gridEl.dataset.gridPage === 'dock'
+          ? 'dock'
+          : Number(gridEl.dataset.gridPage ?? 0);
+        // Pre-snapshot every surface (numbered pages + dock) so we can hop
+        // between them mid-drag without re-querying when the user crosses a
+        // page boundary, auto-scroll fires (B#5), or pointer leaves pages
+        // for the dock (B#6). items snapshot stays valid for the whole drag
+        // — geom needs to be re-snapshotted on scroll change because
+        // viewport-relative bbox moves with .home-pages.scrollLeft.
+        const pageSnapshots = {};
+        for (const g of container.querySelectorAll('.app-grid[data-grid-page]')) {
+          const key = g.dataset.gridPage === 'dock' ? 'dock' : Number(g.dataset.gridPage);
+          pageSnapshots[key] = { gridEl: g, items: snapshotItems(g) };
+        }
+        const items = pageSnapshots[originPage].items;
         const meEntry = items.find(it => it.el === targetEl);
         if (!meEntry) return;
         const rect = targetEl.getBoundingClientRect();
+        // Snapshot grid geometry once — these values don't change mid-drag,
+        // so re-running getComputedStyle on every pointermove tick is pure
+        // overhead. Cached colW/rowH/gap feed snap math at ~60Hz.
+        const geom = gridGeometry(gridEl);
         // Placeholder — same dimensions/grid placement as the dragged item.
         const placeholder = document.createElement('div');
         placeholder.className = 'grid-placeholder';
@@ -1346,7 +1556,10 @@ export async function mountHome(container, params, router) {
         targetEl.style.pointerEvents = 'none';
         targetEl.classList.add('dragging');
         dragging = {
-          el: targetEl, gridEl, items, me: meEntry,
+          el: targetEl, gridEl, items, me: meEntry, geom,
+          pageSnapshots, gridPage: originPage, originPage,
+          lastScrollLeft: pagesEl.scrollLeft,
+          lastAutoScrollAt: 0,
           pointerId: e.pointerId,
           offsetX: e.clientX - rect.left,
           offsetY: e.clientY - rect.top,
@@ -1359,10 +1572,10 @@ export async function mountHome(container, params, router) {
       }
       return;
     }
-    // 2. 长按进入编辑模式 —— touch / pen / mouse 都支持。Mouse 移动 >8px
-    // 时(下方 onPointerMove 里 clearPressTimer)会取消长按,这样用户在
-    // home 上鼠标拖动翻页不会误触发 edit。Dock 区域排除,免得点 dock 按钮
-    // 也长按。Mouse left-button only(button: 0)。
+    // 2. 长按进入编辑模式 —— touch / pen / mouse 都支持。位移阈值在下方
+    // onPointerMove 里 clearPressTimer:总位移 > 20px 或者水平占主导(swipe
+    // 翻页手势)立刻取消,这样用户在 home 上拖动翻页不会误触发 edit。Dock
+    // 区域排除,免得点 dock 按钮也长按。Mouse left-button only(button: 0)。
     const isLeftClick = e.pointerType !== 'mouse' || e.button === 0;
     if (isLeftClick
         && !e.target.closest('.home-dock')
@@ -1391,45 +1604,108 @@ export async function mountHome(container, params, router) {
     if (pressTimer && pressStart) {
       const dx = e.clientX - pressStart.x;
       const dy = e.clientY - pressStart.y;
-      if (dx * dx + dy * dy > 64) clearPressTimer();
+      // B4: drag-cancel threshold for long-press arming. 8px was too tight —
+      // a finger naturally drifts that much in the 600ms hold, especially on
+      // a phone held in one hand, so users hit edit mode by accident. Two
+      // changes: (a) bump radius to 20px so small finger jitter is tolerated,
+      // (b) if the motion is dominantly horizontal (page-swipe gesture),
+      // cancel the long-press immediately even before 20px — that swipe is
+      // never intended as a long-press.
+      const absX = Math.abs(dx);
+      const absY = Math.abs(dy);
+      if (dx * dx + dy * dy > 400) clearPressTimer();           // 20² = 400
+      else if (absX > 5 && absX > absY * 1.5) clearPressTimer(); // clear scroll
     }
     if (dragging && e.pointerId === dragging.pointerId) {
       e.preventDefault();
-      // Compute target cell from pointer position first — we snap the
-      // dragging item TO that cell (not to the pointer), so user sees the
-      // item lock into grid positions instead of freely floating. CSS
-      // transition on .dragging gives a 120ms ease so the snap looks
-      // smooth rather than teleport-jumpy.
-      const cell = pointerToCell(dragging.gridEl, e.clientX, e.clientY);
+
+      // B#5 + B#6: cross-surface drag (page ↔ page, page ↔ dock).
+      // 1) Pointer is over dock area? → switch to dock surface.
+      // 2) Otherwise pointer is in pages — figure out which page from
+      //    .home-pages scrollLeft. If it changed, swap dragging context.
+      // 3) Recompute geom if scrollLeft changed at all — gridEl.bbox is
+      //    viewport-relative so it moves with scroll, breaking snap math.
+      // 4) If pointer is near .home-pages left/right edge, trigger an
+      //    auto-scroll to the neighbor page (throttled ≥ 600ms apart).
+      const sl = pagesEl.scrollLeft;
+      const w = pagesEl.clientWidth;
+      const dockSnap = dragging.pageSnapshots.dock;
+      const dockRect = dockSnap?.gridEl.getBoundingClientRect();
+      const overDock = dockRect && e.clientY >= dockRect.top && e.clientY <= dockRect.bottom;
+      const currentSurface = overDock
+        ? 'dock'
+        : (w > 0 ? Math.round(sl / w) : dragging.gridPage);
+      let needGeomRefresh = false;
+      if (currentSurface !== dragging.gridPage && dragging.pageSnapshots[currentSurface]) {
+        // Hop to new surface: swap gridEl / items, and move the placeholder
+        // into the new grid so it shows up where the pointer is.
+        const snap = dragging.pageSnapshots[currentSurface];
+        dragging.gridEl = snap.gridEl;
+        dragging.items  = snap.items;
+        dragging.gridPage = currentSurface;
+        if (dragging.placeholder && dragging.placeholder.parentNode !== snap.gridEl) {
+          snap.gridEl.appendChild(dragging.placeholder);
+        }
+        needGeomRefresh = true;
+      }
+      if (sl !== dragging.lastScrollLeft) {
+        needGeomRefresh = true;
+        dragging.lastScrollLeft = sl;
+      }
+      if (needGeomRefresh) dragging.geom = gridGeometry(dragging.gridEl);
+
+      // Auto-scroll: pointer near .home-pages edge → scroll to neighbor.
+      // Only when pointer is inside .home-pages vertically (not when it
+      // dropped into dock area). 40px edge zone, ≥ 600ms apart.
+      const pagesRect = pagesEl.getBoundingClientRect();
+      const edge = 40;
+      const now = Date.now();
+      const inPagesV = e.clientY >= pagesRect.top && e.clientY <= pagesRect.bottom;
+      if (inPagesV && currentSurface !== 'dock' && now - dragging.lastAutoScrollAt > 600) {
+        if (e.clientX < pagesRect.left + edge && currentSurface > 0) {
+          pagesEl.scrollTo({ left: (currentSurface - 1) * w, behavior: 'smooth' });
+          dragging.lastAutoScrollAt = now;
+        } else if (e.clientX > pagesRect.right - edge && currentSurface < PAGES.length - 1) {
+          pagesEl.scrollTo({ left: (currentSurface + 1) * w, behavior: 'smooth' });
+          dragging.lastAutoScrollAt = now;
+        }
+      }
+
+      // Compute target cell from pointer position — we snap the dragging
+      // item TO that cell (not to the pointer), so user sees the item lock
+      // into grid positions instead of freely floating. CSS transition on
+      // .dragging gives a 120ms ease so the snap looks smooth rather than
+      // teleport-jumpy.
+      const geom = dragging.geom;
+      const cell = pointerToCell(geom, e.clientX, e.clientY);
       const cs = dragging.me.colSpan;
       const rs = dragging.me.rowSpan;
+      const surfaceRows = dragging.gridPage === 'dock' ? 1 : ROWS;
       const targetCol = Math.max(0, Math.min(COLS - cs, cell.col));
-      // Clamp targetRow to keep widget inside 5 explicit rows. Otherwise
-      // placeholder lands at row 6+,grid-auto-rows: minmax(0, 1fr) 自动加
-      // row,固定 grid 高度被更多行平分,所有 cells 等比缩水 → user 看到
-      // "越往下拖,上面越扁" bug。
-      const ROWS = 5;
-      const targetRow = Math.max(0, Math.min(ROWS - rs, cell.row));
+      // Clamp targetRow to keep item inside the surface's row count.
+      // (pages = 6 rows, dock = 1 row). Otherwise placeholder lands beyond
+      // the grid and CSS grid-auto-rows kicks in, compressing every cell
+      // → "越往下拖,上面越扁" bug。
+      const targetRow = Math.max(0, Math.min(surfaceRows - rs, cell.row));
 
-      // Snap dragging item to the target cell's top-left in screen coords.
-      // Cells now use 1fr in both axes (filling home-page), so col width and
-      // row height come from resolved gridTemplateColumns / gridTemplateRows
-      // (real px values per track) instead of a single --cell-size.
-      const gRect = dragging.gridEl.getBoundingClientRect();
-      const gCs = getComputedStyle(dragging.gridEl);
-      const gap = parseFloat(gCs.columnGap || gCs.gap) || 10;
-      const colTracks = gCs.gridTemplateColumns.split(' ').map(s => parseFloat(s)).filter(Number.isFinite);
-      const rowTracks = gCs.gridTemplateRows.split(' ').map(s => parseFloat(s)).filter(Number.isFinite);
-      const colW = colTracks[0] || ((gRect.width - gap * (COLS - 1)) / COLS);
-      const rowH = rowTracks[0] || colW;
-      const snappedX = gRect.left + targetCol * (colW + gap);
-      const snappedY = gRect.top  + targetRow * (rowH + gap);
+      // Snap dragging item to the target cell's top-left using cached geom.
+      const snappedX = geom.rect.left + targetCol * (geom.colW + geom.gap);
+      const snappedY = geom.rect.top  + targetRow * (geom.rowH + geom.gap);
       dragging.el.style.left = snappedX + 'px';
       dragging.el.style.top  = snappedY + 'px';
       // Check what's at the target. If the target area only contains the
       // dragged item itself (or nothing), placement is valid. If it
       // contains exactly one other item of the same size, mark it as a
       // swap candidate. Anything else = invalid drop.
+      // 跨 surface 约束:
+      //  - widget 只能落在 page 0(数据模型决定 — widgets store 没 page 字段)
+      //  - widget 不能进 dock(dock 只装 apps)
+      //  - 多 cell widget(colSpan*rowSpan>1)不能进 dock(dock 槽都是 1×1)
+      const isWidgetDrag = dragging.el.classList.contains('user-widget');
+      const onDock = dragging.gridPage === 'dock';
+      const widgetCrossingNonZero = isWidgetDrag && !onDock && dragging.gridPage !== 0;
+      const widgetOnDock = isWidgetDrag && onDock;
+      const oversizeOnDock = onDock && (cs > 1 || rs > 1);
       const dragSpan = { colSpan: dragging.me.colSpan, rowSpan: dragging.me.rowSpan };
       const occupants = new Set();
       for (let r = targetRow; r < targetRow + dragSpan.rowSpan; r++) {
@@ -1440,7 +1716,9 @@ export async function mountHome(container, params, router) {
       }
       let valid = false;
       let swapTarget = null;
-      if (occupants.size === 0) {
+      if (widgetCrossingNonZero || widgetOnDock || oversizeOnDock) {
+        valid = false;
+      } else if (occupants.size === 0) {
         valid = true;
       } else if (occupants.size === 1) {
         const o = [...occupants][0];
@@ -1473,25 +1751,31 @@ export async function mountHome(container, params, router) {
   const onPointerEnd = async (e) => {
     clearPressTimer();
     if (dragging && e.pointerId === dragging.pointerId) {
-      const { el, me, gridEl, targetCell, swapTarget, validDrop, origStyle } = dragging;
+      const { el, me, gridEl, targetCell, swapTarget, validDrop, origStyle, originPage } = dragging;
       // Restore base styles regardless of outcome — successful drop will
       // get its new grid placement written below.
       el.style.cssText = origStyle;
       el.classList.remove('dragging');
       if (dragging.placeholder?.parentNode) dragging.placeholder.remove();
       try { el.releasePointerCapture(e.pointerId); } catch (_) {}
-      const gridPage = Number(gridEl.dataset.gridPage ?? 0);
-      const acted = validDrop && (targetCell.row !== me.row || targetCell.col !== me.col);
+      const destPage = gridEl.dataset.gridPage === 'dock'
+        ? 'dock'
+        : Number(gridEl.dataset.gridPage ?? 0);
+      const pageChanged = destPage !== originPage;
+      const acted = validDrop && (pageChanged || targetCell.row !== me.row || targetCell.col !== me.col);
       dragging = null;
       if (acted) {
         // Persist the move (and swap, if any). For apps, write to
         // settings.tileOrder[pageIdx]; for widgets, write to homeWidgets.
+        // 跨页时 originPage ≠ destPage,persistMove 会负责从 origin 的 tileOrder
+        // 摘掉原条目(避免一个 app 同时在两页里出现)。
         await persistMove({
           movedEl: el,
           movedFrom: { row: me.row, col: me.col },
           movedTo:   { row: targetCell.row, col: targetCell.col },
           swapTargetEl: swapTarget?.el || null,
-          gridPage,
+          originPage,
+          destPage,
         });
         await router.navigate('home');
       }
@@ -1637,18 +1921,20 @@ export async function mountHome(container, params, router) {
 // Persist a grid move. Resolves whether the moved element is an app
 // (settings.tileOrder[pageIdx]) or a widget (homeWidgets row) and applies
 // the position change, including any same-size swap.
-async function persistMove({ movedEl, movedFrom, movedTo, swapTargetEl, gridPage }) {
+async function persistMove({ movedEl, movedFrom, movedTo, swapTargetEl, originPage, destPage }) {
   const isWidget = movedEl.classList.contains('user-widget');
   const isApp    = !isWidget && movedEl.classList.contains('app-icon');
   const swapIsWidget = swapTargetEl?.classList.contains('user-widget');
   const swapIsApp    = swapTargetEl?.classList.contains('app-icon');
 
-  // Helper: update an app's position in settings.tileOrder[pageIdx].
-  async function setAppPos(appId, row, col) {
+  // Helper: update an app's position in settings.tileOrder[pageIdx]. Caller
+  // controls which page — for cross-page moves we'll first remove from origin
+  // then setAppPos on destination.
+  async function setAppPos(appId, pageIdx, row, col) {
     await db.updateSettings(s => {
       if (!Array.isArray(s.tileOrder)) s.tileOrder = [];
-      if (!Array.isArray(s.tileOrder[gridPage])) s.tileOrder[gridPage] = [];
-      const arr = s.tileOrder[gridPage];
+      if (!Array.isArray(s.tileOrder[pageIdx])) s.tileOrder[pageIdx] = [];
+      const arr = s.tileOrder[pageIdx];
       const existing = arr.find(e => e && (typeof e === 'string' ? e === appId : e.id === appId));
       if (existing && typeof existing === 'object') {
         existing.row = row;
@@ -1662,6 +1948,38 @@ async function persistMove({ movedEl, movedFrom, movedTo, swapTargetEl, gridPage
     });
   }
 
+  // Helper: drop an app from a page's tileOrder. Used when an app crosses
+  // pages — without this the app would appear in BOTH origin and destination
+  // tileOrder lists (resolveTilesForPage would render duplicates).
+  async function removeAppFromPage(appId, pageIdx) {
+    await db.updateSettings(s => {
+      const arr = s.tileOrder?.[pageIdx];
+      if (!Array.isArray(arr)) return;
+      const i = arr.findIndex(e => (typeof e === 'string' ? e === appId : e?.id === appId));
+      if (i >= 0) arr.splice(i, 1);
+    });
+  }
+
+  // Helpers for dock: it's a 4-slot row in settings.dockOrder. col → slot.
+  async function setDockSlot(appId, col) {
+    await db.updateSettings(s => {
+      if (!Array.isArray(s.dockOrder)) s.dockOrder = [null, null, null, null];
+      // Remove appId from any other slot first (defensive — same app twice in dock would dup).
+      for (let i = 0; i < s.dockOrder.length; i++) {
+        if (s.dockOrder[i] === appId) s.dockOrder[i] = null;
+      }
+      s.dockOrder[col] = appId;
+    });
+  }
+  async function removeAppFromDock(appId) {
+    await db.updateSettings(s => {
+      if (!Array.isArray(s.dockOrder)) return;
+      for (let i = 0; i < s.dockOrder.length; i++) {
+        if (s.dockOrder[i] === appId) s.dockOrder[i] = null;
+      }
+    });
+  }
+
   // Helper: update a widget's position in homeWidgets.
   async function setWidgetPos(widgetId, row, col) {
     const w = await db.get('homeWidgets', widgetId);
@@ -1671,15 +1989,35 @@ async function persistMove({ movedEl, movedFrom, movedTo, swapTargetEl, gridPage
     await db.set('homeWidgets', w);
   }
 
-  // 1. Move the dragged item to its new (row, col).
-  const movedId = isWidget ? movedEl.dataset.widgetId : movedEl.dataset.target;
-  if (isWidget) await setWidgetPos(movedId, movedTo.row, movedTo.col);
-  else if (isApp) await setAppPos(movedId, movedTo.row, movedTo.col);
+  const isCrossSurface = originPage !== destPage;
 
-  // 2. If swapping with another item, move it to the dragged item's old slot.
+  // 1. Move the dragged item to its new (row, col). For cross-surface apps,
+  //    drop from origin first. Widgets are page-0 only by design (no page
+  //    field on widget row) and excluded from dock (1×1 only), so they only
+  //    move within page 0.
+  const movedId = isWidget ? movedEl.dataset.widgetId : movedEl.dataset.target;
+  if (isWidget) {
+    await setWidgetPos(movedId, movedTo.row, movedTo.col);
+  } else if (isApp) {
+    if (isCrossSurface) {
+      if (originPage === 'dock')      await removeAppFromDock(movedId);
+      else if (typeof originPage === 'number') await removeAppFromPage(movedId, originPage);
+    }
+    if (destPage === 'dock')          await setDockSlot(movedId, movedTo.col);
+    else if (typeof destPage === 'number') await setAppPos(movedId, destPage, movedTo.row, movedTo.col);
+  }
+
+  // 2. If swapping with another item, move it to the dragged item's old slot
+  //    on the origin surface (same-size constraint in onPointerMove means
+  //    swap target lives on the same grid). swap can happen within page or
+  //    within dock — never cross-surface.
   if (swapTargetEl) {
     const swapId = swapIsWidget ? swapTargetEl.dataset.widgetId : swapTargetEl.dataset.target;
-    if (swapIsWidget) await setWidgetPos(swapId, movedFrom.row, movedFrom.col);
-    else if (swapIsApp) await setAppPos(swapId, movedFrom.row, movedFrom.col);
+    if (swapIsWidget) {
+      await setWidgetPos(swapId, movedFrom.row, movedFrom.col);
+    } else if (swapIsApp) {
+      if (destPage === 'dock')        await setDockSlot(swapId, movedFrom.col);
+      else if (typeof destPage === 'number') await setAppPos(swapId, destPage, movedFrom.row, movedFrom.col);
+    }
   }
 }

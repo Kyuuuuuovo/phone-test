@@ -8,7 +8,7 @@
 
 ### 后端核心(`src/core/`)
 
-- `db.js` —— IndexedDB 封装。`STORES` 常量是数据模型唯一来源。改动需 bump `DB_VERSION`。当前 `DB_VERSION = 7`。导出 `init / get / set / getAll / query(store, indexName, value) / del / clear / newId`。
+- `db.js` —— IndexedDB 封装。`STORES` 常量是数据模型唯一来源。改动需 bump `DB_VERSION`。当前 `DB_VERSION = 9`。导出 `init / get / set / getAll / query(store, indexName, value) / del / clear / newId / updateSettings`。
 - `pet.js` —— 桌宠模块。常量 `BEAR_PERSONA / AMBIENT_LINES`(作者锁定文案,普通用户改不到),保留 ID `BEAR_CHARACTER_ID = '__bear__'` / `BEAR_SESSION_ID = '__bear_session__'`;`ensureBearExists()` boot 时幂等保证两条 row 存在;`pickAmbientLine()` 按规则(无 API / 无角色 / lastMessageAt 老旧 / 时段)挑一条气泡文案,**不调 API**。聊天复用现有 chat 管线,不另起。
 - `bottle.js` —— 漂流瓶核心。`scanDueBottles(db, ai)` 找 `replyDueAt <= now` 的 drifting 瓶子懒生成回信(boot + open app 时调用);`replyAsContact` / `replyAsStranger` 分两种受众生成回信(联系人模式注入"匿名"事实让角色不知道作者是谁);`fishBottle` 让 AI 现造陌生人 + 瓶子内容;`promoteStrangerToFriend` 把瓶子上的 `generatedPersona` 升格成正式 character。**所有 prompt 文案是 // TODO(作者填写) 占位**,Claude 不替作者定稿语气。
 - `surveillance.js` —— 监控模块。`generateSnapshot(cameraId)` 拼专用 system prompt(persona + schedule + 最近聊天 + 房间 + angle + 模式事实 + 视角刚变动 hint)→ 严格 JSON schema(`{location, posture, activity, mood, caption, noticed}`)→ 写 `activityLog`,spy mode 且 noticed=true 时 flip `camera.discoveredAt`(铁律 9)。`proposeRooms(characterId, {excludeRoom})` 让 AI 给 3-4 个 ta 同意装/换机位的房间,prompt 里附"已装 N 台公开摄像头(房间:A、B)"上下文,允许 AI 返回 `[]` 表示 ta 拒绝再装。`proposeAngles(characterId, room)` 给 3-4 个合理镜头朝向(转动镜头流程的"AI 推荐"路径)。所有函数 `temperature: 0.4`。
@@ -23,11 +23,15 @@
 ### UI(`src/features/`)
 
 - 全局壳:`.phone-frame` 用 `clamp(400px, calc((100vh - 24px) * 9 / 19.5), 480px)` 自适应桌面比例 + `align-items:center` 居中。状态栏:时间 + 4 根渐高竖线信号 SVG + 电池(`navigator.getBattery()`)。
-- **首页 (`home`)** —— 2 页:
-  - 第 1 页:角色 / 世界书 / 人设 / 行程 + 装饰位(图片 / 便签 widget,`homeWidgets` store;widget 有 `size`(small/medium/large)+ `placement`(above/below tiles))+ 收藏 widget(自带)+「＋ 添加装饰」按钮
-  - 第 2 页:日记 / 推特 / 论坛 / 商城(占位)+ 监控(已实) —— 点 monitor icon → monitor 列表
-  - Dock:**微信** / 设置
-  - 整页 `overflow-y: hidden`,装饰物高度自适应不下滑
+- **首页 (`home`)** —— 2 页 + 4-槽 dock,统一 4×6 grid(unifiedGridV1):
+  - 每页是 4 列 × 6 行的格子(`aspect-ratio: 2/3`),app 和 widget 共用 grid 位置 — 每个 item 存 `(row, col)`,widget 还存 `colSpan/rowSpan`;空 cell 无元素直接看到壁纸 (iOS 稀疏布局)。home.js 顶层常量 `ROWS=6 / COLS=4 / DOCK_SLOTS=4`。
+  - 第 1 页:角色 / 世界书 / 人设 / 记忆 (app 默认 row=1);widget 也只在 page 0 显示 (widgets store 没有 page 字段,数据模型决定)
+  - 第 2 页:行程 / 日记 / 推特 / 论坛 / 商城 / 监控(已实) / 漂流瓶
+  - **Dock 是 4-slot grid** (settings.dockOrder = `[null, 'messaging', 'settings', null]` 默认两边空、中间 微信/设置),app 可双向拖 dock ↔ pages,widget 不进 dock
+  - 编辑模式 (长按 / 右键进):顶上自动滑下 `.home-edit-toolbar`(左 + 添加装饰、右 完成),所有 item jiggle、× / ⚙ 显示、grid-slot dashed outline 显示。toolbar 平时 display:none 不占空间。
+  - **拖拽规则**:同尺寸可换、不同尺寸需空位、拖到 .home-pages 左右 40px 边缘自动翻页 (B#5)、拖到 dock 区域自动切 surface (B#6)。widget cross-page / 进 dock / 超过 1×1 进 dock 一律 invalid (placeholder 红框 bounce)。
+  - 加 widget: `findFirstFreeCell` 扫 4×6 找洞,真满了弹 openAlert 而不是溢出 (B#1)
+  - 整页 `overflow-y: hidden`,grid 高度由 `aspect-ratio: 2/3` 锁死跟 home-page 宽度走
 - **微信壳 (`messaging`)** —— 4 个底 tab:
   - **消息**(嵌入 chat-list,可右键弹菜单 置顶/拉黑/删除)
   - **通讯录**(按拼音排 + 首字母分组,collator probe;右上 + 走 openNewChatModal)
@@ -65,11 +69,11 @@
 | `chatMessages` | `id` | sessionId, createdAt | role(`user`/`character`/`system`)/ **actions[]** / createdAt |
 | `memories` | `id` | sessionId | 长对话压缩摘要,字段 sessionId / `tier`(1=近期 L1 / 2=远期 L2) / summary / fromMsgId / toMsgId / `archived?` / `archivedAt?` / `archivedIntoMemoryId?`(其实是 chatMessages 字段;memories 自身不带 archived)/ createdAt。**L2 删 L1 时同时清对应 embeddings 行**(否则 vector 表有孤儿) |
 | `apiConfig` | `id` | — | 多条;每条 id / name / apiUrl / apiKey / modelName / temperature。当前活跃由 `settings.activeApiConfigId` 指 |
-| `settings` | `id` | — | 单例 id=`default`。字段:`theme`(对象,见 [core/theme.js](src/core/theme.js))/ `themePresets[]` / `wallpaper`(base64 桌面壁纸)/ `activeApiConfigId` / `activePersonaId`(新建会话用)/ `weatherApi: {urlTemplate, apiKey}` / `memoryEnabled`(默认 true)/ `memoryThreshold`(默认 20,**缓冲条数** — 总结之后保留多少条活跃)/ `memoryBatchSize`(默认 10,**一次总结条数** — 每次触发压几条;触发 = 缓冲 + 一次总结)/ `petEnabled`(默认 true)/ `petX` / `petY`(悬浮球持久化坐标)/ `petLastBubbleAt` / `petDismissed: {triggerKey: ts}`(气泡冷却记录)/ `syncScheduleToChat`(默认 true)/ `syncMonitorToChat`(默认 false,opt-in)/ `devMode`(默认 false)/ `promptOverrides: {humanizer?, behavior?}`(`??` 语义:不存在=源常量、`''`=故意不注入)/ `promptOutputOverrides: {countSpec?, schemasText?}`(同上,改了会影响 JSON 输出契约要小心)/ `embedding: {urlTemplate?, apiKey?, modelName?, enabled?, topK?}`(向量记忆 endpoint + 启用 toggle + top-K)。**所有 settings 修改用 `db.updateSettings(fn)` 原子化**,不要再 `get → 改 → set` 三连(setupPet 那种夹 await 的写法会被并发覆盖)。`humanizerPrompt` 字段已废弃,在 `src/core/humanizer.js` 常量里 |
+| `settings` | `id` | — | 单例 id=`default`。字段:`theme`(对象,见 [core/theme.js](src/core/theme.js))/ `themePresets[]` / `wallpaper`(base64 桌面壁纸)/ `activeApiConfigId` / `activePersonaId`(新建会话用)/ `weatherApi: {urlTemplate, apiKey}` / `memoryEnabled`(默认 true)/ `memoryThreshold`(默认 20,**缓冲条数** — 总结之后保留多少条活跃)/ `memoryBatchSize`(默认 10,**一次总结条数** — 每次触发压几条;触发 = 缓冲 + 一次总结)/ `petEnabled`(默认 true)/ `petX` / `petY`(悬浮球持久化坐标)/ `petLastBubbleAt` / `petDismissed: {triggerKey: ts}`(气泡冷却记录)/ **`tileOrder: [[{id,row,col}, ...], [{id,row,col}, ...]]`**(每页 app 的位置数组,unifiedGridV1 后用 object form;app 也可跨页拖,persistMove 负责从原页 remove)/ **`dockOrder: [appId\|null, ...]`** (4-槽数组,默认 `[null, 'messaging', 'settings', null]`;app 双向拖 dock↔pages 由 persistMove 同步)/ `syncScheduleToChat`(默认 true)/ `syncMonitorToChat`(默认 false,opt-in)/ `devMode`(默认 false)/ `promptOverrides: {humanizer?, behavior?}`(`??` 语义:不存在=源常量、`''`=故意不注入)/ `promptOutputOverrides: {countSpec?, schemasText?}`(同上,改了会影响 JSON 输出契约要小心)/ `embedding: {urlTemplate?, apiKey?, modelName?, enabled?, topK?}`(向量记忆 endpoint + 启用 toggle + top-K)/ **`favoritesMigratedV1` / `unifiedGridV1`**(home 一次性迁移 flag,first-mount 设)。**所有 settings 修改用 `db.updateSettings(fn)` 原子化**,不要再 `get → 改 → set` 三连(setupPet 那种夹 await 的写法会被并发覆盖)。`humanizerPrompt` 字段已废弃,在 `src/core/humanizer.js` 常量里 |
 | `wallet` | `id` | — | 单例 id=`default`,字段 balance。用户发红包/转账扣余额,领 AI 红包/转账加余额。充值在「我 → 钱包」 |
 | `favorites` | `id` | sessionId, savedAt | 收藏的消息条目,字段 sessionId / msgId / actionIdx / savedAt / note。bubble menu「收藏」存入这里,「我 → 收藏」浏览 |
 | `schedule` | `id` | startTs, characterId | 行程条目,字段 who(`user`/`character`)/ characterId(who=character 时)/ startTs / endTs / title / desc / `syncToChat`(默认 true,可关掉单条不注入)/ createdAt。在 [now-6h, now+24h] 窗内被注入 system prompt 的「# 当前行程」段;受 `settings.syncScheduleToChat` 全局开关 + 单条 `syncToChat` 双重门控 |
-| `homeWidgets` | `id` | createdAt | 用户添加的桌面装饰,字段 type(`image`/`note`)/ data(base64 或文本)/ size(`small`/`medium`/`large`)/ placement(`above`/`below`)/ `order`(拖拽重排后写入,排序时 fallback createdAt)/ createdAt |
+| `homeWidgets` | `id` | createdAt | 用户添加的桌面装饰,字段 type(`favorites`/`image`/`note`/`polaroid`/`anniversary`/`music`)/ data(base64 或文本或对象,按 type)/ **row / col / colSpan / rowSpan**(unifiedGridV1 后的位置,inline `grid-column / grid-row` 渲染)/ `transparency?`(0-100,默认 100,渲染为 `--widget-alpha`)/ createdAt。**只在 page 0 显示**(数据模型没 page 字段)。**legacy `size / placement / order` 字段** migration 跑过后已转成 row/col + widgetSpan,但 `widgetSpan()` 里仍有按 type 兜底分支防御老数据 |
 | `cameras` | `id` | characterId | 监控机位,字段 characterId / room / `angle?`(可选,镜头朝向描述) / mode(`open`/`spy`) / `feedToChat`(默认 false,可单台开同步) / createdAt / `discoveredAt`(spy 被察觉时写入,null 表示未被察觉)/ `viewChangedAt?`(换机位或转动镜头时写入,monitor-view 渲染时过滤 createdAt < 这个值的旧 activityLog,数据保留但 UI 隐藏)。feedToChat 开 + `settings.syncMonitorToChat` 全局开 → 该角色最近一条 activityLog 注入 system prompt 的「# 角色当前活动」段(纯第一人称事实陈述,不提镜头 — 铁律 9) |
 | `activityLog` | `id` | cameraId, characterId | 监控快照历史,字段 cameraId / characterId / sessionId? / `payload: {location, posture, activity, mood, caption, noticed, outOfReach?}` / createdAt。每次刷新画面 append 一条,**每台机位只保留最近 50 条**(`ACTIVITY_LOG_KEEP` in surveillance.js),写一条 prune 一次,IDB 不会无限涨 |
 | `bottles` | `id` | status, castAt | 漂流瓶(网络隐喻,不是物理瓶子),字段 content / authorIsUser / audience(`contacts`/`strangers`) / status(`drifting`/`replied`/`read`) / replierCharacterId?(contacts 模式回信的角色 id) / generatedPersona?({name,persona,vibe,avatar?})(strangers 模式现造的人格) / reply? / castAt / replyDueAt? / repliedAt? / promotedCharacterId?。一瓶一回,要续聊走 `promoteStrangerToFriend` 升格成正式 character |
@@ -131,9 +135,18 @@
 
 ## 路线图
 
+### 已完成 (此处保留备忘,后面来回看代码哪个版本做的)
+- ✅ **桌面装饰拖拽重排** —— `homeWidgets` 改 row/col/colSpan/rowSpan 自由定位 (unifiedGridV1)
+- ✅ **首页 app-icon 排序 + 跨页拖** —— `settings.tileOrder[]`,app 可跨页拖,边缘自动 scroll (B#5)
+- ✅ **Dock 可拖** —— 4-slot grid + `settings.dockOrder`,app 可双向拖 dock↔pages (B#6)
+- ✅ **加 widget 不溢出** —— `findFirstFreeCell` 扫 4×6 找洞,真满了 openAlert (B#1)
+- ✅ **拖拽几何缓存** —— dragStart 算一次 `gridGeometry`,onPointerMove 复用 (B#2)
+- ✅ **snapshotItems 改数据源** —— 从 pageItemsList 查,不靠正则解析 inline style (B#3)
+- ✅ **长按阈值调宽** —— 8→20px + 水平占主导立刻 cancel,不误触发 edit (B#4)
+- ✅ **编辑 toolbar** —— 顶上一条 `.home-edit-toolbar`,装 + 添加装饰 / 完成,只 editing 显示
+- ✅ **纪念日 widget milestone 模式** —— anniversary 加第 3 种 mode `milestoneId`,联动 milestones store (recurring → 下次倒计时 / 非 recurring → 距今或已过)
+
 ### 下一轮 follow-up(明确知道要做)
-- **桌面装饰拖拽重排** —— 现在 `homeWidgets` 用 createdAt 排 + `placement: above/below` 两档。要做拖拽改变顺序 / 移动到另一格(Pointer Events 实现,grid sortable)
-- **首页 app-icon 顺序也能改** —— 用户在 PAGES[0] 内拖拽 4 个 app icon 重排;改完存到 `settings.tileOrder[]`,home.js 渲染时读取
 - **红包/转账细节** —— 动画(打开红包翻转)、详情页(来自谁/几号/几点)、AI 自动接收用户红包(模型在收到时下一轮 reply 标 `claimed`)
 - **位置功能进阶** —— 现在是纯展示卡片,以后可以做地图选点 + 经纬度
 
