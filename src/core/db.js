@@ -2,7 +2,7 @@
 // Data model frozen in STORES below — bump DB_VERSION when changing schema.
 
 export const DB_NAME = 'phone-app';
-export const DB_VERSION = 6;
+export const DB_VERSION = 7;
 
 // Object store definitions. Applied during onupgradeneeded.
 // keyPath = primary key field; indexes = secondary lookup paths.
@@ -108,6 +108,18 @@ export const STORES = {
     indexes: [
       { name: 'status',  keyPath: 'status'  },
       { name: 'castAt',  keyPath: 'castAt'  },
+    ],
+  },
+  // Timeline — per-session one-line-per-day summaries. Separate from
+  // `memories` (which feeds the model); timeline is for the USER to skim.
+  // Fields: id, sessionId, dayKey ('YYYY-MM-DD' or 'start~end' for merges),
+  // summary (≤40 chars), mergedFrom?[] (ids on a merged row),
+  // mergedInto? (id on originals that have been merged), createdAt.
+  // Indexed by sessionId so the list view + lazy-generation scan are O(rows-this-session).
+  timeline: {
+    keyPath: 'id',
+    indexes: [
+      { name: 'sessionId', keyPath: 'sessionId' },
     ],
   },
 };

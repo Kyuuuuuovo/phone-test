@@ -2797,3 +2797,87 @@ label .label-text {
   font-size: 12px;
   vertical-align: middle;
 }
+
+/* Memory-manage: 总结 / 时间线 tab switcher */
+.memory-manage-page .mm-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+.memory-manage-page .mm-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 10px 4px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.memory-manage-page .mm-tab:hover { color: var(--fg); }
+.memory-manage-page .mm-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* Timeline list */
+.tl-actions { display: flex; gap: 8px; margin: 8px 0; }
+.tl-status {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 8px;
+  min-height: 18px;
+}
+.tl-status.success { color: var(--success); }
+.tl-status.error   { color: var(--danger); }
+.tl-list { display: flex; flex-direction: column; gap: 8px; }
+.tl-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.tl-row.selected { background: color-mix(in srgb, var(--accent) 8%, transparent); border-color: var(--accent); }
+.tl-row.merged   { background: color-mix(in srgb, var(--success) 6%, transparent); }
+.tl-row input[type="checkbox"] { width: auto; flex-shrink: 0; }
+.tl-row .tl-body { flex: 1; min-width: 0; }
+.tl-row .tl-day {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.tl-row .tl-merged-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--success) 22%, transparent);
+  color: var(--success);
+}
+.tl-row .tl-summary {
+  font-size: 14px;
+  margin-top: 2px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.tl-row .tl-del,
+.tl-row .tl-unmerge {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 6px;
+  flex-shrink: 0;
+}
+.tl-row .tl-del:hover    { color: var(--danger); }
+.tl-row .tl-unmerge:hover { color: var(--accent); }
