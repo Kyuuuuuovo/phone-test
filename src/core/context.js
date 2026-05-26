@@ -149,7 +149,7 @@ export async function buildSystemPromptParts(sessionId, { featureContext } = {})
     title: null,
     body: userName
       ? `你是【${charName}】,正在与【${userName}】聊天。`
-      : `你是【${charName}】,正在跟一位用户聊天。`,
+      : `你是【${charName}】,正在跟用户聊天。`,
     kind: 'computed',
   });
   // 2. 世界观(前置)
