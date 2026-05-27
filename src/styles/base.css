@@ -1406,6 +1406,32 @@ body[data-fx-glass="metal"] .widget.widget-music::after { display: none; }
 .bg-slider-row input[type="range"] { width: 100%; }
 .radius-readout { font-variant-numeric: tabular-nums; }
 
+/* 用户行程可见性 — radio + 角色 checkbox 列表(仅 mode='some' 时显示) */
+.user-visibility {
+  margin-bottom: 12px;
+}
+.visibility-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 4px 0 8px;
+}
+.visibility-mode-row .radio-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  margin-bottom: 0;
+}
+.visibility-mode-row .radio-inline input { width: auto; cursor: pointer; }
+.visibility-pick-list {
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 /* Anniversary + 世界模式 radio rows — 同样的"几个 radio 横排 + 圆点对齐"。 */
 .anniv-mode-row,
 .world-mode-row {

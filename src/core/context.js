@@ -574,9 +574,17 @@ export async function buildScheduleLines(characterId) {
     .filter(e => {
       if (e.syncToChat === false) return false;  // per-entry mute
       if (e.startTs < winStart || e.startTs > winEnd) return false;
-      // user-bucket events always included; character-bucket only for THIS character
+      // character-bucket: 只注入到对应角色 prompt
       if (e.who === 'character') return e.characterId === characterId;
-      return e.who === 'user';
+      // user-bucket: 默认所有角色可见,visibleTo 字段限制(1b 共享逻辑)
+      //   undefined / missing  → 全可见
+      //   []                   → 谁都看不到(等同 muted,但语义清晰)
+      //   ['c1', 'c2']         → 只对列出的角色可见
+      if (e.who === 'user') {
+        if (!Array.isArray(e.visibleTo)) return true;
+        return e.visibleTo.includes(characterId);
+      }
+      return false;
     })
     .sort((a, b) => a.startTs - b.startTs);
   if (relevant.length === 0) return '';

@@ -103,6 +103,40 @@ export async function mountScheduleList(container, params, router) {
               ${chars.map(c => `<option value="${esc(c.id)}"${c.id === e.characterId ? ' selected' : ''}>${esc(c.name || '(未命名)')}</option>`).join('')}
             </select>
           </label>
+          <div class="user-visibility" ${e.who === 'user' ? '' : 'hidden'}>
+            <div class="label-text">谁能看到这条(我的行程对哪些角色可见)</div>
+            ${(() => {
+              const v = e.visibleTo;
+              const mode = !v ? 'all' : (Array.isArray(v) && v.length === 0 ? 'none' : 'some');
+              const selected = new Set(Array.isArray(v) ? v : []);
+              return `
+                <div class="visibility-mode-row">
+                  <label class="radio-inline">
+                    <input type="radio" name="visMode" value="all"${mode === 'all' ? ' checked' : ''}>
+                    <span>所有角色都能看</span>
+                  </label>
+                  <label class="radio-inline">
+                    <input type="radio" name="visMode" value="none"${mode === 'none' ? ' checked' : ''}>
+                    <span>谁都看不到</span>
+                  </label>
+                  <label class="radio-inline">
+                    <input type="radio" name="visMode" value="some"${mode === 'some' ? ' checked' : ''}>
+                    <span>仅勾选的</span>
+                  </label>
+                </div>
+                <div class="visibility-pick-list" ${mode === 'some' ? '' : 'hidden'}>
+                  ${chars.length === 0
+                    ? `<div class="muted-hint">还没有角色</div>`
+                    : chars.map(c => `
+                        <label class="checkbox-row">
+                          <input type="checkbox" name="visChar" value="${esc(c.id)}"${selected.has(c.id) ? ' checked' : ''}>
+                          <span>${esc(c.name || '(未命名)')}</span>
+                        </label>
+                      `).join('')}
+                </div>
+              `;
+            })()}
+          </div>
           <label>
             <div class="label-text">开始时间</div>
             <input type="datetime-local" name="startTs" value="${toLocalDT(e.startTs)}" required>
@@ -135,8 +169,18 @@ export async function mountScheduleList(container, params, router) {
     const form = modal.querySelector('form');
     const whoSel = form.elements.who;
     const charPick = modal.querySelector('.char-pick');
+    const userVisBlock = modal.querySelector('.user-visibility');
+    const visPickList = modal.querySelector('.visibility-pick-list');
     whoSel.addEventListener('change', () => {
       charPick.hidden = whoSel.value !== 'character';
+      userVisBlock.hidden = whoSel.value !== 'user';
+    });
+    // 「仅勾选的」radio 切换才显示角色 checkbox 列表
+    modal.querySelectorAll('input[name="visMode"]').forEach(r => {
+      r.addEventListener('change', () => {
+        const mode = modal.querySelector('input[name="visMode"]:checked')?.value;
+        visPickList.hidden = mode !== 'some';
+      });
     });
     modal.querySelector('.cancel-btn').addEventListener('click', () => modal.remove());
     form.addEventListener('submit', async (ev) => {
@@ -148,6 +192,15 @@ export async function mountScheduleList(container, params, router) {
       const endTs = endRaw ? new Date(endRaw).getTime() : null;
       const who = String(fd.get('who') || 'user');
       const characterId = who === 'character' ? String(fd.get('characterId') || '') : null;
+      // 1b: 用户行程可见性 — 默认所有角色可见,可改"对所有人隐藏"或"仅勾选角色"。
+      // 角色 owned 的行程不需要(角色自己的事,默认就是注入到自己 prompt 里)。
+      let visibleTo;
+      if (who === 'user') {
+        const mode = String(fd.get('visMode') || 'all');
+        if (mode === 'all')       visibleTo = undefined;
+        else if (mode === 'none') visibleTo = [];
+        else                      visibleTo = fd.getAll('visChar').map(String);
+      }
       const next = {
         id: id || db.newId(),
         who,
@@ -157,6 +210,7 @@ export async function mountScheduleList(container, params, router) {
         title: String(fd.get('title') || '').trim() || '(无标题)',
         desc: String(fd.get('desc') || '').trim(),
         syncToChat: form.elements.syncToChat.checked,
+        visibleTo,
         createdAt: existing?.createdAt || Date.now(),
       };
       await db.set('schedule', next);
