@@ -3728,6 +3728,18 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
   border-bottom-color: var(--accent);
 }
 .prompt-inspector-page .pi-panel { padding: 0; }
+.prompt-inspector-page .pi-group { margin-bottom: 20px; }
+.prompt-inspector-page .pi-group-title {
+  margin: 16px 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.prompt-inspector-page .pi-group-title:first-child { margin-top: 4px; }
 .prompt-inspector-page .pi-section { margin-bottom: 20px; }
 .prompt-inspector-page .pi-section-title {
   display: flex;

@@ -42,6 +42,12 @@ export async function mountChatInfo(container, params, router) {
             <span class="settings-label">显示头像</span>
             <input type="checkbox" data-toggle="showAvatars"${session.showAvatars !== false ? ' checked' : ''}>
           </label>
+          <button class="settings-item" data-action="worldMode">
+            <span class="settings-label">世界模式 · ${
+              (session.worldMode ?? character?.worldMode) === 'fictional' ? '架空' : '现实'
+            }</span>
+            <span class="settings-chevron">›</span>
+          </button>
           <button class="settings-item" data-action="settings">
             <span class="settings-label">会话设置</span>
             <span class="settings-chevron">›</span>
@@ -100,6 +106,26 @@ export async function mountChatInfo(container, params, router) {
       fresh.isPinned = !fresh.isPinned;
       await db.set('chatSessions', fresh);
       item.querySelector('.settings-label').textContent = fresh.isPinned ? '取消置顶' : '置顶聊天';
+
+    } else if (action === 'worldMode') {
+      // 切换世界模式 — 同角色不同 session 可以独立选(现实 vs 架空)。
+      // session 没显式 set 时 fallback 到 character.worldMode(legacy data
+      // 兼容),最终 default 'real'。
+      const fresh = await db.get('chatSessions', sessionId);
+      const current = fresh.worldMode ?? character?.worldMode ?? 'real';
+      const next = current === 'fictional' ? 'real' : 'fictional';
+      const target = next === 'fictional' ? '架空' : '现实';
+      const flavorMsg = next === 'fictional'
+        ? '切到架空 — 后续这个会话不会注入真实时间/天气/位置,角色不会知道现实日期。'
+        : '切到现实 — 后续注入真实时间 + 天气/位置工具。';
+      if (!await openConfirm(container, {
+        title: `切换到「${target}」?`,
+        message: flavorMsg,
+        confirmLabel: '切换',
+      })) return;
+      fresh.worldMode = next;
+      await db.set('chatSessions', fresh);
+      item.querySelector('.settings-label').textContent = `世界模式 · ${target}`;
 
     } else if (action === 'settings') {
       router.navigate('chat-settings', { sessionId });

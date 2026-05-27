@@ -232,7 +232,9 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
   //     给模型注入 "2026 年 5 月 27 日" 会出戏)。架空模式下用户可以在
   //     character.persona 里写 "in-world 时间感:春末" 之类的。
   //     现实模式下 anchor 行为不变。
-  const isFictional = character.worldMode === 'fictional';
+  // worldMode 现在是 per-session(session.worldMode);未显式 set 时 fallback
+  // 到 character.worldMode(老数据兼容),最终 default 'real'。
+  const isFictional = (session.worldMode ?? character.worldMode) === 'fictional';
   parts.push({
     key: 'current-time',
     title: '# 当前时间',
@@ -340,8 +342,46 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     defaultValue: ACTION_SCHEMAS_TEXT,
     warning: '改这里会影响 JSON 输出契约,出错会让动作解析失败',
   });
+  // Tag each part with its presentation group for the prompt-inspector UI.
+  // 用户在调试页希望能按"世界观/记忆/状态/规范/输出"分类看,而不是 20 段
+  // 平铺。这里集中映射,避免每个 parts.push 都重复写 group 字段。
+  // 注入顺序在 group 内部保留。
+  for (const p of parts) p.group = PART_GROUPS[p.key] || 'misc';
   return parts;
 }
+
+// 单源映射:part.key → 调试页用的分组。新增 part 时记得在这里加一行,否则
+// 它会落到 'misc' 桶。
+const PART_GROUPS = {
+  'framing':       'worldview',
+  'wb-before':     'worldview',
+  'character':     'worldview',
+  'wb-inline':     'worldview',
+  'user-persona':  'worldview',
+  'wb-after':      'worldview',
+  'vector-recall': 'memory',
+  'mem-l2':        'memory',
+  'mem-l1':        'memory',
+  'current-time':  'state',
+  'social':        'state',
+  'schedule':      'state',
+  'cameras':       'state',
+  'activity':      'state',
+  'humanizer':     'spec',
+  'behavior':      'spec',
+  'feature':       'spec',
+  'regen-hint':    'spec',
+  'output-count':  'output',
+  'output-schemas':'output',
+};
+export const GROUP_LABELS = {
+  worldview: '世界观 / 人设',
+  memory:    '记忆',
+  state:     '当前状态',
+  spec:      '对话 / 动作规范',
+  output:    '输出格式',
+  misc:      '其他',
+};
 
 // Anchor line for the "# 当前时间" segment. Mirrors surveillance.js's
 // nowLine format so cross-feature debugging shows consistent strings;

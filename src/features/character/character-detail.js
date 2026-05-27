@@ -53,20 +53,10 @@ export async function mountCharacterDetail(container, params, router) {
             <textarea name="notes" rows="3">${esc(character.notes)}</textarea>
           </label>
 
-          <label>
-            <div class="label-text">世界模式</div>
-            <div class="world-mode-row">
-              <label class="radio-inline">
-                <input type="radio" name="worldMode" value="real"${(character.worldMode || 'real') === 'real' ? ' checked' : ''}>
-                <span>现实世界</span>
-              </label>
-              <label class="radio-inline">
-                <input type="radio" name="worldMode" value="fictional"${character.worldMode === 'fictional' ? ' checked' : ''}>
-                <span>架空世界</span>
-              </label>
-            </div>
-            <div class="muted-hint">现实:注入真实时间/天气/地点工具;架空:这些都不注入,角色不会知道现实日期或你住哪</div>
-          </label>
+          <!-- 世界模式 (worldMode) 挪到了 chat-info(聊天页 ⋯ 菜单 → 世界模式),
+               同一角色不同会话可以独立选(现实 vs 架空)。此处不再 UI 暴露。
+               character.worldMode legacy 字段仍存,context.js 读 session 时
+               fallback 到它,保证老数据不丢。 -->
 
           <div class="label-text">挂载世界书</div>
           <div class="wb-mount-list">
@@ -125,9 +115,9 @@ export async function mountCharacterDetail(container, params, router) {
       name:    String(fd.get('name')    || '').trim() || '(未命名)',
       persona: String(fd.get('persona') || '').trim(),
       notes:   String(fd.get('notes')   || '').trim(),
-      worldMode: String(fd.get('worldMode') || 'real') === 'fictional' ? 'fictional' : 'real',
       avatar:  avatarData,
       updatedAt: Date.now(),
+      // worldMode: 不在此表单中改;保留已有值不动(legacy fallback for sessions).
     };
     await db.set('characters', c);
     Object.assign(character, c);

@@ -95,7 +95,24 @@ export async function mountPromptInspector(container, params, router) {
   async function renderParts() {
     const parts = await context.buildSystemPromptParts(sessionId);
     const settings = (await db.get('settings', 'default')) || {};
-    partsBox.innerHTML = parts.map((p, idx) => renderPart(p, idx, settings)).join('');
+    // 按 group 归类,group 内保持原 part 顺序(== 注入顺序)。GROUP_ORDER
+    // 决定 group 之间的展示先后:与注入顺序对应(world → mem → state →
+    // spec → output → misc)。
+    const GROUP_ORDER = ['worldview', 'memory', 'state', 'spec', 'output', 'misc'];
+    const grouped = new Map();
+    parts.forEach((p, idx) => {
+      const g = p.group || 'misc';
+      if (!grouped.has(g)) grouped.set(g, []);
+      grouped.get(g).push({ part: p, origIdx: idx });
+    });
+    partsBox.innerHTML = GROUP_ORDER
+      .filter(g => grouped.has(g))
+      .map(g => `
+        <div class="pi-group">
+          <h4 class="pi-group-title">${esc(context.GROUP_LABELS[g] || g)}</h4>
+          ${grouped.get(g).map(({ part, origIdx }) => renderPart(part, origIdx, settings)).join('')}
+        </div>
+      `).join('');
   }
 
   // ── Dump ─────────────────────────────────────────────────────────────
