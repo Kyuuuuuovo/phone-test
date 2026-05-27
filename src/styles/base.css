@@ -509,6 +509,10 @@ body[data-route="home"] .phone-frame::before { display: none; }
 button { font: inherit; cursor: pointer; }
 input, textarea, select {
   font: inherit;
+  /* iOS Safari focus 任何 font-size < 16px 的 input 会自动 zoom 放大页面,
+     blur 后 zoom 不一定撤销 → user 退出输入后整页变大缩不回来。强制 ≥ 16px
+     就 不触发。max() 保证如果主题字号已经超过 16(未来兼容)也不会缩小。 */
+  font-size: max(16px, 1rem);
   padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);

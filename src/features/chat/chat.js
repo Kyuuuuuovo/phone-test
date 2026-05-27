@@ -136,7 +136,10 @@ export async function mountChat(container, params, router) {
   let previewMap = new Map();
   // State
   let replyingTo = null;        // msgId currently being quoted
-  let activeBubbleMsgId = null; // msgId the bubble-menu was opened for
+  let activeBubbleMsgId = null;     // msgId the bubble-menu was opened for
+  let activeBubbleActionIdx = 0;    // 同 msg row 里第几个 bubble(action 数组下标)。
+                                    // 之前 handler 用 querySelector 拿同 msgId 的第一个 .bubble
+                                    // → actionIdx 永远 0,user 点第 3 个气泡复制/删除都作用在第 1 个。
   // Which archive groups are currently expanded. Keyed by archivedIntoMemoryId
   // (or '_unknown' for orphan archived rows). Reset is per-mount, not per-refresh,
   // so toggling expand survives re-renders triggered by reply / send / edit.
@@ -242,7 +245,7 @@ export async function mountChat(container, params, router) {
 
   function closePanel()    { panel.hidden    = true;  plusBtn.classList.remove('active'); }
   function openPanel()     { panel.hidden    = false; plusBtn.classList.add('active'); }
-  function closeBubbleMenu() { bubbleMenu.hidden = true; activeBubbleMsgId = null; }
+  function closeBubbleMenu() { bubbleMenu.hidden = true; activeBubbleMsgId = null; activeBubbleActionIdx = 0; }
 
   function setReplyTo(msgId) {
     replyingTo = msgId;
@@ -259,6 +262,10 @@ export async function mountChat(container, params, router) {
     const msgId = bubble.dataset.msgId;
     if (!msgId) return;
     activeBubbleMsgId = msgId;
+    // bubble 的 data-actionIdx 是 renderAction 时塞的索引,记录用户点的是这条
+    // msg row 的第几个 action(对话气泡)。handler 里要按这个 idx 操作,别用
+    // querySelector 找第一个匹配的 bubble。
+    activeBubbleActionIdx = Number(bubble.dataset.actionIdx || 0);
     // Side-specific entries: user msgs show 编辑 (not 重新生成),
     // character msgs show 重新生成 (not 编辑). Driven by class on the menu,
     // hidden in CSS per .only-user / .only-char.
@@ -660,8 +667,9 @@ export async function mountChat(container, params, router) {
     const btn = e.target.closest('[data-action]');
     if (!btn || !activeBubbleMsgId) return;
     const msgId = activeBubbleMsgId;
-    const bubble = stream.querySelector(`.bubble[data-msg-id="${cssEscape(msgId)}"]`);
-    const actionIdx = bubble ? Number(bubble.dataset.actionIdx || 0) : 0;
+    // 用 showBubbleMenu 时记下的 actionIdx,不要再 querySelector 拿同 msgId 的
+    // 第一个 .bubble(那永远是 idx 0,所以用户点第 3 个气泡 → 操作第 1 个 bug)。
+    const actionIdx = activeBubbleActionIdx;
     closeBubbleMenu();
     if (btn.dataset.action === 'quote') {
       setReplyTo(msgId);
