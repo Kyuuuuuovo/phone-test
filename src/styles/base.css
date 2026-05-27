@@ -2730,6 +2730,103 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
 }
 .schedule-entry .entry-del:hover { color: var(--danger); }
 .schedule-form .char-pick[hidden] { display: none; }
+.schedule-form .user-persona-pick[hidden] { display: none; }
+
+/* 3 天竖向时间轴 — 进入行程 app 看到的主视图。3 列均分容器宽,每列上面
+   一个日期 head,下面 24h 纵向 timeline。行程作 absolute 块按时间定位。
+   page-body overflow: auto 让 timeline 整体可滚。
+   美化(色彩 / 阴影 / 间距)等用户给 reference 再细调。 */
+.schedule-3day-body {
+  padding: 12px 8px;
+}
+.schedule-3day-cols {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.day-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.day-col-head {
+  text-align: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 2;
+}
+.day-col-head .day-col-rel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.day-col-head .day-col-date {
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.day-col-timeline {
+  position: relative;
+  border-left: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+.hour-mark {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px dashed color-mix(in srgb, var(--border) 50%, transparent);
+  font-size: 9px;
+  color: var(--muted);
+  padding-left: 4px;
+  font-variant-numeric: tabular-nums;
+  line-height: 0;
+}
+.time-entry {
+  position: absolute;
+  left: 22px;
+  right: 2px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  border-left: 3px solid var(--accent);
+  font-size: 11px;
+  overflow: hidden;
+  cursor: pointer;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.3;
+}
+.time-entry:hover {
+  background: color-mix(in srgb, var(--accent) 24%, var(--surface));
+}
+.time-entry-char {
+  background: color-mix(in srgb, hsl(280, 60%, 60%) 14%, var(--surface));
+  border-left-color: hsl(280, 60%, 60%);
+}
+.time-entry.muted {
+  opacity: 0.55;
+}
+.time-entry-title {
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.time-entry-who {
+  font-size: 9px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .schedule-page .actions { display: flex; gap: 4px; }
 .schedule-page .actions .ai-gen {
   background: var(--accent);
@@ -2893,6 +2990,51 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 「我」tab 状态卡 — 跟微信状态那种横条样式,profile 卡下面一行。点击
+   打开编辑 modal,改的是当前 active persona 的状态。空态淡色提示。 */
+.me-status-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 32px);
+  margin: 0 16px 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--fg);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.me-status-card:hover { background: color-mix(in srgb, var(--accent) 4%, var(--surface)); }
+.me-status-card.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.me-status-label {
+  font-size: 12px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.me-status-text {
+  flex: 1;
+  font-size: 14px;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.me-status-text.empty {
+  color: var(--muted);
+  font-style: italic;
+}
+.me-status-ago {
+  font-size: 11px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
 .me-list .me-row-value {
   color: var(--muted);
   font-size: 13px;
@@ -3032,6 +3174,21 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
   padding: 4px 8px;
 }
 .bubble-image, .bubble-reply { font-style: italic; opacity: 0.92; }
+
+/* 翻译气泡 — 默认只显示原文(trans-original),trans-translation 收起。
+   点击 → .expanded 展开下面中文翻译,跟 voice 气泡同套机制。border-top
+   分隔原文和翻译,小字 + 略淡。 */
+.bubble-translate { cursor: pointer; }
+.bubble-translate .trans-translation { display: none; }
+.bubble-translate.expanded .trans-translation {
+  display: block;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  font-size: 0.9em;
+  opacity: 0.85;
+  font-style: italic;
+}
 /* C1: 真实上传的图片气泡 — 直接显示 <img>,撑满气泡宽度,圆角跟普通气泡
    一致。max-height 防止超长截图把聊天流撑爆;点击以后可以打开看大图(目
    前 MVP 还没做大图查看,先 cursor: zoom-in 给个 affordance)。 */

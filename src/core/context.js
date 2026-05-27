@@ -219,6 +219,19 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     editRoute: persona ? 'persona-detail' : 'persona-list',
     editParams: persona ? { id: persona.id } : undefined,
   });
+  // 5b. 用户当前状态 — per-persona,跟 session.personaId 走(切到不同的"我"
+  //     看到不同状态)。空就不注入。setAt 转成相对时间提示「几小时前」让角色
+  //     能感知"这条状态是当下的还是几天前留的"。
+  const statusBody = persona?.statusText
+    ? `${persona.statusText}${Number.isFinite(persona.statusSetAt) ? `\n(设于 ${humanGap(Date.now() - persona.statusSetAt)}前)` : ''}`
+    : '';
+  parts.push({
+    key: 'user-status',
+    title: '# 用户当前状态',
+    body: statusBody,
+    kind: 'data',
+    editRoute: 'messaging',  // 「我」tab,但 messaging 是 tab 容器
+  });
   // 6. 世界观(后置)
   parts.push({
     key: 'wb-after',
@@ -288,7 +301,7 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     editParams: { id: character.id },
   });
   // 8b. 当前行程
-  const scheduleLines = await buildScheduleLines(character.id);
+  const scheduleLines = await buildScheduleLines(character.id, session.personaId);
   parts.push({
     key: 'schedule',
     title: '# 当前行程',
@@ -335,6 +348,18 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     overrideScope: 'promptOverrides',
     overrideKey: 'behavior',
     defaultValue: BEHAVIOR_GUIDANCE,
+  });
+  // 10b. 翻译模式 — per-session toggle。开启时让模型可以用任意语言对话,
+  //      非中文输出时在 text / reply 动作里加 translation 字段提供中文翻译。
+  //      action schema 本身没改(避免影响关闭模式),这里以规约形式注入。
+  const translateBody = session.translateMode === true
+    ? '当前对话开启了翻译模式。你可以用任何语言说话(英语、日语、法语、文言文等)。当你输出非中文的 text 或 reply 动作时,**必须**在该动作对象里加一个 `translation` 字段提供中文翻译,例如:\n{ "type": "text", "content": "Bonjour", "translation": "你好" }\n中文输出可以不加 translation。这个字段是 UI 给用户看的辅助显示,不影响动作 schema 的其他字段。'
+    : '';
+  parts.push({
+    key: 'translate-mode',
+    title: '# 翻译模式',
+    body: translateBody,
+    kind: 'computed',
   });
   // 11. 用户本轮使用的功能定义 (per-turn featureContext)
   const fc = (featureContext ?? '').trim();
@@ -393,6 +418,7 @@ const PART_GROUPS = {
   'character':     'worldview',
   'wb-inline':     'worldview',
   'user-persona':  'worldview',
+  'user-status':   'state',
   'wb-after':      'worldview',
   'vector-recall': 'memory',
   'mem-l2':        'memory',
@@ -404,6 +430,7 @@ const PART_GROUPS = {
   'activity':      'state',
   'humanizer':     'spec',
   'behavior':      'spec',
+  'translate-mode':'spec',
   'feature':       'spec',
   'regen-hint':    'spec',
   'output-count':  'output',
@@ -591,9 +618,13 @@ async function buildCameraLines(characterId, userName) {
 //   - per-entry: schedule.syncToChat (default true) — lets the user mute
 //     specific entries without disabling the whole feature
 //
+// Per-persona(user 行程):e.personaId 空 = 所有 persona 共享(向后兼容);
+//   有值 = 只对 sessionPersonaId 匹配的会话注入。sessionPersonaId 由 caller
+//   传入(来自 session.personaId)。
+//
 // Exported so surveillance.js can reuse the same window logic for camera
 // snapshots without duplicating the formatter.
-export async function buildScheduleLines(characterId) {
+export async function buildScheduleLines(characterId, sessionPersonaId) {
   const settings = (await db.get('settings', 'default')) || {};
   if (settings.syncScheduleToChat === false) return '';
   const all = await db.getAll('schedule');
@@ -611,7 +642,10 @@ export async function buildScheduleLines(characterId) {
       //   undefined / missing  → 全可见
       //   []                   → 谁都看不到(等同 muted,但语义清晰)
       //   ['c1', 'c2']         → 只对列出的角色可见
+      // per-persona 过滤(e.personaId):空 = 所有 persona 共享;有值 = 只对
+      //   匹配的 session.personaId 注入。
       if (e.who === 'user') {
+        if (e.personaId && e.personaId !== sessionPersonaId) return false;
         if (!Array.isArray(e.visibleTo)) return true;
         return e.visibleTo.includes(characterId);
       }

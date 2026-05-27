@@ -10,13 +10,46 @@ import * as ai from '../../core/ai.js';
 import { openConfirm, openAlert } from '../../core/modal.js';
 
 export async function mountScheduleList(container, params, router) {
+  // 3 天竖向时间轴(国誉手账本风格,先做基础结构,美化等 user 给 reference
+   // 再调)。每列 = 一天,纵向 0-24h timeline,行程作 absolute 块按时间定位。
+   // HOUR_PX 决定时间轴密度;28px/h → 总高 672px,手机上 scroll 可看完。
+  const HOUR_PX = 28;
   async function render() {
     const entries = await db.getAll('schedule');
-    entries.sort((a, b) => a.startTs - b.startTs);
     const chars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
     const charMap = new Map(chars.map(c => [c.id, c]));
 
-    const buckets = bucketize(entries);
+    const now = new Date();
+    const today0 = new Date(now); today0.setHours(0, 0, 0, 0);
+    const days = [0, 1, 2].map(offset => {
+      const d = new Date(today0); d.setDate(d.getDate() + offset);
+      return d;
+    });
+
+    // 把 entries 按"跨入这天"分到 3 列。跨天 entry 会在多列出现(每列裁
+    // 切到该天的部分)。没 endTs 默认按 1 小时算。
+    const dayEntries = days.map(d => {
+      const dayStart = d.getTime();
+      const dayEnd = dayStart + 86400000;
+      return entries.filter(e => {
+        const s = e.startTs;
+        const ee = e.endTs || (s + 3600000);
+        return s < dayEnd && ee > dayStart;
+      }).sort((a, b) => a.startTs - b.startTs);
+    });
+
+    function entryRect(e, dayStart, dayEnd) {
+      const s = Math.max(e.startTs, dayStart);
+      const ee = Math.min(e.endTs || (e.startTs + 3600000), dayEnd);
+      const top = ((s - dayStart) / 3600000) * HOUR_PX;
+      const height = Math.max(22, ((ee - s) / 3600000) * HOUR_PX);
+      return { top, height };
+    }
+    function dayLabel(d, idx) {
+      const labels = ['今天', '明天', '后天'];
+      const wd = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
+      return `<div class="day-col-rel">${labels[idx] || ''}</div><div class="day-col-date">${d.getMonth()+1}/${d.getDate()} · 周${wd}</div>`;
+    }
 
     container.innerHTML = `
       <div class="page schedule-page">
@@ -28,22 +61,25 @@ export async function mountScheduleList(container, params, router) {
             <button class="new-entry" title="新建行程" aria-label="新建行程"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
           </div>
         </header>
-        <div class="page-body">
-          <p class="hint">用户/角色未来 24 小时 + 过去 6 小时内的行程会被注入到 AI 的「当前行程」段,让对话和你的安排对得上。</p>
-          ${entries.length === 0 ? `
-            <p class="hint">还没有行程,点右上角 + 新建。</p>
-          ` : `
-            ${['今天', '明天', '后续', '已过'].map(b => {
-              const list = buckets[b];
-              if (!list || list.length === 0) return '';
-              return `
-                <h3 class="schedule-bucket-title">${b}</h3>
-                <div class="schedule-list">
-                  ${list.map(e => renderEntry(e, charMap)).join('')}
+        <div class="page-body schedule-3day-body">
+          <div class="schedule-3day-cols">
+            ${days.map((d, idx) => `
+              <div class="day-col">
+                <div class="day-col-head">${dayLabel(d, idx)}</div>
+                <div class="day-col-timeline" style="height: ${24 * HOUR_PX}px">
+                  ${Array.from({ length: 25 }, (_, h) => `<div class="hour-mark" style="top: ${h * HOUR_PX}px">${h}:00</div>`).join('')}
+                  ${dayEntries[idx].map(e => {
+                    const r = entryRect(e, d.getTime(), d.getTime() + 86400000);
+                    const who = e.who === 'user' ? '我' : (charMap.get(e.characterId)?.name || '?');
+                    return `<div class="time-entry${e.who === 'user' ? ' time-entry-user' : ' time-entry-char'}${e.syncToChat === false ? ' muted' : ''}" data-entry-id="${esc(e.id)}" style="top: ${r.top}px; height: ${r.height}px">
+                      <div class="time-entry-title">${esc(e.title || '(无标题)')}</div>
+                      <div class="time-entry-who">${esc(who)}</div>
+                    </div>`;
+                  }).join('')}
                 </div>
-              `;
-            }).join('')}
-          `}
+              </div>
+            `).join('')}
+          </div>
         </div>
       </div>
     `;
@@ -75,10 +111,13 @@ export async function mountScheduleList(container, params, router) {
 
   async function openEditor(id) {
     const chars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
+    const personas = await db.getAll('personas');
+    const settings = (await db.get('settings', 'default')) || {};
     const existing = id ? await db.get('schedule', id) : null;
     const e = existing || {
       who: 'user',
       characterId: chars[0]?.id || null,
+      personaId: settings.activePersonaId || '',
       startTs: Date.now() + 60 * 60 * 1000,
       endTs: null,
       title: '',
@@ -101,6 +140,13 @@ export async function mountScheduleList(container, params, router) {
             <div class="label-text">角色</div>
             <select name="characterId">
               ${chars.map(c => `<option value="${esc(c.id)}"${c.id === e.characterId ? ' selected' : ''}>${esc(c.name || '(未命名)')}</option>`).join('')}
+            </select>
+          </label>
+          <label class="user-persona-pick" ${e.who === 'user' ? '' : 'hidden'}>
+            <div class="label-text">这是哪个「我」的行程</div>
+            <select name="userPersonaId">
+              <option value=""${!e.personaId ? ' selected' : ''}>所有「我」共享(不限定人设)</option>
+              ${personas.map(p => `<option value="${esc(p.id)}"${p.id === e.personaId ? ' selected' : ''}>${esc(p.name || '(未命名)')}</option>`).join('')}
             </select>
           </label>
           <div class="user-visibility" ${e.who === 'user' ? '' : 'hidden'}>
@@ -170,10 +216,12 @@ export async function mountScheduleList(container, params, router) {
     const whoSel = form.elements.who;
     const charPick = modal.querySelector('.char-pick');
     const userVisBlock = modal.querySelector('.user-visibility');
+    const userPersonaPick = modal.querySelector('.user-persona-pick');
     const visPickList = modal.querySelector('.visibility-pick-list');
     whoSel.addEventListener('change', () => {
       charPick.hidden = whoSel.value !== 'character';
       userVisBlock.hidden = whoSel.value !== 'user';
+      userPersonaPick.hidden = whoSel.value !== 'user';
     });
     // 「仅勾选的」radio 切换才显示角色 checkbox 列表
     modal.querySelectorAll('input[name="visMode"]').forEach(r => {
@@ -201,6 +249,8 @@ export async function mountScheduleList(container, params, router) {
         else if (mode === 'none') visibleTo = [];
         else                      visibleTo = fd.getAll('visChar').map(String);
       }
+      // per-persona:user 行程才用 personaId。空 = 所有 persona 共享。
+      const userPersonaId = who === 'user' ? String(fd.get('userPersonaId') || '') : '';
       const next = {
         id: id || db.newId(),
         who,
@@ -213,6 +263,7 @@ export async function mountScheduleList(container, params, router) {
         visibleTo,
         createdAt: existing?.createdAt || Date.now(),
       };
+      if (userPersonaId) next.personaId = userPersonaId;
       await db.set('schedule', next);
       modal.remove();
       await render();

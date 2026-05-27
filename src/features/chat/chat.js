@@ -572,6 +572,12 @@ export async function mountChat(container, params, router) {
       voice.classList.toggle('expanded');
       return;
     }
+    // 翻译气泡:点击 toggle 显示下方中文翻译(同 voice 模式)。
+    const translate = e.target.closest('.bubble-translate');
+    if (translate) {
+      translate.classList.toggle('expanded');
+      return;
+    }
 
     // Claim a red_packet / transfer bubble — the whole .claimable card is the
     // hit target (WeChat-style: tap anywhere on the envelope to open).
@@ -1066,10 +1072,26 @@ function formatChatTime(ts) {
 function renderAction(a, side, msgId, idx, previewMap, character) {
   const attrs = `data-msg-id="${esc(msgId)}" data-action-idx="${idx}"`;
   switch (a.type) {
-    case 'text':
+    case 'text': {
+      // 翻译模式:action 带 translation 字段时,气泡渲染成原文 + 收起的翻译,
+      // 点击 → toggle .expanded 展开下方翻译(跟 voice 气泡同套机制)。
+      if (a.translation) {
+        return `<div class="bubble ${side} bubble-translate" ${attrs}>
+          <span class="trans-original">${esc(a.content || '')}</span>
+          <span class="trans-translation">${esc(a.translation)}</span>
+        </div>`;
+      }
       return `<div class="bubble ${side}" ${attrs}>${esc(a.content || '')}</div>`;
+    }
     case 'reply': {
       const quoted = previewMap?.get(a.quoteMsgId) || '(已删除的消息)';
+      if (a.translation) {
+        return `<div class="bubble ${side} bubble-reply bubble-translate" ${attrs}>
+          <div class="reply-quote">${esc(quoted.slice(0, 60))}</div>
+          <span class="trans-original">${esc(a.content || '')}</span>
+          <span class="trans-translation">${esc(a.translation)}</span>
+        </div>`;
+      }
       return `<div class="bubble ${side} bubble-reply" ${attrs}>
         <div class="reply-quote">${esc(quoted.slice(0, 60))}</div>
         <div class="reply-content">${esc(a.content || '')}</div>

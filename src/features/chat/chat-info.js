@@ -47,6 +47,12 @@ export async function mountChatInfo(container, params, router) {
             <span class="settings-label">时间感知</span>
             <input type="checkbox" data-toggle="timeAwareness"${session.timeAwareness !== 'off' ? ' checked' : ''}>
           </label>
+          <label class="settings-item toggle-row">
+            <span class="settings-label">翻译模式
+              <div class="settings-sub">允许角色用任意语言对话,非中文时自带中文翻译。点击原文气泡 → 下方展开翻译。</div>
+            </span>
+            <input type="checkbox" data-toggle="translateMode"${session.translateMode === true ? ' checked' : ''}>
+          </label>
           <button class="settings-item" data-action="beautify">
             <span class="settings-label">聊天美化</span>
             <span class="settings-chevron">›</span>
