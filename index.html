@@ -13,70 +13,64 @@
   <link rel="stylesheet" href="./src/styles/base.css">
   <link rel="stylesheet" href="./src/styles/themes.css">
   <!-- Splash 样式 inline 在 head — base.css 是 stylesheet link 要等下载完才
-       渲染,但 splash 想在最早时刻就出现(不然 user 看到 favicon 一闪、然
-       后是空白几百 ms 才有内容)。boot 跑完 renderShell() 会把 #app 内
-       容覆盖,splash 自然消失,无需 JS 主动清。 -->
+       渲染,但 splash 想在最早时刻就出现。boot 跑完 renderShell() 会把
+       #app 内容覆盖,splash 自然消失,无需 JS 主动清。
+       视觉:iOS 锁屏感 — 渐变"壁纸"背景,中央大字时间,下面日期。
+       不用 spinner — 加载本来就秒级,spinner 反而显得卡。 -->
   <style>
     .splash {
       position: fixed;
       inset: 0;
       display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #f4f4f7;
-      z-index: 9999;
-    }
-    .splash-phone {
-      width: clamp(220px, 60vw, 300px);
-      aspect-ratio: 9 / 19.5;
-      background: #fff;
-      border-radius: 32px;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0 20px;
-    }
-    .splash-stack {
-      display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 18px;
+      justify-content: center;
+      /* 紫蓝粉渐变 — 接近 iOS 默认锁屏壁纸的氛围。3 stop 让色彩有过渡。 */
+      background: linear-gradient(155deg, #5b6dca 0%, #8062c9 55%, #c87fa6 100%);
+      color: #fff;
+      z-index: 9999;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "PingFang SC", sans-serif;
+      text-shadow: 0 2px 16px rgba(0, 0, 0, 0.18);
     }
-    .splash-title {
-      font-size: 26px;
-      font-weight: 700;
-      color: #5a8dee;
-      letter-spacing: 0.02em;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    .splash-clock {
+      font-size: clamp(56px, 13vw, 92px);
+      font-weight: 200;  /* iOS 锁屏是细字 */
+      letter-spacing: -0.02em;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
     }
-    .splash-sub {
-      font-size: 12px;
-      color: #999;
+    .splash-date {
+      font-size: 15px;
+      font-weight: 500;
+      opacity: 0.92;
+      margin-top: 10px;
+      letter-spacing: 0.04em;
     }
-    .splash-spinner {
-      width: 22px;
-      height: 22px;
-      border: 2px solid #e6e6ec;
-      border-top-color: #5a8dee;
-      border-radius: 50%;
-      animation: splash-spin 0.8s linear infinite;
-    }
-    @keyframes splash-spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
   <div id="app">
     <div class="splash" aria-label="正在启动">
-      <div class="splash-phone">
-        <div class="splash-stack">
-          <div class="splash-title">phone-app</div>
-          <div class="splash-spinner" aria-hidden="true"></div>
-          <div class="splash-sub">正在启动…</div>
-        </div>
-      </div>
+      <div class="splash-clock">--:--</div>
+      <div class="splash-date">&nbsp;</div>
     </div>
   </div>
+  <!-- splash 时间 — 一段 inline IIFE 立即把当前时间写到 .splash-clock /
+       .splash-date,不依赖任何模块。splash 只显示几百 ms-2s,这一次性写
+       入足够(不需要 setInterval)。boot 跑完 #app innerHTML 被覆盖,这
+       两个 element 也跟着没了。 -->
+  <script>
+    (() => {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const weekday = ['日', '一', '二', '三', '四', '五', '六'][now.getDay()];
+      const clock = document.querySelector('.splash-clock');
+      const date  = document.querySelector('.splash-date');
+      if (clock) clock.textContent = hh + ':' + mm;
+      if (date)  date.textContent  = '星期' + weekday + ' · ' + (now.getMonth() + 1) + '月' + now.getDate() + '日';
+    })();
+  </script>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>
