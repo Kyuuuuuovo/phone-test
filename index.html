@@ -4,14 +4,79 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>phone-app</title>
+  <!-- Favicon: inline SVG(手机轮廓 + 蓝色屏幕)。base64 / .ico 文件嫌麻烦,
+       SVG data URI 一行搞定,所有现代浏览器支持。 -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='5.5' y='1.5' width='13' height='21' rx='3' fill='%235a8dee' stroke='%23365bb8' stroke-width='0.6'/><rect x='7' y='3.5' width='10' height='14.5' rx='0.6' fill='%23eaf0ff'/><circle cx='12' cy='20.5' r='1' fill='%23eaf0ff'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600&family=Noto+Serif+SC:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
   <link rel="stylesheet" href="./src/styles/base.css">
   <link rel="stylesheet" href="./src/styles/themes.css">
+  <!-- Splash 样式 inline 在 head — base.css 是 stylesheet link 要等下载完才
+       渲染,但 splash 想在最早时刻就出现(不然 user 看到 favicon 一闪、然
+       后是空白几百 ms 才有内容)。boot 跑完 renderShell() 会把 #app 内
+       容覆盖,splash 自然消失,无需 JS 主动清。 -->
+  <style>
+    .splash {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f4f4f7;
+      z-index: 9999;
+    }
+    .splash-phone {
+      width: clamp(220px, 60vw, 300px);
+      aspect-ratio: 9 / 19.5;
+      background: #fff;
+      border-radius: 32px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 20px;
+    }
+    .splash-stack {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+    }
+    .splash-title {
+      font-size: 26px;
+      font-weight: 700;
+      color: #5a8dee;
+      letter-spacing: 0.02em;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .splash-sub {
+      font-size: 12px;
+      color: #999;
+    }
+    .splash-spinner {
+      width: 22px;
+      height: 22px;
+      border: 2px solid #e6e6ec;
+      border-top-color: #5a8dee;
+      border-radius: 50%;
+      animation: splash-spin 0.8s linear infinite;
+    }
+    @keyframes splash-spin { to { transform: rotate(360deg); } }
+  </style>
 </head>
 <body>
-  <div id="app"></div>
+  <div id="app">
+    <div class="splash" aria-label="正在启动">
+      <div class="splash-phone">
+        <div class="splash-stack">
+          <div class="splash-title">phone-app</div>
+          <div class="splash-spinner" aria-hidden="true"></div>
+          <div class="splash-sub">正在启动…</div>
+        </div>
+      </div>
+    </div>
+  </div>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>

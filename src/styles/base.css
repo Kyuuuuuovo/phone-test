@@ -598,10 +598,13 @@ label .label-text {
   flex: 0 0 auto;
   display: none;
   align-items: center;
-  justify-content: space-between;
   padding: 6px 12px;
   gap: 8px;
 }
+/* + 新页 挨在「完成」左侧 — 不放中间(三件 space-between 中间那个看着
+   不居中,夹得不舒服)。widget-add 左,page-add 用 margin-left: auto 推到
+   右边,edit-done 紧跟。 */
+.home-edit-toolbar .page-add { margin-left: auto; }
 .page.home.editing .home-edit-toolbar { display: flex; }
 .home-edit-toolbar .edit-done,
 .home-edit-toolbar .widget-add,
