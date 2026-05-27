@@ -73,6 +73,7 @@ export async function mountWorldbookDetail(container, params, router) {
     }
     entriesList.innerHTML = entries.map(e => {
       const pos = (e.position === 'before' || e.position === 'after') ? e.position : 'inline';
+      const keywordsCsv = Array.isArray(e.keywords) ? e.keywords.join(', ') : '';
       return `
       <div class="entry-card" data-entry-id="${esc(e.id)}">
         <div class="entry-card-row">
@@ -89,6 +90,7 @@ export async function mountWorldbookDetail(container, params, router) {
           <button type="button" class="btn danger entry-delete">删除</button>
         </div>
         <textarea class="entry-content" rows="4" placeholder="条目内容,会被原样注入到 system prompt 的「世界观/背景设定」段">${esc(e.content)}</textarea>
+        <input class="entry-keywords" placeholder="关键词触发(逗号分隔,留空 = 永远注入;填了 = 只在最近 10 条消息出现其中一个才注入)" value="${esc(keywordsCsv)}">
       </div>
     `;
     }).join('');
@@ -114,6 +116,13 @@ export async function mountWorldbookDetail(container, params, router) {
     e.content  = card.querySelector('.entry-content').value;
     e.enabled  = card.querySelector('.entry-enabled input').checked;
     e.position = card.querySelector('.entry-position').value || 'inline';
+    // 关键词触发:UI 是逗号分隔字符串,DB 存 string[]。空 → undefined(向后
+    // 兼容,等同永远注入)。每个 keyword trim + 过滤空字符串,避免「,, A」
+    // 这种输入产生 ["", "", "A"] 然后空 keyword 匹配所有消息。
+    const kwRaw = card.querySelector('.entry-keywords')?.value || '';
+    const kwList = kwRaw.split(/[,,]/).map(s => s.trim()).filter(Boolean);
+    if (kwList.length > 0) e.keywords = kwList;
+    else delete e.keywords;
     await db.set('worldbookEntries', e);
   }
 
@@ -158,7 +167,7 @@ export async function mountWorldbookDetail(container, params, router) {
   const onEntriesChange = async (e) => {
     const card = e.target.closest('.entry-card');
     if (!card) return;
-    if (e.target.matches('.entry-title, .entry-content, .entry-position') ||
+    if (e.target.matches('.entry-title, .entry-content, .entry-position, .entry-keywords') ||
         e.target.matches('.entry-enabled input')) {
       try {
         await saveEntryFromCard(card);

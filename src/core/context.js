@@ -107,6 +107,31 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
   const persona = session.personaId ? await db.get('personas', session.personaId) : null;
 
   // Group worldbook entries by injection position.
+  // 关键词触发(SillyTavern lorebook 风格):entry.keywords 是 string[]。
+  //   - 空 / 缺失 → entry 一直注入(默认,向后兼容)
+  //   - 有值 → 在最近 RECENT_KW_WINDOW 条消息任一里命中其中一个 keyword 才注入
+  // 匹配:大小写不敏感,substring(包含即触发,不要求整词)。中文不分词所以
+  // 整字面匹配最稳。检查范围:user + character 消息的 action.content/desc/
+  // name 拼出来的文本,archived 也包含(被压缩进 memory 的也算上下文)。
+  const RECENT_KW_WINDOW = 10;
+  let recentText = '';  // 懒计算 — 只有 entries 用了 keywords 才需要拼
+  async function getRecentText() {
+    if (recentText !== '') return recentText;
+    const msgs = (await db.query('chatMessages', 'sessionId', sessionId))
+      .filter(m => m.role !== 'system');
+    msgs.sort((a, b) => a.createdAt - b.createdAt);
+    const slice = msgs.slice(-RECENT_KW_WINDOW);
+    recentText = slice
+      .map(m => (m.actions || []).map(a => a.content || a.description || a.name || '').join(' '))
+      .join('\n')
+      .toLowerCase();
+    return recentText;
+  }
+  function matchesKeywords(text, keywords) {
+    const lc = text.toLowerCase();
+    return keywords.some(k => lc.includes(String(k).toLowerCase()));
+  }
+
   const wbBy = { before: [], inline: [], after: [] };
   const bindings = await db.query('characterWorldbooks', 'characterId', character.id);
   bindings.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
@@ -115,6 +140,12 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     const enabled = entries.filter(e => e.enabled !== false);
     enabled.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
     for (const entry of enabled) {
+      // 关键词过滤
+      const kw = Array.isArray(entry.keywords) ? entry.keywords.filter(Boolean) : [];
+      if (kw.length > 0) {
+        const txt = await getRecentText();
+        if (!matchesKeywords(txt, kw)) continue;  // 没命中 → skip
+      }
       const pos = (entry.position === 'before' || entry.position === 'after') ? entry.position : 'inline';
       // title is user-facing only — used as the row label in the editor, not
       // shown to the AI. Only content goes into the prompt.

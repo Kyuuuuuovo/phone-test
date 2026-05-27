@@ -62,7 +62,7 @@
 |---|---|---|---|
 | `characters` | `id` | — | 角色,字段 name / persona / avatar / notes / blocked / **chatBackground**(per-character 聊天背景 base64)/ **chatFontSize**(per-character 字号覆盖,null 表示跟随全局)/ createdAt / updatedAt |
 | `worldbooks` | `id` | — | 世界书容器(只有元数据) |
-| `worldbookEntries` | `id` | worldbookId | 条目,字段 title / content / enabled / `position` / createdAt。`position` 三档:`before`(角色设定前)/ `inline`(角色设定后,默认)/ `after`(用户人设后)。**title 只是用户索引,不进 prompt;只 content 会被注入。** 同 position 内按 createdAt 升序排 |
+| `worldbookEntries` | `id` | worldbookId | 条目,字段 title / content / enabled / `position` / `keywords?` / createdAt。`position` 三档:`before`(角色设定前)/ `inline`(角色设定后,默认)/ `after`(用户人设后)。**title 只是用户索引,不进 prompt;只 content 会被注入。** 同 position 内按 createdAt 升序排。`keywords` 是 string[](逗号分隔输入,UI parse 成 array):空 / undefined = 一直注入(向后兼容);有值 = 只在最近 10 条聊天消息任一里出现其中一个 keyword 时才注入(SillyTavern lorebook 风格,大小写不敏感 + substring 匹配) |
 | `characterWorldbooks` | `id` | characterId, worldbookId | 多对多关系表,字段 priority |
 | `personas` | `id` | — | 玩家人设库 |
 | `chatSessions` | `id` | characterId, lastMessageAt | 字段 characterId / personaId / title / createdAt / lastMessageAt / **isPinned** / `showReadReceipts`(默认 true)/ `readReceiptUpToTs` / `memoryPromptOverride`;会话感知 toggle:`{char,user}TzEnabled` / `*WeatherEnabled` / `*LocEnabled` + `*CityMode` / `*CityKey` / `*CityLabel` |
