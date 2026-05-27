@@ -200,23 +200,61 @@
 - ✅ widget 倾斜角度 — 所有 editor 加 -30°~30° slider,`gridStyle` 注入 `--widget-tilt`,CSS `transform: rotate(var(--widget-tilt, 0deg))`;`:active scale` 拼到一起;dragging 时归零方便看落点
 - ✅ MP3 widget(`renderMp3Widget`)— iPod 致敬 SVG,跟 gameboy 一样走 `askSizeAndTransparency`
 
+**本轮 batch(28 件清空)**
+
+*第一阶段 — UI polish*
+- ✅ + 新页按钮 bug 修(刚 push 的空页被立刻 prune;cleanup 清 flag 导致 navigate('home') 链丢 preserveEditModeOnMount → cleanup 不清,mountHome 头部 read-and-clear)
+- ✅ 照片 editor 加展示形式下拉(image/polaroid 二选一,不再按张数自动判断)
+- ✅ + 新页挪到「完成」左侧(toolbar `.page-add { margin-left: auto }`)
+- ✅ favicon(手机蓝屏 SVG data URI)+ 开屏 splash(iOS 锁屏风格紫蓝粉渐变 + 大字时间 + 日期)
+- ✅ splash 读取用户壁纸(inline IIFE 异步开 IDB 读 settings.wallpaper)
+- ✅ 微信「我」value 位置统一(`.me-row-value { margin-left: auto }` 紧贴 chevron,不再随 label 字数漂移)
+- ✅ 全局「新建」`+` → SVG(9 处);加 `.page-header .actions button` generic reset 防 user-agent default 方框(`.new-persona` 之前漏了 rule)
+- ✅ chat-info 选项分组(常用/扩展/数据/危险 4 段)
+- ✅ 删页 UI:非 editing 模式 mount 时回收尾部空页(`willEnterEdit = preserveEditModeOnMount` 守门,editing 时不动)
+- ✅ 修 widget 越界压缩 grid 5 行布局(`grid-auto-rows: 0` + idempotent re-clamp + `updateWidget` clamp)
+- ✅ widget 倾斜角度(-30°~30° slider,CSS var `--widget-tilt`,dragging 归零)
+- ✅ MP3 widget(iPod 风格 SVG,跟 gameboy 一档)
+- ✅ 最近聊天大 widget(4×3 默认,头像 + 角色名 + 最后一句 + 时间,点行进 chat)
+
+*第二阶段 — 系统扩展*
+- ✅ widget 全局风格 preset(设置 → widget 风格,6 个 preset 一键 batch update 所有 widget 的 bgColor/radius/transparency/tilt)
+- ✅ app 图标管理搬到设置 → 外观(`settings/app-icons.js`,新页 13 个 app 列表,picker 扩 4 种:emoji / 文字 / 本地图片 / 图床 URL。home edit ⚙ 快捷入口保留)
+- ✅ 世界书条目关键词触发(`worldbookEntries.keywords?[]`,最近 10 条消息字面命中 + 大小写不敏感 substring)
+- ✅ 世界书条目向量化触发(`activationMode: 'always'|'keywords'|'vector'` 三选一独占;vector 模式 fire-and-forget embed,sourceType='worldbook-entry';`topKWorldbookEntriesForQuery` 取该 character 挂载 worldbook 的 vector entries 做 cosine top-K;阈值 `settings.embedding.worldbookThreshold` 默认 0.35 可调;注入「# 相关世界设定」段单开)
+- ✅ 用户状态 per-persona(`personas.statusText / statusSetAt`,「我」tab profile 下状态卡 → openModal 编辑当前 active persona;context 新 part `user-status` 注入 state group,带相对时间「(设于 X 小时前)」)
+- ✅ 行程 per-persona(`schedule.personaId?`,空 = 所有 persona 共享向后兼容;buildScheduleLines 按 sessionPersonaId 过滤;surveillance 不传 personaId,per-persona 私货不进 surveillance)
+- ✅ 行程注入窗口 [-6h, +24h] → [-3d, +3d](7 天)
+- ✅ AI 自加行程动作 `add_schedule_entry`(三处对齐:ACTION_SCHEMAS_TEXT schema、main.js boot `ai.registerHandler` 写 schedule store、chat.js renderAction 画 `.bubble-schedule-add` 卡片;startTs 用 ISO 本地时间)
+- ✅ 行程 3 天竖向时间轴 UI(替换原 bucket list,3 列均分,HOUR_PX=28,行程作 absolute 块按 startHour 定位,跨天裁切,user/character 不同颜色边条)
+- ✅ 记忆 app 角色筛选(timeline/milestones/summary 顶部 character select,月历保留)
+- ✅ 聊天翻译 toggle + 双语气泡(`chatSessions.translateMode`,prompt 注入「非中文必须在 action 加 translation 字段」;text/reply 渲染 `.bubble-translate`,点击 toggle .expanded 展开下方译文)
+
+*第三阶段 — 4 大功能 + 桌宠扩展*
+- ✅ 红包/转账详情 + 24h 拒收退回(`returned: bool` + `returnedAt`;chat refresh 顶部 `expireOldMoneyActions` 扫 user 发 + 未领 + 超 24h → mark returned + 退回 wallet;non-claimable 卡片点击 → openMoneyDetail modal 显 from/when/amount/msg/状态)
+- ✅ 用户心声 `msg.innerVoice`(chat-input 加 thought icon 按钮 → 展开第二行 textarea;`toApiMessage` 给 user content 后拼 `[心声:xxx]`;`BEHAVIOR_GUIDANCE` 指引「据此调整态度但不复述」)
+- ✅ 角色心声 `msg.aiInnerVoice`(bubble-menu 加「心声」按钮 only-char;onBubbleMenuAction 'inner-voice' case;archived 拒;cache 命中 toggle 显示;否则调 `ai.callAI` 短 prompt + 最近 8 条 history;一锤定音不重生;**不**注入 prompt — 纯 UI 复盘)
+- ✅ keepsake app 千纸鹤/叠星星(新 store `keepsakes`,**DB_VERSION 9→10**;home page 2 加入口;字段 characterId/type/theme/status('folded'|'opened'|'kept')/content?/nth/total;user 出题 → N 行 folded **不调 API**;拆 → lazy `ai.callAI` 生成 content → opened;留下 = kept 可重读 / 丢掉 = hard delete。`KEEPSAKE_SYS_TEMPLATE` 是作者占位 TODO)
+- ✅ 桌宠记忆助手(聊天页戳桌宠短点 → `openMemoryHelperPanel` 弹面板:本会话 L1/L2 速览 + 常用词 + 常用指令,chip 点击复制剪贴板;其他页保留 ambient 气泡)
+
 ---
 
 ### TODO 待办
 
-**记忆架构(chat 提的 Phase 2+,等下一阶段)**:
+**等用户文案 / 决策**:
+- 桌宠 `BEAR_PERSONA` + `AMBIENT_LINES` 7 场景(每个 1 条占位)、`bottle.js` 4 处 TODO、`KEEPSAKE_SYS_TEMPLATE`、`BEHAVIOR_GUIDANCE`(目前只有心声一段,9 个动作的「什么时机用」都没写)
+- 行程 3 天时间轴美化风格(国誉手账本,等 user 给 reference)
+- 监控反向注入聊天(user 在想 — 因为不只是当前帧,可能要包括历史画面)
+- 网站地址 / KKphone.com(等 user 买域名,有了我加 CNAME 文件)
+- 红包动画(user 明确不做)
+- `state` 数值化动作(user 明确**绝对不要**)
+
+**记忆架构 Phase 2+**:
 - 阶段 2 用户画像 per (角色×人设) — 压缩 prompt 同时吐画像 patch,inject system prompt 顶部
-- 阶段 3 角色 `add_schedule_entry` 工具
 - 阶段 4 向量打标(转折点/情感/日常)+ `buildVectorRecallLines` boost
-- 阶段 5 悬浮球记忆助手(手动 N→M 总结 + 快捷短语)
 
 **永远会做的小事**:
-- 红包/转账动画 + 详情页 + AI 自动接收
 - 位置功能进阶(地图选点)
-
-### 下一轮 follow-up(明确知道要做)
-- **红包/转账细节** —— 动画(打开红包翻转)、详情页(来自谁/几号/几点)、AI 自动接收用户红包(模型在收到时下一轮 reply 标 `claimed`)
-- **位置功能进阶** —— 现在是纯展示卡片,以后可以做地图选点 + 经纬度
 
 ### Phase 2(MVP-2)
 - **群聊**:`chatSessions.participantIds[]` 字段、群里「谁该说话/什么时机说」机制(导演 + 演员两层 — 第一层轻量导演选 speakers,第二层每个 speaker 走现有单角色管线)。新建对话 modal 入口已预留(`new-group` 按钮,目前 alert 占位);action schema 已加可选 `from` 字段(单聊省略、群聊角色名)
