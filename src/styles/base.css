@@ -499,6 +499,20 @@ body[data-route="home"] .phone-frame::before { display: none; }
   margin-left: auto;
   z-index: 1;
 }
+/* page-header 右上角「新建」类 button 统一 reset — 防 user-agent default
+   2px outset 边框 + 浅灰底走出来。.new-persona 之前漏了 rule(其他 .new-*
+   都各自 reset),走了浏览器默认显示成"方框"。这条 generic 一劳永逸,以
+   后新加 button 不再漏。.ai-gen / .import-tavern 等带自己样式的不冲突 —
+   它们各自的 rule selector 更具体优先级更高。 */
+.page-header .actions button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0 4px;
+  font: inherit;
+}
+.page-header .actions button svg { display: block; }
 /* C2: chat 页 devMode 下显示下次发送的 tokens 估算 badge,挨在 ⚙ 提示词调
    试按钮左侧。用 monospace 数字、淡色 + 圆角胶囊,跟其他 icon-btn 视觉
    上区分。z-index 跟 .actions 同层。 */
@@ -2883,6 +2897,11 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
   color: var(--muted);
   font-size: 13px;
   margin-right: 6px;
+  /* 推到右紧挨 chevron — .settings-item 是 flex space-between,3 个 child
+     的中间元素居中位置取决于 label 字数(label 不同长 → gap 不同 → value
+     中心漂移)。margin-left: auto 让 value 走 flex 末尾,所有行 value 都
+     紧贴 chevron,视觉对齐。 */
+  margin-left: auto;
 }
 
 /* Moments tab — placeholder */

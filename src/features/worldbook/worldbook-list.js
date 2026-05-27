@@ -13,7 +13,7 @@ export async function mountWorldbookList(container, params, router) {
         <div class="title">世界书</div>
         <div class="actions">
           <button class="import-tavern" title="导入酒馆 JSON">⇪</button>
-          <button class="new-entity" title="新建世界书">+</button>
+          <button class="new-entity" title="新建世界书" aria-label="新建世界书"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
         </div>
       </header>
       <div class="page-body entity-list-body"></div>

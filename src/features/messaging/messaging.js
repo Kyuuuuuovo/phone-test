@@ -24,7 +24,7 @@ export async function mountMessaging(container, params, router) {
         <button class="back">‹ 返回</button>
         <div class="title">${TABS.find(t => t.id === initialTab).title}</div>
         <div class="actions">
-          <button class="new-chat" title="新建对话" hidden>+</button>
+          <button class="new-chat" title="新建对话" aria-label="新建对话" hidden><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
         </div>
       </header>
       <div class="messaging-content"></div>

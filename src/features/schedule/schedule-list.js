@@ -25,7 +25,7 @@ export async function mountScheduleList(container, params, router) {
           <div class="title">行程</div>
           <div class="actions">
             <button class="ai-gen" title="让 AI 帮角色生成一段日程">✨ AI</button>
-            <button class="new-entry" title="新建行程">+</button>
+            <button class="new-entry" title="新建行程" aria-label="新建行程"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
           </div>
         </header>
         <div class="page-body">

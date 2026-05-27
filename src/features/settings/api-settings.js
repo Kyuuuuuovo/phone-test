@@ -10,7 +10,7 @@ export async function mountApiSettings(container, params, router) {
         <button class="back">‹ 返回</button>
         <div class="title">API 设置</div>
         <div class="actions">
-          <button class="new-api" title="新建配置">+</button>
+          <button class="new-api" title="新建配置" aria-label="新建配置"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
         </div>
       </header>
       <div class="page-body api-list-body"></div>

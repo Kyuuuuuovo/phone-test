@@ -39,7 +39,7 @@ export async function mountMonitor(container, params, router) {
           <button class="back">‹ 返回</button>
           <div class="title">监控</div>
           <div class="actions">
-            <button class="new-camera" title="添加机位">+</button>
+            <button class="new-camera" title="添加机位" aria-label="添加机位"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
           </div>
         </header>
         <div class="page-body">
