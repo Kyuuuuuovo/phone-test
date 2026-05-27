@@ -25,12 +25,32 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      /* 紫蓝粉渐变 — 接近 iOS 默认锁屏壁纸的氛围。3 stop 让色彩有过渡。 */
+      /* 默认背景:紫蓝粉渐变(没设过壁纸 / IDB 不可用时 fallback)。
+         splash inline JS 会异步读用户在设置里设的壁纸 → set background-image
+         盖掉这层渐变。background-size: cover 一并设好,即使后面只覆盖 image
+         也能正确撑满。 */
       background: linear-gradient(155deg, #5b6dca 0%, #8062c9 55%, #c87fa6 100%);
+      background-size: cover;
+      background-position: center;
       color: #fff;
       z-index: 9999;
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "PingFang SC", sans-serif;
-      text-shadow: 0 2px 16px rgba(0, 0, 0, 0.18);
+      text-shadow: 0 2px 16px rgba(0, 0, 0, 0.35);
+    }
+    /* 半透明遮罩 — user 上传的壁纸可能是亮图,白字读起来弱。给上下都加
+       一点暗色 vignette,文字对比度更稳。fallback 渐变本来就深色,加这
+       层也不会显得发灰。 */
+    .splash::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0, 0, 0, 0.05) 0%, rgba(0, 0, 0, 0.25) 100%);
+      pointer-events: none;
+    }
+    .splash-clock,
+    .splash-date {
+      position: relative;
+      z-index: 1;
     }
     .splash-clock {
       font-size: clamp(56px, 13vw, 92px);
@@ -55,12 +75,15 @@
       <div class="splash-date">&nbsp;</div>
     </div>
   </div>
-  <!-- splash 时间 — 一段 inline IIFE 立即把当前时间写到 .splash-clock /
-       .splash-date,不依赖任何模块。splash 只显示几百 ms-2s,这一次性写
-       入足够(不需要 setInterval)。boot 跑完 #app innerHTML 被覆盖,这
-       两个 element 也跟着没了。 -->
+  <!-- splash inline 脚本 — 不依赖任何模块,立即跑:
+       1) 同步把当前时间 / 日期写到 .splash-clock / .splash-date
+       2) 异步开 IDB 读 settings.wallpaper,有的话 set 到 .splash 的
+          background-image 盖掉默认渐变。读完之前 splash 可能就被 boot()
+          替换掉了 — 那就没机会显示壁纸,fallback 渐变也 OK。
+       boot 跑完 #app innerHTML 被覆盖,splash element 跟着没了。 -->
   <script>
     (() => {
+      // 1. 时间 / 日期(同步,立即可见)
       const now = new Date();
       const hh = String(now.getHours()).padStart(2, '0');
       const mm = String(now.getMinutes()).padStart(2, '0');
@@ -69,6 +92,30 @@
       const date  = document.querySelector('.splash-date');
       if (clock) clock.textContent = hh + ':' + mm;
       if (date)  date.textContent  = '星期' + weekday + ' · ' + (now.getMonth() + 1) + '月' + now.getDate() + '日';
+
+      // 2. 壁纸(异步,读完才能显示)— 跟 main.js 用同一个 db name / store
+      //    (见 src/core/db.js DB_NAME='phone-app',settings store id='default')。
+      //    任何 IDB 异常都静默跳过,默认渐变继续显示。
+      try {
+        const req = indexedDB.open('phone-app');
+        req.onsuccess = () => {
+          try {
+            const idb = req.result;
+            if (!idb.objectStoreNames.contains('settings')) { idb.close(); return; }
+            const tx = idb.transaction('settings', 'readonly');
+            const get = tx.objectStore('settings').get('default');
+            get.onsuccess = () => {
+              const wp = get.result && get.result.wallpaper;
+              const splash = document.querySelector('.splash');
+              if (wp && splash) {
+                splash.style.backgroundImage = 'url("' + wp + '")';
+              }
+              idb.close();
+            };
+            get.onerror = () => idb.close();
+          } catch (_) { /* swallow */ }
+        };
+      } catch (_) { /* swallow */ }
     })();
   </script>
   <script type="module" src="./src/main.js"></script>
