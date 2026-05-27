@@ -184,30 +184,27 @@
 - ✅ 行程 banner ⏰ emoji → SVG 铃铛
 - ✅ 行程提醒联动系统通知 — `fireOsNotification`,hidden 时走 Notification API,复用 `settings.notifyOnReply` 开关
 
+**批 ABCD(本轮 11 件清空)**
+- ✅ A1 行程 widget — `renderScheduleWidget`,窗口 [now-30min, now+24h],空态 + 列表
+- ✅ A2 游戏机 widget — Game Boy 致敬 SVG,纯装饰(`widget-gameboy`)
+- ✅ A3 便签竖排选项 — note widget 加 `vertical` 字段,渲染 `writing-mode: vertical-rl`
+- ✅ A4 拍立得编辑按钮重叠修复 — `.widget-polaroid .widget-edit/del z-index: 10` 盖过 stack photo
+- ✅ A5 图片/拍立得合并一类 — `photo` 入口统一,提交按张数分发 image / polaroid
+- ✅ B1 widget 编辑入口提示 — `@media (hover: none)` 给触屏加永久 5px hint dot
+- ✅ B2 app/widget 点击动效统一 — widget 加 `:active scale(0.97)`,跟 app-icon 一致
+- ✅ B3 + 新页 + 空页自动回收 — `effectivePageCount` 动态;edit toolbar 「+ 新页」按钮;mount 时尾部空页 prune;**顺手修了 resolveTilesForPage 跨页拖的 duplicate bug**(byId 改成全 PAGES + DOCK_CATALOG;remaining 排除 usedAcrossAll)
+- ✅ C1 拍照模式 + 真实图片上传 — attach panel 加「拍照」(走 description)、「图片」改成 file picker → `actions[].src`;`renderActionsAsText` 给 src 走占位文字防爆 token
+- ✅ C2 tokens 预估 — chat header devMode 加 `.token-badge`,中文 ≈1.5/字、ASCII ≈0.3/char 粗估
+- ✅ D1 app 图标更换 — edit mode app-icon 角标 ⚙ → `openIconPicker`(12 个预设 emoji + 上传图片 + 恢复默认),override 写 `settings.appIconOverrides[appId]`,`tileHtml` 接受 override 渲染
+- ✅ 修 widget 越界压缩 grid 5 行布局 — CSS `grid-auto-rows: 0`(越界 widget 折叠,主 grid 保持 5 行);mountHome idempotent re-clamp;`updateWidget` 改 rowSpan/colSpan 后 clamp,冲突走 findFirstFreeCell。**根因**:user 把 widget 的 rowSpan 改大但 row 没动 → grid-row 越界 5 行 → `grid-auto-rows: minmax(0,1fr)` 创建第 6+ 行 1fr 等分,所有 cells 被挤扁
+- ✅ widget 倾斜角度 — 所有 editor 加 -30°~30° slider,`gridStyle` 注入 `--widget-tilt`,CSS `transform: rotate(var(--widget-tilt, 0deg))`;`:active scale` 拼到一起;dragging 时归零方便看落点
+- ✅ MP3 widget(`renderMp3Widget`)— iPod 致敬 SVG,跟 gameboy 一样走 `askSizeAndTransparency`
+
 ---
 
-### TODO 待办(用户已确认要做,等下一轮)
+### TODO 待办
 
-**批 A — widget 类(~5h)** — 用户 dump 的 14 件里 widget 相关 5 件,主题一致:
-- 行程 widget(home schedule preview)
-- 游戏机 widget(装饰类)
-- 便签竖排选项
-- 拍立得右上角 ×/⚙ 跟切照片点击重叠 — z-index 或位置调
-- 图片/拍立得合并成一个分类,可调 1-3 张(1=image,2-3=polaroid)
-
-**批 B — 主页交互(~3h)**:
-- ⚙/× 隐蔽性提示(非编辑模式下点 widget 角无视觉提示) — 加 hint 或长按出
-- 点击 app vs 点击 widget 效果不一致 — 统一动效
-- 拖小组件到下一页底部自动新建页
-
-**批 C — 聊天/调试(~2.5h)**:
-- 聊天加号:加「拍照」描述模式 + 现有「图片」改成真实图片上传
-- 开发模式聊天页加「当前 tokens 预估」
-
-**批 D — 大改(单独)**:
-- app 图标更换功能 — 需要 icon 集 + 上传 / 选择 UI
-
-**记忆架构(chat 提的 Phase 2+,等批 ABCD 后再开)**:
+**记忆架构(chat 提的 Phase 2+,等下一阶段)**:
 - 阶段 2 用户画像 per (角色×人设) — 压缩 prompt 同时吐画像 patch,inject system prompt 顶部
 - 阶段 3 角色 `add_schedule_entry` 工具
 - 阶段 4 向量打标(转折点/情感/日常)+ `buildVectorRecallLines` boost

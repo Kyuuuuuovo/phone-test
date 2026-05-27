@@ -499,6 +499,22 @@ body[data-route="home"] .phone-frame::before { display: none; }
   margin-left: auto;
   z-index: 1;
 }
+/* C2: chat 页 devMode 下显示下次发送的 tokens 估算 badge,挨在 ⚙ 提示词调
+   试按钮左侧。用 monospace 数字、淡色 + 圆角胶囊,跟其他 icon-btn 视觉
+   上区分。z-index 跟 .actions 同层。 */
+.token-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;  /* 父 .header-actions 是 flex,默认 stretch 会撑高 */
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--muted);
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+  z-index: 1;
+}
 .page-body {
   flex: 1;
   overflow-y: auto;
@@ -588,7 +604,8 @@ label .label-text {
 }
 .page.home.editing .home-edit-toolbar { display: flex; }
 .home-edit-toolbar .edit-done,
-.home-edit-toolbar .widget-add {
+.home-edit-toolbar .widget-add,
+.home-edit-toolbar .page-add {
   padding: 6px 14px;
   border: none;
   border-radius: 999px;
@@ -601,7 +618,8 @@ label .label-text {
   background: var(--accent);
   color: #fff;
 }
-.home-edit-toolbar .widget-add {
+.home-edit-toolbar .widget-add,
+.home-edit-toolbar .page-add {
   background: color-mix(in srgb, var(--surface) 80%, transparent);
   color: var(--fg);
   border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
@@ -777,7 +795,12 @@ label .label-text {
   /* 桌面 (phone-frame 宽固定 400-480 之间) 用 aspect-ratio 4:5 锁严格正方
      cells —— 跟 .phone-frame 9:19.5 比例配,grid 不会撑过 page 高度。 */
   grid-template-rows: repeat(5, minmax(0, 1fr));
-  grid-auto-rows: minmax(0, 1fr);
+  /* grid-auto-rows: 0 是越界防御线 — 任何 widget 数据库里 row 越界(比如
+     改大 rowSpan 后位置漏了 re-clamp、第三方修改、未来 bug 新增的 path),
+     grid 之前会用 minmax(0,1fr) 自动创建第 6+ 行 1fr 等分,所有 cells 被
+     挤扁。改成 0 后:越界元素折叠成不可见,但主 grid 的 5 行 layout 保
+     持稳定。JS 仍是严格 clamp,这只是结构防线。 */
+  grid-auto-rows: 0;
   width: 100%;
   aspect-ratio: 4 / 5;
   min-height: 0;
@@ -881,6 +904,42 @@ label .label-text {
   position: relative;
   padding: 0;
   overflow: hidden;
+  /* B2: 点击反馈 — app-icon 已经在 :active 时 scale 0.95(见
+     .app-icon:active .icon),widget 之前没有反馈,user 报"点 app 跟点
+     widget 反应不一致"。widget 体积比 app 大,用 0.97 比 0.95 温和,不让
+     卡片显得"塌下去"。editing 模式下用 jiggle 动画(.dragging 状态也用
+     inline transform 接管),所以这里把 :active 限制在非 editing、非 drag。
+     倾斜:--widget-tilt 默认 0deg,user 在 editor 设了非 0 就 rotate。 */
+  transform: rotate(var(--widget-tilt, 0deg));
+  transition: transform 0.15s;
+}
+.page.home:not(.editing) .widget.user-widget:not(.dragging):active {
+  transform: rotate(var(--widget-tilt, 0deg)) scale(0.97);
+}
+/* 拖拽时归零旋转 — placeholder 是平的,dragging.el 也保持平,user 看落点
+   更准。editing 模式下 jiggle 动画接管 transform(keyframe 里有自己的
+   rotate),也不读 --widget-tilt。 */
+.widget.user-widget.dragging { transform: none; }
+.page.home.editing .widget.user-widget {
+  transform: none;
+}
+/* B1: 触屏 user 看不到 ⚙/× hint(@media hover 把 hover 反馈圈给鼠标了)。
+   加一个永久显示的极淡角标 — 5px 圆点在右上,让人感觉"这里能动"。鼠标设
+   备 hover 自然会出 ⚙/×,角标只在触屏(@media hover: none)出现。polaroid
+   是悬浮照片本身就有视觉特征,跳过。 */
+@media (hover: none) {
+  .page.home:not(.editing) .widget.user-widget:not(.widget-polaroid)::before {
+    content: '';
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--fg) 35%, transparent);
+    pointer-events: none;
+    z-index: 3;
+  }
 }
 .widget.user-widget .widget-del {
   position: absolute;
@@ -960,6 +1019,17 @@ label .label-text {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* A3: 竖排便签 — writing-mode 改成 vertical-rl(从右向左,中文古籍 / 诗歌
+   排版)。-webkit-line-clamp 不兼容垂直书写模式,改用普通 block + overflow
+   hidden,横向溢出按列截掉。letter-spacing 略加一点,竖着读密集字体更舒服。 */
+.widget.widget-note.vertical .widget-note-text {
+  writing-mode: vertical-rl;
+  -webkit-line-clamp: initial;
+  display: block;
+  letter-spacing: 0.05em;
+  height: 100%;
+  max-height: 100%;
+}
 
 /* Polaroid stack — 3 photos overlaid with slight rotation. Each .polaroid-
    photo is absolutely positioned at the center; the inline transform
@@ -1006,6 +1076,13 @@ label .label-text {
 .widget.widget-polaroid .polaroid-photo:hover {
   filter: brightness(1.03);
 }
+/* A4: 拍立得照片是 absolute + inline z-index 1/2/3,最顶那张盖住右上角的
+   ×/⚙ 按钮(它俩的 z-index 才 2)。把这俩按钮在 polaroid widget 里抬高到
+   10 — 永远在照片之上,编辑模式下可点。 */
+.widget.widget-polaroid .widget-edit,
+.widget.widget-polaroid .widget-del {
+  z-index: 10;
+}
 .widget.widget-polaroid.empty {
   background: color-mix(in srgb, var(--surface) 65%, transparent) !important;
   backdrop-filter: blur(20px) saturate(160%) !important;
@@ -1024,6 +1101,83 @@ label .label-text {
 body[data-fx-glass="liquid"] .widget.widget-polaroid::after,
 body[data-fx-glass="metal"] .widget.widget-polaroid::after {
   display: none;
+}
+
+/* A1: 行程 widget — 紧凑列表显示未来 24h 内的行程。head 一行标题/数量,
+   list 每行三列(时间 · 标题 · 谁的)。max-height 跟 overflow 防止行多了
+   把 widget 撑出 grid;past 行降饱和度让用户一眼分清"已过"vs"待发"。 */
+.widget.widget-schedule {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+.widget.widget-schedule .ws-head {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  flex: 0 0 auto;
+}
+.widget.widget-schedule .ws-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+.widget.widget-schedule .ws-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.widget.widget-schedule .ws-row.past { opacity: 0.45; }
+.widget.widget-schedule .ws-time {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
+}
+.widget.widget-schedule .ws-title {
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.widget.widget-schedule .ws-who {
+  color: var(--muted);
+  font-size: 11px;
+}
+.widget.widget-schedule.empty .ws-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* A2: 游戏机 widget — 纯装饰。SVG 居中填充 widget 卡片;比例 5:7 接近原版
+   Game Boy。padding 0 让卡片整张被屏占满,卡片本身的 bg(--widget-bg)在
+   SVG 后面透出来一圈边,看着像放在桌面上的实体。 */
+.widget.widget-gameboy,
+.widget.widget-mp3 {
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.widget.widget-gameboy .gameboy-svg,
+.widget.widget-mp3 .mp3-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 /* Anniversary — "遇见 XXX 已经 N 天". Compact 2×1 slot (90px tall); the label
@@ -1508,7 +1662,95 @@ body[data-fx-glass="metal"] .widget.widget-music::after { display: none; }
   color: var(--fg);
   min-width: 0;
   min-height: 0;
+  /* D1: 给 icon-edit 一个 positioning anchor。app-icon 之前没显式 relative,
+     但 icon-edit 要 absolute 钉在右上角。 */
+  position: relative;
 }
+/* D1: icon override 视觉 — emoji 放大居中,image 满 .icon 圆角方块。SVG 之
+   前已有 55% 比例;emoji 用 font-size: 60% 视觉接近,image 75% 配合 cover
+   裁剪保持正方形。 */
+.app-icon .icon .icon-emoji {
+  font-size: clamp(28px, 60%, 44px);
+  line-height: 1;
+  display: block;
+}
+.app-icon .icon .icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* D1: ⚙ 改图标按钮 — 编辑模式右上角小圆按钮,跟 widget-edit 同视觉。 */
+.app-icon .icon-edit {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 5;
+}
+.app-icon .icon-edit svg { width: 11px; height: 11px; display: block; }
+@media (hover: hover) {
+  .app-icon:hover .icon-edit { opacity: 1; }
+}
+.page.home.editing .app-icon .icon-edit { opacity: 1; }
+/* dock 也用同一个 ⚙(dock 的 app-icon 在 .dock-grid 里,跟 page 一样规则) */
+
+/* D1: icon picker modal — 预设 emoji grid + 上传区。emoji 用大字号方便点选。 */
+.icon-picker {
+  padding: 0 4px;
+}
+.icon-picker-section {
+  margin: 12px 0;
+}
+.icon-picker-section .label-text {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.icon-picker-emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+.icon-picker-emoji {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  padding: 10px 4px;
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
+  transition: transform 0.1s, border-color 0.15s;
+}
+.icon-picker-emoji:hover { transform: scale(1.05); border-color: var(--accent); }
+.icon-picker-emoji.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.icon-picker-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.icon-picker-current {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.icon-picker-current img { width: 100%; height: 100%; object-fit: cover; }
 /* iOS-style "squircle" tile —— 圆角正方形,占 cell 大头(min(85% 宽, 1fr 高
    - label 空间)),label 在下方小字。aspect-ratio: 1 让 tile 始终正方形,
    width clamp 防止 tile 在大/小 cell 里失控。border-radius: 22% 接近 iOS
@@ -2539,6 +2781,23 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
   padding: 4px 8px;
 }
 .bubble-image, .bubble-reply { font-style: italic; opacity: 0.92; }
+/* C1: 真实上传的图片气泡 — 直接显示 <img>,撑满气泡宽度,圆角跟普通气泡
+   一致。max-height 防止超长截图把聊天流撑爆;点击以后可以打开看大图(目
+   前 MVP 还没做大图查看,先 cursor: zoom-in 给个 affordance)。 */
+.bubble-image-real {
+  padding: 4px !important;
+  background: transparent !important;
+  border: none !important;
+  cursor: zoom-in;
+  max-width: 70%;
+}
+.bubble-image-real img {
+  display: block;
+  width: 100%;
+  max-height: 280px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+}
 
 /* Voice bubble — capsule by default (just ▶ N″). Tap to expand → .voice-text
    becomes visible inline. The DOM keeps the text either way so search /

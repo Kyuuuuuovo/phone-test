@@ -739,7 +739,18 @@ function renderActionsAsText(actions, ctx) {
           ? `[引用「${quote}」]\n${a.content || ''}`
           : (a.content || '');
       }
-      case 'image':  return `[图片: ${a.description || a.src || ''}]`;
+      case 'image': {
+        // C1: 用户真实图片 src 是 base64 dataurl,塞 prompt 会爆 token。
+        // 真图模式给占位文字 + description(用户可能没描述);AI 主动发图
+        // 用 description 字段,模型完全能看到。
+        const isRealImage = !!a.src && /^(data:image|https?:|blob:)/i.test(a.src);
+        if (isRealImage) {
+          return a.description
+            ? `[用户上传的图片: ${a.description}]`
+            : `[用户上传的图片(未配文字描述)]`;
+        }
+        return `[图片: ${a.description || ''}]`;
+      }
       case 'voice':  return `[语音: ${a.content || ''}]`;
       case 'recall': return `[撤回了一条消息]`;
       case 'unblock_request': return `[请求对方解除拉黑: ${a.content || ''}]`;

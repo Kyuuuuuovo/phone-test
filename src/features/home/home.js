@@ -96,6 +96,9 @@ function widgetSpan(w) {
   // the colSpan/rowSpan refactor.
   if (w.type === 'music')       return { colSpan: 2, rowSpan: 2 };
   if (w.type === 'polaroid')    return { colSpan: 2, rowSpan: 2 };
+  if (w.type === 'gameboy')     return { colSpan: 2, rowSpan: 2 };
+  if (w.type === 'mp3')         return { colSpan: 2, rowSpan: 2 };
+  if (w.type === 'schedule')    return { colSpan: 4, rowSpan: 2 };
   if (w.type === 'anniversary') return { colSpan: 2, rowSpan: 1 };
   if (w.type === 'favorites') {
     return w.size === 'small' ? { colSpan: 2, rowSpan: 1 } : { colSpan: 4, rowSpan: 1 };
@@ -119,16 +122,44 @@ const SIZE_PRESETS = [
 function gridStyle(row, col, colSpan, rowSpan, transparency, custom) {
   // transparency is 0..100 (default 100 = opaque). Mapped to CSS var
   // --widget-alpha (0..1). Polaroid is exempt from opacity in CSS.
-  // Phase B: custom = { bgColor, radius } 也通过 CSS var 注入。CSS 默认值
-  // (color-mix / var(--radius-lg)) 在 var() fallback 里,user 没 set 就走
-  // 主题默认。
+  // Phase B: custom = { bgColor, radius, tilt } 也通过 CSS var 注入。CSS
+  // 默认值(color-mix / var(--radius-lg) / 0deg)在 var() fallback 里,
+  // user 没 set 就走主题默认。
   const alpha = Number.isFinite(transparency)
     ? Math.max(0, Math.min(100, transparency)) / 100
     : 1;
   let css = `grid-column: ${col + 1} / span ${colSpan}; grid-row: ${row + 1} / span ${rowSpan}; --widget-alpha: ${alpha};`;
   if (custom?.bgColor)             css += ` --widget-bg: ${custom.bgColor};`;
   if (Number.isFinite(custom?.radius)) css += ` --widget-radius: ${custom.radius}px;`;
+  if (Number.isFinite(custom?.tilt) && custom.tilt !== 0) {
+    // tilt 用 CSS var,这样 :active 时 transform: rotate() scale() 可以叠加
+    // (没 var 单独写 inline transform 会跟 active scale 互相覆盖)。
+    css += ` --widget-tilt: ${custom.tilt}deg;`;
+  }
   return css;
+}
+
+// 倾斜角度 slider helper — 跟 transparency / radius 同款。范围 -30~30 度,
+// 步进 1。0 表示不倾斜。inline live readout 用 wireTiltReadout 绑事件。
+function tiltFieldHtml(current) {
+  const val = Number.isFinite(current) ? Math.max(-30, Math.min(30, current)) : 0;
+  return `
+    <label>
+      <div class="label-text">倾斜:<span class="tilt-readout">${val}</span>°(-30 = 左倾,+30 = 右倾,0 = 不倾斜)</div>
+      <input type="range" min="-30" max="30" step="1" name="tilt" value="${val}">
+    </label>
+  `;
+}
+function wireTiltReadout(modal) {
+  const slider = modal.querySelector('input[name="tilt"]');
+  if (!slider) return;
+  const readout = modal.querySelector('.tilt-readout');
+  slider.addEventListener('input', () => { if (readout) readout.textContent = slider.value; });
+}
+function parseTilt(fd) {
+  const t = Number(fd.get('tilt'));
+  if (!Number.isFinite(t)) return 0;
+  return Math.max(-30, Math.min(30, Math.round(t)));
 }
 
 // ── Widget rendering ─────────────────────────────────────────────────────
@@ -185,7 +216,153 @@ async function renderWidget(w, gs) {
   if (w.type === 'polaroid')    return renderPolaroidWidget(w, gs);
   if (w.type === 'anniversary') return await renderAnniversaryWidget(w, gs);
   if (w.type === 'music')       return await renderMusicWidget(w, gs);
+  if (w.type === 'gameboy')     return renderGameboyWidget(w, gs);
+  if (w.type === 'mp3')         return renderMp3Widget(w, gs);
+  if (w.type === 'schedule')    return await renderScheduleWidget(w, gs);
   return '';
+}
+
+// MP3 widget(装饰类,无功能)— iPod 致敬。viewBox 5:7 让小屏 + click wheel
+// 在任意 widget cell 里居中且不变形。颜色锁死成经典白机身,user 想换色
+// 调 widget bgColor 改外框就行。
+function renderMp3Widget(w, gs) {
+  return `
+    <div class="widget widget-mp3 user-widget" style="${gs}" data-widget-id="${escHtml(w.id)}">
+      <svg viewBox="0 0 100 140" class="mp3-svg" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <defs>
+          <linearGradient id="mp3-screen-${escAttr(w.id)}" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#e8f0e8"/>
+            <stop offset="100%" stop-color="#bcd0bc"/>
+          </linearGradient>
+          <radialGradient id="mp3-wheel-${escAttr(w.id)}" cx="50%" cy="40%" r="60%">
+            <stop offset="0%" stop-color="#f5f5f7"/>
+            <stop offset="100%" stop-color="#c4c4c8"/>
+          </radialGradient>
+        </defs>
+        <rect x="6" y="6" width="88" height="128" rx="10" ry="10" fill="#fafafa" stroke="#a8a8ac" stroke-width="0.8"/>
+        <rect x="14" y="14" width="72" height="44" rx="3" ry="3" fill="url(#mp3-screen-${escAttr(w.id)})" stroke="#7a8a7a" stroke-width="0.6"/>
+        <text x="20" y="24" font-size="3.5" fill="#3a4a3a" font-family="sans-serif" font-weight="600">Now Playing</text>
+        <line x1="20" y1="28" x2="80" y2="28" stroke="#7a8a7a" stroke-width="0.4"/>
+        <rect x="20" y="32" width="34" height="3.5" fill="#3a4a3a" opacity="0.8"/>
+        <rect x="20" y="38" width="22" height="2.5" fill="#3a4a3a" opacity="0.55"/>
+        <rect x="20" y="46" width="60" height="2.2" rx="1.1" fill="#cad6ca"/>
+        <rect x="20" y="46" width="22" height="2.2" rx="1.1" fill="#3a4a3a"/>
+        <text x="20" y="54" font-size="2.6" fill="#3a4a3a" opacity="0.7">1:23</text>
+        <text x="80" y="54" font-size="2.6" fill="#3a4a3a" opacity="0.7" text-anchor="end">3:45</text>
+        <circle cx="50" cy="96" r="28" fill="url(#mp3-wheel-${escAttr(w.id)})" stroke="#a8a8ac" stroke-width="0.6"/>
+        <circle cx="50" cy="96" r="10" fill="#ffffff" stroke="#bcbcc0" stroke-width="0.5"/>
+        <text x="50" y="74" font-size="3.5" fill="#5a5a5e" text-anchor="middle" font-weight="600">MENU</text>
+        <path d="M 35 96 L 41 92 L 41 100 Z" fill="#5a5a5e"/>
+        <path d="M 65 96 L 59 92 L 59 100 Z" fill="#5a5a5e"/>
+        <g transform="translate(50 116)" fill="#5a5a5e">
+          <path d="M -4 -3 L 0 0 L -4 3 Z"/>
+          <path d="M 0 -3 L 4 0 L 0 3 Z"/>
+          <rect x="5" y="-3" width="1.5" height="6"/>
+        </g>
+      </svg>
+      <button class="widget-edit" title="编辑" aria-label="编辑"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0 0 13.92 2h-3.84a.49.49 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.73 8.47a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 0 0 7.2z"/></svg></button>
+      <button class="widget-del" title="删除" aria-label="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button>
+    </div>
+  `;
+}
+
+// A1: 行程 widget — 显示未来 24 小时内的行程预览(user 自己 + 所有角色的)。
+// 点击整张卡片走 data-target="schedule" 跳到行程页编辑。空状态显示"没什么
+// 安排"提示,避免 widget 永远是个空白方块。窗口 [now-30min, now+24h]:
+// -30min 让"刚开始的"行程还显示,跟 buildScheduleLines 用的 -6h 不同 —
+// widget 是用户视角看接下来要干啥,过去的事不必占位。
+async function renderScheduleWidget(w, gs) {
+  const all = await db.getAll('schedule');
+  const now = Date.now();
+  const winStart = now - 30 * 60 * 1000;
+  const winEnd   = now + 24 * 60 * 60 * 1000;
+  const upcoming = all
+    .filter(e => e.startTs >= winStart && e.startTs <= winEnd)
+    .sort((a, b) => a.startTs - b.startTs)
+    .slice(0, 5);
+  const charNames = new Map();
+  for (const e of upcoming) {
+    if (e.who === 'character' && e.characterId && !charNames.has(e.characterId)) {
+      const c = await db.get('characters', e.characterId);
+      charNames.set(e.characterId, c?.name || '?');
+    }
+  }
+  const today = new Date();
+  const fmtTime = (ts) => {
+    const d = new Date(ts);
+    const hhmm = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    if (d.toDateString() === today.toDateString()) return `今天 ${hhmm}`;
+    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+    if (d.toDateString() === tomorrow.toDateString()) return `明天 ${hhmm}`;
+    return `${d.getMonth()+1}/${d.getDate()} ${hhmm}`;
+  };
+  const editBtn = `<button class="widget-edit" title="编辑" aria-label="编辑"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0 0 13.92 2h-3.84a.49.49 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.73 8.47a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 0 0 7.2z"/></svg></button>`;
+  const delBtn = `<button class="widget-del" title="删除" aria-label="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button>`;
+  if (upcoming.length === 0) {
+    return `
+      <div class="widget widget-schedule user-widget empty" style="${gs}" data-widget-id="${escHtml(w.id)}" data-target="schedule">
+        <div class="ws-head">行程</div>
+        <div class="ws-empty">未来 24 小时没什么安排</div>
+        ${editBtn}${delBtn}
+      </div>
+    `;
+  }
+  const rows = upcoming.map(e => {
+    const who = e.who === 'user' ? '我' : (charNames.get(e.characterId) || '?');
+    const isPast = e.startTs < now;
+    return `
+      <div class="ws-row${isPast ? ' past' : ''}">
+        <div class="ws-time">${escHtml(fmtTime(e.startTs))}</div>
+        <div class="ws-title">${escHtml(e.title || '(无标题)')}</div>
+        <div class="ws-who">${escHtml(who)}</div>
+      </div>
+    `;
+  }).join('');
+  return `
+    <div class="widget widget-schedule user-widget" style="${gs}" data-widget-id="${escHtml(w.id)}" data-target="schedule">
+      <div class="ws-head">未来 24 小时 · ${upcoming.length}</div>
+      <div class="ws-list">${rows}</div>
+      ${editBtn}${delBtn}
+    </div>
+  `;
+}
+
+// 游戏机 widget(装饰类,无功能)— 致敬 Game Boy 的 SVG 卡片。viewBox 5:7
+// 接近原机比例,容器自适应 widget cell 大小;preserveAspectRatio 'xMidYMid
+// meet' 居中且不变形。颜色锁死成原版米黄 + 绿屏经典配色,user 想换色直接
+// 调 widget bgColor 改外框就够了。
+function renderGameboyWidget(w, gs) {
+  return `
+    <div class="widget widget-gameboy user-widget" style="${gs}" data-widget-id="${escHtml(w.id)}">
+      <svg viewBox="0 0 100 140" class="gameboy-svg" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <rect x="4" y="4" width="92" height="132" rx="8" ry="8" fill="#cfc8b6" stroke="#7a7466" stroke-width="1"/>
+        <path d="M4 116 L96 116 L96 128 Q96 136 88 136 L12 136 Q4 136 4 128 Z" fill="#c0b9a6"/>
+        <rect x="14" y="18" width="72" height="58" rx="3" ry="3" fill="#3d3d3d"/>
+        <rect x="20" y="26" width="60" height="42" fill="#9bbc0f"/>
+        <circle cx="20" cy="58" r="1.4" fill="#dc1414"/>
+        <text x="50" y="84" font-size="4" fill="#4a4a4a" font-family="serif" text-anchor="middle" font-style="italic" font-weight="bold">Nintendo GAME BOY</text>
+        <rect x="13" y="92" width="20" height="6" fill="#2a2a2a" rx="1"/>
+        <rect x="20" y="85" width="6" height="20" fill="#2a2a2a" rx="1"/>
+        <circle cx="68" cy="98" r="4.5" fill="#9c2050"/>
+        <text x="68" y="100" font-size="3.5" fill="#fff" text-anchor="middle" font-weight="bold">B</text>
+        <circle cx="80" cy="92" r="4.5" fill="#9c2050"/>
+        <text x="80" y="94" font-size="3.5" fill="#fff" text-anchor="middle" font-weight="bold">A</text>
+        <g transform="translate(38 110) rotate(-20)">
+          <rect width="11" height="3" rx="1.5" fill="#5a5a5a"/>
+        </g>
+        <g transform="translate(53 110) rotate(-20)">
+          <rect width="11" height="3" rx="1.5" fill="#5a5a5a"/>
+        </g>
+        <text x="42" y="124" font-size="2.2" fill="#4a4a4a" text-anchor="middle">SELECT</text>
+        <text x="60" y="124" font-size="2.2" fill="#4a4a4a" text-anchor="middle">START</text>
+        <line x1="68" y1="124" x2="86" y2="118" stroke="#7a7466" stroke-width="0.6"/>
+        <line x1="68" y1="128" x2="86" y2="122" stroke="#7a7466" stroke-width="0.6"/>
+        <line x1="68" y1="132" x2="86" y2="126" stroke="#7a7466" stroke-width="0.6"/>
+      </svg>
+      <button class="widget-edit" title="编辑" aria-label="编辑"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0 0 13.92 2h-3.84a.49.49 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.73 8.47a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 0 0 7.2z"/></svg></button>
+      <button class="widget-del" title="删除" aria-label="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button>
+    </div>
+  `;
 }
 
 function renderImageWidget(w, gs) {
@@ -200,8 +377,9 @@ function renderImageWidget(w, gs) {
 }
 function renderNoteWidget(w, gs) {
   const size = w.size || 'medium';
+  const verticalClass = w.vertical ? ' vertical' : '';
   return `
-    <div class="widget widget-note user-widget size-${size}" style="${gs}" data-widget-id="${escHtml(w.id)}">
+    <div class="widget widget-note user-widget size-${size}${verticalClass}" style="${gs}" data-widget-id="${escHtml(w.id)}">
       <div class="widget-note-text">${escHtml(w.data || '')}</div>
       <button class="widget-edit" title="编辑" aria-label="编辑"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0 0 13.92 2h-3.84a.49.49 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.73 8.47a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 0 0 7.2z"/></svg></button>
       <button class="widget-del" title="删除" aria-label="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button>
@@ -469,17 +647,32 @@ function escAttr(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function tileHtml(t, row, col) {
+function tileHtml(t, row, col, iconOverride) {
   // Pass null row/col for items in a non-positioned grid (rare now that even
   // the dock uses positioned cells). When provided, place via inline grid
   // coords as 1×1.
+  //
+  // D1: iconOverride 是 settings.appIconOverrides[appId],可以是:
+  //   - { kind: 'emoji', value: '🐱' }
+  //   - { kind: 'image', value: 'data:image/...' }
+  // 找不到时退回 t.icon(默认 SVG)。
+  let iconHtml = t.icon;
+  if (iconOverride?.kind === 'emoji') {
+    iconHtml = `<span class="icon-emoji">${escHtml(iconOverride.value || '')}</span>`;
+  } else if (iconOverride?.kind === 'image' && iconOverride.value) {
+    iconHtml = `<img class="icon-img" src="${escAttr(iconOverride.value)}" alt="">`;
+  }
   const style = (Number.isFinite(row) && Number.isFinite(col))
     ? ` style="${gridStyle(row, col, 1, 1)}"`
     : '';
+  // D1: icon-edit 用 <span role="button"> 因为 HTML 禁止 button 嵌 button
+  // (浏览器会把内层 button 提到外面)。click 走 e.target.closest('.icon-edit')
+  // 不需要 native button 也能 work。
   return `
     <button class="app-icon" data-target="${t.id}" data-label="${t.label}"${style}>
-      <div class="icon">${t.icon}</div>
+      <div class="icon">${iconHtml}</div>
       <div class="label">${t.label}</div>
+      <span class="icon-edit" role="button" tabindex="0" title="改图标" aria-label="改图标"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0 0 13.92 2h-3.84a.49.49 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.73 8.47a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 0 0 7.2z"/></svg></span>
     </button>
   `;
 }
@@ -507,11 +700,13 @@ async function openAddWidgetModal(container, router) {
       <div class="modal-header">添加桌面装饰</div>
       <div class="widget-type-picker">
         <button type="button" class="widget-type-btn" data-type="favorites">收藏</button>
-        <button type="button" class="widget-type-btn" data-type="image">图片</button>
+        <button type="button" class="widget-type-btn" data-type="photo">照片</button>
         <button type="button" class="widget-type-btn" data-type="note">便签</button>
-        <button type="button" class="widget-type-btn" data-type="polaroid">拍立得</button>
         <button type="button" class="widget-type-btn" data-type="anniversary">纪念日</button>
         <button type="button" class="widget-type-btn" data-type="music">音乐</button>
+        <button type="button" class="widget-type-btn" data-type="gameboy">游戏机</button>
+        <button type="button" class="widget-type-btn" data-type="mp3">MP3</button>
+        <button type="button" class="widget-type-btn" data-type="schedule">行程</button>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn secondary cancel-btn">取消</button>
@@ -534,21 +729,56 @@ async function openAddWidgetModal(container, router) {
           type: 'favorites',
           ...opts.span,
           transparency: opts.transparency,
+          tilt: opts.tilt,
           bgColor: opts.bgColor,
           radius: opts.radius,
         }, router);
-      } else if (type === 'image') {
-        modal.remove();
-        await pickImageAndSave(container, router);
+      } else if (type === 'photo') {
+        // A5: 图片 + 拍立得合并入口。renderPhotoEditor 让用户选 1-3 张,
+        // 提交时按张数决定存 image type(1 张)还是 polaroid type(2-3 张)。
+        renderPhotoEditor(modal, container, router);
       } else if (type === 'note') {
         renderNoteEditor(modal, container, router);
-      } else if (type === 'polaroid') {
-        modal.remove();
-        await pickPolaroidPhotosAndSave(container, router);
       } else if (type === 'anniversary') {
         renderAnniversaryEditor(modal, container, router);
       } else if (type === 'music') {
         renderMusicEditor(modal, container, router);
+      } else if (type === 'gameboy') {
+        modal.remove();
+        const opts = await askSizeAndTransparency(container, '2x2');
+        if (!opts) return;
+        await saveNewWidget({
+          type: 'gameboy',
+          ...opts.span,
+          transparency: opts.transparency,
+          tilt: opts.tilt,
+          bgColor: opts.bgColor,
+          radius: opts.radius,
+        }, router);
+      } else if (type === 'mp3') {
+        modal.remove();
+        const opts = await askSizeAndTransparency(container, '2x2');
+        if (!opts) return;
+        await saveNewWidget({
+          type: 'mp3',
+          ...opts.span,
+          transparency: opts.transparency,
+          tilt: opts.tilt,
+          bgColor: opts.bgColor,
+          radius: opts.radius,
+        }, router);
+      } else if (type === 'schedule') {
+        modal.remove();
+        const opts = await askSizeAndTransparency(container, '4x2');
+        if (!opts) return;
+        await saveNewWidget({
+          type: 'schedule',
+          ...opts.span,
+          transparency: opts.transparency,
+          tilt: opts.tilt,
+          bgColor: opts.bgColor,
+          radius: opts.radius,
+        }, router);
       }
     });
   });
@@ -811,6 +1041,47 @@ async function updateWidget(id, patch, router) {
   const w = await db.get('homeWidgets', id);
   if (!w) return;
   Object.assign(w, patch);
+  // 改 rowSpan/colSpan 后 row/col 可能越界(比如 widget 在 row 4 占 1 行
+  // 合法,user 把 rowSpan 改成 2 → grid-row 5 / span 2 跑出 5 行 grid →
+  // grid-auto-rows 之前会接着开第 6 行挤扁全部 cell)。这里强制 clamp
+  // 到合法范围;如果 clamped 位置跟其他 widget 重叠,findFirstFreeCell
+  // 重找空位,实在没空就把 row/col 退回原状并 alert,让 user 自己处理。
+  const span = widgetSpan(w);
+  const maxRow = Math.max(0, ROWS - span.rowSpan);
+  const maxCol = Math.max(0, COLS - span.colSpan);
+  const desiredRow = Math.max(0, Math.min(Number(w.row) || 0, maxRow));
+  const desiredCol = Math.max(0, Math.min(Number(w.col) || 0, maxCol));
+  if (desiredRow !== w.row || desiredCol !== w.col) {
+    // 看看 clamped 位置是否跟别的 widget / app 占位冲突
+    const allWidgets = (await db.getAll('homeWidgets')).filter(x => x.id !== id);
+    const settings = await db.get('settings', 'default');
+    const page0 = Array.isArray(settings?.tileOrder?.[0]) ? settings.tileOrder[0] : [];
+    const occ = buildOccupancy(allWidgets, page0);
+    const fits = (r, c) => {
+      for (let rr = r; rr < r + span.rowSpan; rr++) {
+        for (let cc = c; cc < c + span.colSpan; cc++) {
+          if (rr < 0 || rr >= ROWS || cc < 0 || cc >= COLS) return false;
+          if (occ[rr][cc]) return false;
+        }
+      }
+      return true;
+    };
+    if (fits(desiredRow, desiredCol)) {
+      w.row = desiredRow; w.col = desiredCol;
+    } else {
+      const slot = findFirstFreeCell(occ, span.colSpan, span.rowSpan);
+      if (slot) {
+        w.row = slot.row; w.col = slot.col;
+      } else {
+        await openAlert(document.body, {
+          title: '改尺寸放不下',
+          message: '这个新尺寸在桌面上找不到合适位置,先删一个 widget 或缩小别的腾位置。',
+          danger: true,
+        });
+        return;
+      }
+    }
+  }
   await db.set('homeWidgets', w);
   await router.navigate('home');
 }
@@ -864,6 +1135,7 @@ async function pickImageAndSave(container, router) {
     type: 'image', data,
     ...opts.span,
     transparency: opts.transparency,
+    tilt: opts.tilt,
     bgColor: opts.bgColor,
     radius: opts.radius,
   }, router);
@@ -871,10 +1143,12 @@ async function pickImageAndSave(container, router) {
 
 function renderNoteEditor(modal, container, router, existing) {
   const initText  = existing?.data ?? '';
+  const initVertical = !!existing?.vertical;
   const initSpan  = existing ? widgetSpan(existing) : null;
   const initAlpha = existing?.transparency;
   const initHsv = existing?.bgColor ? parseHslString(existing.bgColor) : null;
   const initRadius = existing?.radius;
+  const initTilt = existing?.tilt;
   modal.innerHTML = `
     <div class="modal">
       <div class="modal-header">${existing ? '编辑便签' : '便签'}</div>
@@ -883,8 +1157,13 @@ function renderNoteEditor(modal, container, router, existing) {
           <div class="label-text">写点什么</div>
           <textarea name="text" rows="4" required placeholder="写点什么...">${escHtml(initText)}</textarea>
         </label>
+        <label class="checkbox-row">
+          <input type="checkbox" name="vertical"${initVertical ? ' checked' : ''}>
+          <span>竖排(从右向左竖着写,适合诗歌 / 短句)</span>
+        </label>
         ${sizeSelectHtml(initSpan?.colSpan, initSpan?.rowSpan, '4x2')}
         ${transparencyFieldHtml(initAlpha)}
+        ${tiltFieldHtml(initTilt)}
         ${bgColorAndRadiusFieldsHtml(initHsv, initRadius)}
         <div class="modal-actions">
           <button type="button" class="btn secondary cancel-btn">取消</button>
@@ -894,6 +1173,7 @@ function renderNoteEditor(modal, container, router, existing) {
     </div>
   `;
   wireTransparencyReadout(modal);
+  wireTiltReadout(modal);
   wireBgColorReadout(modal);
   modal.querySelector('.cancel-btn').addEventListener('click', () => modal.remove());
   modal.querySelector('form').addEventListener('submit', async (e) => {
@@ -901,14 +1181,111 @@ function renderNoteEditor(modal, container, router, existing) {
     const fd = new FormData(modal.querySelector('form'));
     const text = String(fd.get('text') || '').trim();
     if (!text) return;
+    const vertical = fd.get('vertical') === 'on';
     const span = parseSizeFromForm(fd, { colSpan: 4, rowSpan: 2 });
     const transparency = Number(fd.get('transparency')) || 100;
+    const tilt = parseTilt(fd);
     const { bgColor, radius } = parseBgColorAndRadius(fd);
     modal.remove();
-    const patch = { data: text, ...span, transparency, bgColor, radius };
+    const patch = { data: text, vertical, ...span, transparency, tilt, bgColor, radius };
     if (existing) await updateWidget(existing.id, patch, router);
     else await saveNewWidget({ type: 'note', ...patch }, router);
   });
+}
+
+// A5: 统一「照片」editor — 1-3 张照片用同一个入口。提交时按张数挑 type:
+//   1 张 → type: 'image',data 是 base64 字符串(走 renderImageWidget)
+//   2-3 张 → type: 'polaroid',data 是 { photos, stackOrder }(走 polaroid)
+// 现有 image / polaroid 数据保持不变,编辑现有 widget 还走原 editor(image
+// 编辑还是 image editor),只有 add flow 经过这个统一入口。
+function renderPhotoEditor(modal, container, router) {
+  let pendingPhotos = [];
+
+  function render() {
+    const slots = Array.from({ length: 3 }, (_, i) => pendingPhotos[i] || null);
+    const filled = pendingPhotos.filter(Boolean).length;
+    const previewLabel = filled === 0
+      ? '至少加 1 张'
+      : filled === 1 ? '1 张 — 会显示为普通图片'
+      : `${filled} 张 — 会显示为拍立得堆叠`;
+    modal.innerHTML = `
+      <div class="modal">
+        <div class="modal-header">添加照片</div>
+        <form class="photo-form">
+          <label>
+            <div class="label-text">选 1-3 张照片(<span class="photo-mode-hint">${escHtml(previewLabel)}</span>)</div>
+            <div class="polaroid-edit-slots">
+              ${slots.map((p, i) => `
+                <div class="polaroid-edit-slot${p ? '' : ' empty'}" data-slot-idx="${i}">
+                  ${p ? `<img src="${escAttr(p)}" alt="">` : '<div class="polaroid-edit-plus">+</div>'}
+                  <div class="polaroid-edit-slot-btns">
+                    ${p
+                      ? `<button type="button" class="btn-mini swap" data-slot-idx="${i}">换</button>
+                         <button type="button" class="btn-mini del" data-slot-idx="${i}">删</button>`
+                      : `<button type="button" class="btn-mini add" data-slot-idx="${i}">加</button>`}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </label>
+          ${sizeSelectHtml(null, null, '2x2')}
+          ${transparencyFieldHtml(undefined)}
+          ${tiltFieldHtml(undefined)}
+          ${bgColorAndRadiusFieldsHtml(null, undefined)}
+          <div class="modal-actions">
+            <button type="button" class="btn secondary cancel-btn">取消</button>
+            <button type="submit" class="btn">添加</button>
+          </div>
+        </form>
+      </div>
+    `;
+    wireTransparencyReadout(modal);
+    wireTiltReadout(modal);
+    wireBgColorReadout(modal);
+    modal.querySelector('.cancel-btn').addEventListener('click', () => modal.remove());
+    modal.querySelectorAll('.polaroid-edit-slot-btns button').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const idx = Number(btn.dataset.slotIdx);
+        if (btn.classList.contains('del')) {
+          pendingPhotos.splice(idx, 1);
+          render();
+        } else if (btn.classList.contains('swap') || btn.classList.contains('add')) {
+          const data = await pickImageFile();
+          if (!data) return;
+          if (btn.classList.contains('swap')) pendingPhotos[idx] = data;
+          else pendingPhotos.push(data);
+          render();
+        }
+      });
+    });
+    modal.querySelector('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const photos = pendingPhotos.filter(Boolean);
+      if (photos.length === 0) {
+        await openAlert(document.body, { title: '至少加 1 张', message: '点 + 加一张照片再添加。' });
+        return;
+      }
+      const fd = new FormData(modal.querySelector('form'));
+      const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 2 });
+      const transparency = Number(fd.get('transparency')) || 100;
+      const tilt = parseTilt(fd);
+      const { bgColor, radius } = parseBgColorAndRadius(fd);
+      modal.remove();
+      if (photos.length === 1) {
+        await saveNewWidget({
+          type: 'image', data: photos[0],
+          ...span, transparency, tilt, bgColor, radius,
+        }, router);
+      } else {
+        await saveNewWidget({
+          type: 'polaroid',
+          data: { photos, stackOrder: photos.map((_, i) => i) },
+          ...span, transparency, tilt, bgColor, radius,
+        }, router);
+      }
+    });
+  }
+  render();
 }
 
 async function pickPolaroidPhotosAndSave(container, router) {
@@ -941,6 +1318,7 @@ async function pickPolaroidPhotosAndSave(container, router) {
     data: { photos, stackOrder: photos.map((_, i) => i) },
     ...opts.span,
     transparency: opts.transparency,
+    tilt: opts.tilt,
     bgColor: opts.bgColor,
     radius: opts.radius,
   }, router);
@@ -955,6 +1333,7 @@ async function renderImageEditor(modal, container, router, existing) {
   const initAlpha = existing?.transparency;
   const initHsv = existing?.bgColor ? parseHslString(existing.bgColor) : null;
   const initRadius = existing?.radius;
+  const initTilt = existing?.tilt;
 
   function render() {
     modal.innerHTML = `
@@ -972,6 +1351,7 @@ async function renderImageEditor(modal, container, router, existing) {
           </label>
           ${sizeSelectHtml(initSpan?.colSpan, initSpan?.rowSpan, '4x2')}
           ${transparencyFieldHtml(initAlpha)}
+          ${tiltFieldHtml(initTilt)}
           ${bgColorAndRadiusFieldsHtml(initHsv, initRadius)}
           <div class="modal-actions">
             <button type="button" class="btn secondary cancel-btn">取消</button>
@@ -981,6 +1361,7 @@ async function renderImageEditor(modal, container, router, existing) {
       </div>
     `;
     wireTransparencyReadout(modal);
+    wireTiltReadout(modal);
     wireBgColorReadout(modal);
     modal.querySelector('.cancel-btn').addEventListener('click', () => modal.remove());
     modal.querySelector('.swap-image').addEventListener('click', async () => {
@@ -992,9 +1373,10 @@ async function renderImageEditor(modal, container, router, existing) {
       const fd = new FormData(modal.querySelector('form'));
       const span = parseSizeFromForm(fd, { colSpan: 4, rowSpan: 2 });
       const transparency = Number(fd.get('transparency')) || 100;
+      const tilt = parseTilt(fd);
       const { bgColor, radius } = parseBgColorAndRadius(fd);
       modal.remove();
-      await updateWidget(existing.id, { data: imageData, ...span, transparency, bgColor, radius }, router);
+      await updateWidget(existing.id, { data: imageData, ...span, transparency, tilt, bgColor, radius }, router);
     });
   }
   render();
@@ -1010,6 +1392,7 @@ async function renderPolaroidEditor(modal, container, router, existing) {
   const initAlpha = existing?.transparency;
   const initHsv = existing?.bgColor ? parseHslString(existing.bgColor) : null;
   const initRadius = existing?.radius;
+  const initTilt = existing?.tilt;
 
   function render() {
     const slots = Array.from({ length: 3 }, (_, i) => pendingPhotos[i] || null);
@@ -1035,6 +1418,7 @@ async function renderPolaroidEditor(modal, container, router, existing) {
           </label>
           ${sizeSelectHtml(initSpan?.colSpan, initSpan?.rowSpan, '2x2')}
           ${transparencyFieldHtml(initAlpha)}
+          ${tiltFieldHtml(initTilt)}
           ${bgColorAndRadiusFieldsHtml(initHsv, initRadius)}
           <div class="modal-actions">
             <button type="button" class="btn secondary cancel-btn">取消</button>
@@ -1044,6 +1428,7 @@ async function renderPolaroidEditor(modal, container, router, existing) {
       </div>
     `;
     wireTransparencyReadout(modal);
+    wireTiltReadout(modal);
     wireBgColorReadout(modal);
     modal.querySelector('.cancel-btn').addEventListener('click', () => modal.remove());
 
@@ -1072,6 +1457,7 @@ async function renderPolaroidEditor(modal, container, router, existing) {
       const fd = new FormData(modal.querySelector('form'));
       const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 2 });
       const transparency = Number(fd.get('transparency')) || 100;
+      const tilt = parseTilt(fd);
       const { bgColor, radius } = parseBgColorAndRadius(fd);
       modal.remove();
       // stackOrder 重置成 [0..n-1] —— 改照片后老的 stackOrder 索引可能指向
@@ -1080,7 +1466,7 @@ async function renderPolaroidEditor(modal, container, router, existing) {
       await updateWidget(existing.id, {
         data: { photos, stackOrder: photos.map((_, i) => i) },
         ...span,
-        transparency, bgColor, radius,
+        transparency, tilt, bgColor, radius,
       }, router);
     });
   }
@@ -1114,6 +1500,7 @@ async function renderAnniversaryEditor(modal, container, router, existing) {
   const initAlpha     = existing?.transparency;
   const initHsv       = existing?.bgColor ? parseHslString(existing.bgColor) : null;
   const initRadius    = existing?.radius;
+  const initTilt      = existing?.tilt;
 
   function milestoneLabel(m) {
     const title = String(m.title || '(未命名)').trim();
@@ -1166,6 +1553,7 @@ async function renderAnniversaryEditor(modal, container, router, existing) {
         </label>
         ${sizeSelectHtml(initSpan?.colSpan, initSpan?.rowSpan, '2x1')}
         ${transparencyFieldHtml(initAlpha)}
+        ${tiltFieldHtml(initTilt)}
         ${bgColorAndRadiusFieldsHtml(initHsv, initRadius)}
         <div class="modal-actions">
           <button type="button" class="btn secondary cancel-btn">取消</button>
@@ -1175,6 +1563,7 @@ async function renderAnniversaryEditor(modal, container, router, existing) {
     </div>
   `;
   wireTransparencyReadout(modal);
+  wireTiltReadout(modal);
   wireBgColorReadout(modal);
   modal.querySelector('.cancel-btn').addEventListener('click', () => modal.remove());
   modal.querySelectorAll('input[name="mode"]').forEach(r => {
@@ -1214,9 +1603,10 @@ async function renderAnniversaryEditor(modal, container, router, existing) {
     }
     const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 1 });
     const transparency = Number(fd.get('transparency')) || 100;
+    const tilt = parseTilt(fd);
     const { bgColor, radius } = parseBgColorAndRadius(fd);
     modal.remove();
-    const patch = { data, ...span, transparency, bgColor, radius };
+    const patch = { data, ...span, transparency, tilt, bgColor, radius };
     if (existing) await updateWidget(existing.id, patch, router);
     else await saveNewWidget({ type: 'anniversary', ...patch }, router);
   });
@@ -1237,6 +1627,7 @@ async function renderMusicEditor(modal, container, router, existing) {
   const initAlpha   = existing?.transparency;
   const initHsv     = existing?.bgColor ? parseHslString(existing.bgColor) : null;
   const initRadius  = existing?.radius;
+  const initTilt    = existing?.tilt;
   // Subjects can be persona OR character; encoded as "kind:id" in the select
   // value. Legacy widgets had `characterId` only on the right earbud.
   function subjectValue(subj) {
@@ -1313,6 +1704,7 @@ async function renderMusicEditor(modal, container, router, existing) {
         </label>
         ${sizeSelectHtml(initSpan?.colSpan, initSpan?.rowSpan, '2x2')}
         ${transparencyFieldHtml(initAlpha)}
+        ${tiltFieldHtml(initTilt)}
         ${bgColorAndRadiusFieldsHtml(initHsv, initRadius)}
         <div class="modal-actions">
           <button type="button" class="btn secondary cancel-btn">取消</button>
@@ -1322,6 +1714,7 @@ async function renderMusicEditor(modal, container, router, existing) {
     </div>
   `;
   wireTransparencyReadout(modal);
+  wireTiltReadout(modal);
   wireBgColorReadout(modal);
   // Cover upload wiring — captures base64 into a closure var, written on submit.
   let coverImageData = initCoverImage;
@@ -1376,6 +1769,7 @@ async function renderMusicEditor(modal, container, router, existing) {
     const playing = fd.get('playing') === 'on';
     const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 2 });
     const transparency = Number(fd.get('transparency')) || 100;
+    const tilt = parseTilt(fd);
     const { bgColor, radius } = parseBgColorAndRadius(fd);
     const data = {
       song, artist, lyrics, playing,
@@ -1383,7 +1777,7 @@ async function renderMusicEditor(modal, container, router, existing) {
       coverImage: coverImageData || undefined,
     };
     modal.remove();
-    const patch = { data, ...span, transparency, bgColor, radius };
+    const patch = { data, ...span, transparency, tilt, bgColor, radius };
     if (existing) await updateWidget(existing.id, patch, router);
     else await saveNewWidget({ type: 'music', ...patch }, router);
   });
@@ -1398,6 +1792,7 @@ function askSizeAndTransparency(container, defaultPreset, existing) {
   const existingAlpha = existing?.transparency;
   const existingHsv = existing?.bgColor ? parseHslString(existing.bgColor) : null;
   const existingRadius = existing?.radius;
+  const existingTilt = existing?.tilt;
   return new Promise((resolve) => {
     const modal = document.createElement('div');
     modal.className = 'modal-backdrop';
@@ -1407,6 +1802,7 @@ function askSizeAndTransparency(container, defaultPreset, existing) {
         <form class="size-form">
           ${sizeSelectHtml(existingSpan?.colSpan, existingSpan?.rowSpan, defaultPreset)}
           ${transparencyFieldHtml(existingAlpha)}
+          ${tiltFieldHtml(existingTilt)}
           ${bgColorAndRadiusFieldsHtml(existingHsv, existingRadius)}
           <div class="modal-actions">
             <button type="button" class="btn secondary cancel-btn">取消</button>
@@ -1417,6 +1813,7 @@ function askSizeAndTransparency(container, defaultPreset, existing) {
     `;
     container.appendChild(modal);
     wireTransparencyReadout(modal);
+    wireTiltReadout(modal);
     wireBgColorReadout(modal);
     const close = () => modal.remove();
     modal.querySelector('.cancel-btn').addEventListener('click', () => { close(); resolve(null); });
@@ -1425,10 +1822,76 @@ function askSizeAndTransparency(container, defaultPreset, existing) {
       const fd = new FormData(modal.querySelector('form'));
       const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 2 });
       const transparency = Number(fd.get('transparency')) || 100;
+      const tilt = parseTilt(fd);
       const { bgColor, radius } = parseBgColorAndRadius(fd);
       close();
-      resolve({ span, transparency, bgColor, radius });
+      resolve({ span, transparency, tilt, bgColor, radius });
     });
+  });
+}
+
+// D1: app 图标更换 picker。用户长按进 edit 模式 → app icon 上角出现 ⚙
+// → 弹这个 modal。两种 override 方式:
+//   1) 预设 emoji(12 个常用的,点一下就替换)
+//   2) 上传自己的图片(file picker → base64 → settings.appIconOverrides[appId])
+// 「恢复默认」清掉 override,app 回到 PAGES/DOCK_CATALOG 里的 SVG。
+// emoji 选 12 个手机 app 常见图标语义,user 不太可能 16 个全用到。
+const ICON_EMOJI_PRESETS = ['📞', '📷', '📌', '🎵', '💌', '☕', '📖', '🐱', '🌸', '🎮', '🎨', '📚'];
+
+async function openIconPicker(container, router, appId, onChanged) {
+  const settings = (await db.get('settings', 'default')) || {};
+  const current = settings.appIconOverrides?.[appId] || null;
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-header">改图标</div>
+      <div class="icon-picker">
+        <div class="icon-picker-section">
+          <div class="label-text">预设 emoji</div>
+          <div class="icon-picker-emoji-grid">
+            ${ICON_EMOJI_PRESETS.map(e => `
+              <button type="button" class="icon-picker-emoji${current?.kind === 'emoji' && current.value === e ? ' active' : ''}" data-emoji="${escAttr(e)}">${escHtml(e)}</button>
+            `).join('')}
+          </div>
+        </div>
+        <div class="icon-picker-section">
+          <div class="label-text">上传图片(建议 < 1 MB,正方形最佳)</div>
+          <div class="icon-picker-upload-row">
+            <button type="button" class="btn secondary upload-icon">从相册选一张</button>
+            ${current?.kind === 'image' ? `<div class="icon-picker-current"><img src="${escAttr(current.value)}" alt=""></div>` : ''}
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn secondary cancel-btn">取消</button>
+        <button type="button" class="btn secondary reset-btn"${current ? '' : ' disabled'}>恢复默认</button>
+      </div>
+    </div>
+  `;
+  container.appendChild(modal);
+  const close = () => modal.remove();
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  modal.querySelector('.cancel-btn').addEventListener('click', close);
+
+  async function applyOverride(override) {
+    await db.updateSettings(s => {
+      if (!s.appIconOverrides || typeof s.appIconOverrides !== 'object') s.appIconOverrides = {};
+      if (override === null) delete s.appIconOverrides[appId];
+      else s.appIconOverrides[appId] = override;
+    });
+    close();
+    onChanged?.();
+  }
+
+  modal.querySelector('.reset-btn').addEventListener('click', () => applyOverride(null));
+  modal.querySelectorAll('.icon-picker-emoji').forEach(btn => {
+    btn.addEventListener('click', () => applyOverride({ kind: 'emoji', value: btn.dataset.emoji }));
+  });
+  modal.querySelector('.upload-icon').addEventListener('click', async () => {
+    const data = await pickImageFile(1);
+    if (!data) return;
+    await applyOverride({ kind: 'image', value: data });
   });
 }
 
@@ -1436,16 +1899,18 @@ function askSizeAndTransparency(container, defaultPreset, existing) {
 // to the same editor function used for new-widget creation (each one accepts
 // an optional `existing` parameter and pre-fills its fields).
 async function openEditWidgetModal(container, router, widget) {
-  // favorites widget 没有可编辑 content(数据是来自 favorites store 的活的
-  // 引用),所以只给 size + transparency。其他 widget 类型都有专属编辑器:
-  //  - image / polaroid: 换图 / 换照片(本批新加)
+  // favorites / gameboy / mp3 / schedule widget 没有可编辑 content(favorites
+  // 数据是 store 的活的引用;gameboy / mp3 是纯装饰;schedule 读全局行程
+  // store),所以只给 size + transparency。其他 widget 类型都有专属编辑器:
+  //  - image / polaroid: 换图 / 换照片
   //  - note / anniversary / music: 内容编辑
-  if (widget.type === 'favorites') {
+  if (widget.type === 'favorites' || widget.type === 'gameboy' || widget.type === 'mp3' || widget.type === 'schedule') {
     const opts = await askSizeAndTransparency(container, null, widget);
     if (!opts) return;
     await updateWidget(widget.id, {
       ...opts.span,
       transparency: opts.transparency,
+      tilt: opts.tilt,
       bgColor: opts.bgColor,
       radius: opts.radius,
     }, router);
@@ -1470,7 +1935,13 @@ async function openEditWidgetModal(container, router, widget) {
 function resolveTilesForPage(pageIdx, tileOrder) {
   const basePage = PAGES[pageIdx] || [];
   const userOrder = tileOrder?.[pageIdx];
-  const byId = new Map(basePage.map(t => [t.id, t]));
+  // B3: byId 必须涵盖所有已知 app(跨页拖动后 destPage 的 tileOrder 可能含
+  // 来自其他 default page 的 app)。之前 byId 只装 basePage,跨页拖过来的
+  // app 被静默 skip,user 看到 app "消失"。也包含 DOCK_CATALOG 让 dock 的
+  // app 能被拖回 page。
+  const byId = new Map();
+  for (const page of PAGES) for (const t of page) byId.set(t.id, t);
+  for (const t of DOCK_CATALOG) byId.set(t.id, t);
   const out = [];
   const used = new Set();
   if (Array.isArray(userOrder)) {
@@ -1486,9 +1957,21 @@ function resolveTilesForPage(pageIdx, tileOrder) {
       used.add(id);
     }
   }
-  // Tiles in PAGES not yet placed (new entries added by an update) — append
-  // at next available cell so they're never lost when the data shape changes.
-  const remaining = basePage.filter(t => !used.has(t.id));
+  // basePage 中没出现在自己 tileOrder 的 app 补回(新加到 PAGES const 的 app
+  // 第一次 mount 自动出现)。但要排除已经被搬到其他 page / dock 的 app —
+  // 否则跨页搬走的 app 在原 page 被自动补回,变成 duplicate。
+  const usedAcrossAll = new Set();
+  if (Array.isArray(tileOrder)) {
+    for (const arr of tileOrder) {
+      if (!Array.isArray(arr)) continue;
+      for (const e of arr) {
+        if (!e) continue;
+        const id = typeof e === 'string' ? e : e?.id;
+        if (id) usedAcrossAll.add(id);
+      }
+    }
+  }
+  const remaining = basePage.filter(t => !used.has(t.id) && !usedAcrossAll.has(t.id));
   if (remaining.length > 0) {
     let nextRow = out.length > 0 ? Math.max(...out.map(x => x.row)) + 1 : 0;
     let nextCol = 0;
@@ -1687,8 +2170,6 @@ function itemAtCell(items, row, col, excludeEl) {
 
 // ── Mount ────────────────────────────────────────────────────────────────
 export async function mountHome(container, params, router) {
-  const showPager = PAGES.length > 1;
-
   let settings = await db.get('settings', 'default');
   // First-mount migration: favorites used to be a permanent builtin pinned
   // above the apps. Seed a user-owned favorites widget so existing users
@@ -1717,6 +2198,52 @@ export async function mountHome(container, params, router) {
   userWidgets = await migrateClampRowsV1(settings, userWidgets);
   settings = await db.get('settings', 'default');
 
+  // 越界防御 — 每次 mount idempotent re-clamp。原 migrateClampRowsV1 跑过
+  // 一次 flag 就停,中间任何漏 clamp 的写入(比如 updateWidget 改大 rowSpan
+  // 但 row 没动 → grid 越界)都会让 grid 长出第 6 行 1fr 等分,挤扁所有
+  // cell。这里 O(N) 扫一遍,只有真越界才写 IDB。
+  {
+    let anyChanged = false;
+    for (const w of userWidgets) {
+      const span = widgetSpan(w);
+      const maxRow = Math.max(0, ROWS - span.rowSpan);
+      const maxCol = Math.max(0, COLS - span.colSpan);
+      const curRow = Number(w.row) || 0;
+      const curCol = Number(w.col) || 0;
+      if (curRow > maxRow || curCol > maxCol || curRow < 0 || curCol < 0) {
+        w.row = Math.max(0, Math.min(curRow, maxRow));
+        w.col = Math.max(0, Math.min(curCol, maxCol));
+        await db.set('homeWidgets', w);
+        anyChanged = true;
+      }
+    }
+    if (anyChanged) userWidgets = await db.getAll('homeWidgets');
+  }
+
+  // B3: 动态页数 — tileOrder 可以比 PAGES.length 长(用户加了新页)或带尾部
+  // 空页。mount 时:
+  //   1) effectivePageCount = max(PAGES.length, tileOrder.length)
+  //   2) prune 尾部连续空的 extension pages(超过 PAGES.length 的部分),
+  //      没内容就回收,不留空页占翻页位
+  let effectivePageCount = Math.max(PAGES.length, Array.isArray(settings?.tileOrder) ? settings.tileOrder.length : 0);
+  {
+    let pruned = effectivePageCount;
+    while (pruned > PAGES.length) {
+      const last = settings?.tileOrder?.[pruned - 1];
+      const hasContent = Array.isArray(last) && last.length > 0;
+      if (hasContent) break;
+      pruned--;
+    }
+    if (pruned !== effectivePageCount) {
+      await db.updateSettings(s => {
+        if (Array.isArray(s.tileOrder)) s.tileOrder.length = pruned;
+      });
+      settings = await db.get('settings', 'default');
+      effectivePageCount = pruned;
+    }
+  }
+  const showPager = effectivePageCount > 1;
+
   const tileOrder = Array.isArray(settings?.tileOrder) ? settings.tileOrder : [];
 
   // Dock — first-mount init. Defaults centers 微信/设置 at slots 1/2;the
@@ -1726,6 +2253,10 @@ export async function mountHome(container, params, router) {
     await db.updateSettings(s => { s.dockOrder = [...DOCK_DEFAULT]; });
     settings = await db.get('settings', 'default');
   }
+  // D1: app 图标 override 表(emoji 或上传图片代替默认 SVG)。tileHtml 接受
+  // 这个 override,dock 和 page 渲染都查同一个 map。
+  const iconOverrides = (settings && typeof settings.appIconOverrides === 'object' && settings.appIconOverrides) || {};
+
   const dockOrder = (settings.dockOrder || [...DOCK_DEFAULT]).slice(0, DOCK_SLOTS);
   while (dockOrder.length < DOCK_SLOTS) dockOrder.push(null);
   const dockIds = new Set(dockOrder.filter(Boolean));
@@ -1743,7 +2274,7 @@ export async function mountHome(container, params, router) {
   // Apps currently in the dock are excluded from page rendering so they
   // don't show in two places at once.
   const pageItemsList = [];
-  for (let p = 0; p < PAGES.length; p++) {
+  for (let p = 0; p < effectivePageCount; p++) {
     const apps = resolveTilesForPage(p, tileOrder).filter(a => !dockIds.has(a.id));
     const appItems = apps.map(a => ({
       kind: 'app', tile: a, row: a.row, col: a.col, colSpan: 1, rowSpan: 1,
@@ -1775,10 +2306,11 @@ export async function mountHome(container, params, router) {
   }).join('');
   const pagesHtml = await Promise.all(pageItemsList.map(async (items, pageIdx) => {
     const itemHtmls = await Promise.all(items.map(async (it) => {
-      if (it.kind === 'app') return tileHtml(it.tile, it.row, it.col);
+      if (it.kind === 'app') return tileHtml(it.tile, it.row, it.col, iconOverrides[it.tile.id]);
       const gs = gridStyle(it.row, it.col, it.colSpan, it.rowSpan, it.widget.transparency, {
         bgColor: it.widget.bgColor,
         radius: it.widget.radius,
+        tilt: it.widget.tilt,
       });
       return await renderWidget(it.widget, gs);
     }));
@@ -1798,18 +2330,19 @@ export async function mountHome(container, params, router) {
     <div class="page home">
       <div class="home-edit-toolbar">
         <button class="widget-add" type="button" title="添加桌面装饰">＋ 添加装饰</button>
+        <button class="page-add" type="button" title="新建一页">＋ 新页</button>
         <button class="edit-done" type="button">完成</button>
       </div>
       <div class="home-pages">${pagesHtml.join('')}</div>
       <div class="home-pager${showPager ? '' : ' single'}">
-        ${PAGES.map((_, i) => `<button class="dot${i === 0 ? ' active' : ''}" data-page="${i}" aria-label="第 ${i+1} 页"></button>`).join('')}
+        ${Array.from({ length: effectivePageCount }, (_, i) => `<button class="dot${i === 0 ? ' active' : ''}" data-page="${i}" aria-label="第 ${i+1} 页"></button>`).join('')}
       </div>
       <div class="home-dock">
         <div class="app-grid dock-grid" data-grid-page="dock">${
           Array.from({ length: DOCK_SLOTS }, (_, c) =>
             `<div class="grid-slot" style="grid-column: ${c + 1}; grid-row: 1;" aria-hidden="true"></div>`
           ).join('')
-        }${dockItems.map(it => tileHtml(it.tile, it.row, it.col)).join('')}</div>
+        }${dockItems.map(it => tileHtml(it.tile, it.row, it.col, iconOverrides[it.tile.id])).join('')}</div>
       </div>
     </div>
   `;
@@ -1905,7 +2438,8 @@ export async function mountHome(container, params, router) {
        // × 没排 ⚙,所以编辑模式下点 ⚙ 完全无响应(bug #2)。
       if (targetEl
           && !e.target.closest('.widget-del')
-          && !e.target.closest('.widget-edit')) {
+          && !e.target.closest('.widget-edit')
+          && !e.target.closest('.icon-edit')) {
         e.preventDefault();
         const gridEl = targetEl.closest('.unified-grid');
         if (!gridEl) return;
@@ -2056,7 +2590,7 @@ export async function mountHome(container, params, router) {
         if (e.clientX < pagesRect.left + edge && currentSurface > 0) {
           pagesEl.scrollTo({ left: (currentSurface - 1) * w, behavior: 'smooth' });
           dragging.lastAutoScrollAt = now;
-        } else if (e.clientX > pagesRect.right - edge && currentSurface < PAGES.length - 1) {
+        } else if (e.clientX > pagesRect.right - edge && currentSurface < effectivePageCount - 1) {
           pagesEl.scrollTo({ left: (currentSurface + 1) * w, behavior: 'smooth' });
           dragging.lastAutoScrollAt = now;
         }
@@ -2224,6 +2758,20 @@ export async function mountHome(container, params, router) {
       await openAddWidgetModal(container, router);
       return;
     }
+    // B3: + 新页 按钮 — 在 settings.tileOrder 末尾 push 空数组,re-render 多
+    // 一页。空页在下次 mount 时若没拖入内容会被尾部 prune 回收(见
+    // effectivePageCount 计算),所以"白建一页又没用"不会留垃圾。
+    if (e.target.closest('.page-add')) {
+      preserveEditModeOnMount = true;
+      await db.updateSettings(s => {
+        if (!Array.isArray(s.tileOrder)) s.tileOrder = [];
+        s.tileOrder.push([]);
+      });
+      await router.navigate('home');
+      // 重 mount 后 scroll 到新页让 user 看见
+      _restoreScrollToPage = effectivePageCount;
+      return;
+    }
     // ⚙ 编辑按钮 —— 无论 edit mode 与否都响应。之前放在 editMode 块内,导致:
     // (a) 非 edit mode 时 hover 显示 ⚙ 点击没人接,
     // (b) favorites widget 上 ⚙ 点击被后面 data-target 分支拦截跳到收藏页。
@@ -2235,6 +2783,24 @@ export async function mountHome(container, params, router) {
       if (w) {
         preserveEditModeOnMount = editMode;
         await openEditWidgetModal(container, router, w);
+      }
+      return;
+    }
+    // D1: app icon ⚙ — 打开 icon picker。跟 widget-edit 同思路:任何模式
+    // 都响应,但 CSS 只在 editing 显示(@media hover 设备 hover 也显示)。
+    // 嵌套 button 那个 issue 用 <span role="button"> 解决了,所以 click 能
+    // 正常冒泡到这。
+    const iconEditEl = e.target.closest('.icon-edit');
+    if (iconEditEl) {
+      e.stopPropagation();
+      e.preventDefault();
+      const tileEl = iconEditEl.closest('.app-icon');
+      const appId = tileEl?.dataset.target;
+      if (appId) {
+        preserveEditModeOnMount = editMode;
+        await openIconPicker(container, router, appId, async () => {
+          await router.navigate('home');
+        });
       }
       return;
     }

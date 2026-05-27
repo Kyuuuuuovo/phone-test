@@ -15,6 +15,7 @@ const SVG = {
   voice: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1-3.29-2.5-4.03v8.06c1.5-.74 2.5-2.26 2.5-4.03z"/></svg>`,
   gear:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
   image: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z"/></svg>`,
+  camera: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h5L15 6h4a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>`,
   pin:   `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>`,
   redpacket: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 3h12a2 2 0 0 1 2 2v3H4V5a2 2 0 0 1 2-2zm-2 7h16v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-9zm8 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>`,
   transfer:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9.5h.01M18 14.5h.01"/></svg>`,
@@ -45,6 +46,7 @@ export async function mountChat(container, params, router) {
         <button class="back">‹</button>
         <div class="title">${esc(character?.name ?? '聊天')}${isBlocked ? ' <span class="blocked-badge">已拉黑</span>' : ''}</div>
         <div class="header-actions">
+          ${devMode ? `<span class="token-badge" title="下次发送的 tokens 预估(系统提示 + 历史)">…</span>` : ''}
           ${devMode ? `<button class="icon-btn inspector-btn" title="提示词调试">${SVG.gear}</button>` : ''}
           <button class="icon-btn more-btn" title="更多">${SVG.more}</button>
         </div>
@@ -72,6 +74,10 @@ export async function mountChat(container, params, router) {
         <button class="attach-item" data-kind="image">
           <div class="icon-bg">${SVG.image}</div>
           <div class="label">图片</div>
+        </button>
+        <button class="attach-item" data-kind="camera">
+          <div class="icon-bg">${SVG.camera}</div>
+          <div class="label">拍照</div>
         </button>
         <button class="attach-item" data-kind="red_packet">
           <div class="icon-bg redpacket-bg">${SVG.redpacket}</div>
@@ -124,6 +130,7 @@ export async function mountChat(container, params, router) {
   const plusBtn     = container.querySelector('.plus-btn');
   const moreBtn     = container.querySelector('.more-btn');
   const inspectorBtn = container.querySelector('.inspector-btn');
+  const tokenBadge   = container.querySelector('.token-badge');
   const panel       = container.querySelector('.attach-panel');
   const bubbleMenu  = container.querySelector('.bubble-menu');
   const replyBar    = container.querySelector('.reply-preview');
@@ -199,6 +206,32 @@ export async function mountChat(container, params, router) {
     flushGroup();
     stream.innerHTML = parts.join('');
     stream.scrollTop = stream.scrollHeight;
+    // C2: devMode 下顺手算下次发送的 tokens 估算。中文 ≈ 1.5 token/字、ASCII
+    // ≈ 0.3 token/char(粗略 — 真值要 tiktoken,这里只是 ballpark 给 user 心
+    // 里有数)。fire-and-forget,失败显示 '?' 不打断 chat。
+    if (tokenBadge) refreshTokenBadge();
+  }
+
+  function estimateTokens(str) {
+    if (!str) return 0;
+    let ascii = 0, other = 0;
+    for (let i = 0; i < str.length; i++) {
+      if (str.charCodeAt(i) < 128) ascii++; else other++;
+    }
+    return Math.round(ascii * 0.3 + other * 1.5);
+  }
+
+  async function refreshTokenBadge() {
+    if (!tokenBadge) return;
+    try {
+      const sysText = await context.buildSystemPrompt(sessionId);
+      const history = await context.buildMessageHistory(sessionId);
+      const historyText = history.map(m => typeof m.content === 'string' ? m.content : '').join('\n');
+      const total = estimateTokens(sysText) + estimateTokens(historyText);
+      tokenBadge.textContent = `~${total.toLocaleString()} t`;
+    } catch (_) {
+      tokenBadge.textContent = '?';
+    }
   }
   await refresh();
 
@@ -411,9 +444,38 @@ export async function mountChat(container, params, router) {
         duration: Math.max(1, Math.round(v.content.length / 4)),
       }]);
     } else if (btn.dataset.kind === 'image') {
+      // C1: 真实图片上传 — file picker → base64 → actions[].src。
+      // 4MB cap 跟 widget 图片一致(IDB 容易爆,大图片用 widget cover 那种
+      // 也是 2-4MB 限)。AI history 里只塞占位文字(见 context.renderActionsAsText)。
+      const file = await new Promise(resolve => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = () => resolve(input.files?.[0] || null);
+        input.click();
+      });
+      if (!file) return;
+      if (file.size > 4 * 1024 * 1024) {
+        await openAlert(container, {
+          title: '图片太大',
+          message: `${(file.size/1024/1024).toFixed(1)} MB,建议 < 4 MB,IndexedDB 容易满。`,
+          danger: true,
+        });
+        return;
+      }
+      const dataUrl = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result);
+        r.onerror = () => rej(r.error);
+        r.readAsDataURL(file);
+      });
+      await appendUserMessage([{ type: 'image', src: dataUrl }]);
+    } else if (btn.dataset.kind === 'camera') {
+      // C1: 拍照模式 — 走原来 image 的描述行为,模型按描述脑补内容。
+      // 跟「图片」分开,user 心智更接近真机:相册=真传,相机=描述拍了啥。
       const v = await openAttachModal(container, {
-        title: '发送图片',
-        fields: [{ name: 'description', label: '图片描述(MVP 阶段用文字代替)', kind: 'textarea', required: true }],
+        title: '拍照(描述)',
+        fields: [{ name: 'description', label: '描述你拍到的东西(角色会按描述脑补)', kind: 'textarea', required: true, placeholder: '比如:窗外的雨景 / 我刚煮好的咖啡' }],
         submitLabel: '发送',
       });
       if (!v) return;
@@ -1013,8 +1075,15 @@ function renderAction(a, side, msgId, idx, previewMap, character) {
         <div class="reply-content">${esc(a.content || '')}</div>
       </div>`;
     }
-    case 'image':
+    case 'image': {
+      // C1: src 是真图(用户走「图片」上传的 base64 / URL),render 成
+      // <img>。没 src 走描述模式(走「拍照」或 AI 模型主动 image action)。
+      const isRealImage = !!a.src && /^(data:image|https?:|blob:)/i.test(a.src);
+      if (isRealImage) {
+        return `<div class="bubble ${side} bubble-image-real" ${attrs}><img src="${esc(a.src)}" alt="${esc(a.description || '')}"></div>`;
+      }
       return `<div class="bubble ${side} bubble-image" ${attrs}>[图片] ${esc(a.description || a.src || '')}</div>`;
+    }
     case 'voice': {
       // Collapsed by default: bubble shows only "▶ N″" so it reads as a voice
       // capsule (matches the WeChat / iMessage convention — tap to play /
