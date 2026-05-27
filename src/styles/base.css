@@ -822,8 +822,11 @@ label .label-text {
 .widget.user-widget { opacity: var(--widget-alpha, 1); }
 .widget {
   padding: 14px 16px;
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--surface) 65%, transparent);
+  /* Phase B: user can override via --widget-bg / --widget-radius inline.
+     fallback (var() 第二参) = 原主题默认。这样 widget 没自定义时长得跟之前
+     完全一样,自定义了就尊重 user 值。 */
+  border-radius: var(--widget-radius, var(--radius-lg));
+  background: var(--widget-bg, color-mix(in srgb, var(--surface) 65%, transparent));
   backdrop-filter: blur(20px) saturate(160%);
   -webkit-backdrop-filter: blur(20px) saturate(160%);
   border: 1px solid color-mix(in srgb, white 40%, transparent);
@@ -1346,6 +1349,62 @@ body[data-fx-glass="metal"] .widget.widget-music::after { display: none; }
   color: var(--muted);
   text-align: center;
 }
+
+/* Phase B widget customization — HSV color picker + radius slider in every
+   widget editor modal. 整块由 bgColorAndRadiusFieldsHtml 渲染。 */
+.bg-color-toggle {
+  float: right;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  margin-bottom: 0;
+}
+.bg-color-toggle input { width: auto; cursor: pointer; }
+.bg-color-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+.bg-color-block[data-disabled="true"] {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.bg-color-preview {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+.bg-color-sliders {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bg-slider-row {
+  display: grid;
+  grid-template-columns: 56px 1fr 32px;
+  align-items: center;
+  gap: 6px;
+}
+.bg-slider-label {
+  font-size: 11px;
+  color: var(--muted);
+}
+.bg-slider-readout {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.bg-slider-row input[type="range"] { width: 100%; }
+.radius-readout { font-variant-numeric: tabular-nums; }
 
 /* Anniversary + 世界模式 radio rows — 同样的"几个 radio 横排 + 圆点对齐"。 */
 .anniv-mode-row,

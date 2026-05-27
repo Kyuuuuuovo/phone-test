@@ -116,16 +116,19 @@ const SIZE_PRESETS = [
   { label: '巨  (4×3)', col: 4, row: 3 },
 ];
 
-function gridStyle(row, col, colSpan, rowSpan, transparency) {
+function gridStyle(row, col, colSpan, rowSpan, transparency, custom) {
   // transparency is 0..100 (default 100 = opaque). Mapped to CSS var
-  // --widget-alpha (0..1) which the .widget.user-widget rule reads as
-  // opacity. Polaroid is exempt from opacity in CSS (its photos shouldn't
-  // fade), so this still applies to polaroid containers (no visible bg)
-  // but doesn't affect the photo cards visually except via the wrapper.
+  // --widget-alpha (0..1). Polaroid is exempt from opacity in CSS.
+  // Phase B: custom = { bgColor, radius } 也通过 CSS var 注入。CSS 默认值
+  // (color-mix / var(--radius-lg)) 在 var() fallback 里,user 没 set 就走
+  // 主题默认。
   const alpha = Number.isFinite(transparency)
     ? Math.max(0, Math.min(100, transparency)) / 100
     : 1;
-  return `grid-column: ${col + 1} / span ${colSpan}; grid-row: ${row + 1} / span ${rowSpan}; --widget-alpha: ${alpha};`;
+  let css = `grid-column: ${col + 1} / span ${colSpan}; grid-row: ${row + 1} / span ${rowSpan}; --widget-alpha: ${alpha};`;
+  if (custom?.bgColor)             css += ` --widget-bg: ${custom.bgColor};`;
+  if (Number.isFinite(custom?.radius)) css += ` --widget-radius: ${custom.radius}px;`;
+  return css;
 }
 
 // ── Widget rendering ─────────────────────────────────────────────────────
@@ -531,6 +534,8 @@ async function openAddWidgetModal(container, router) {
           type: 'favorites',
           ...opts.span,
           transparency: opts.transparency,
+          bgColor: opts.bgColor,
+          radius: opts.radius,
         }, router);
       } else if (type === 'image') {
         modal.remove();
@@ -589,6 +594,112 @@ function wireTransparencyReadout(modal) {
   if (!slider) return;
   const readout = modal.querySelector('.transp-readout');
   slider.addEventListener('input', () => { if (readout) readout.textContent = slider.value; });
+}
+
+// ── Phase B: 颜色 (HSV) + 圆角 widget 自定义 ──────────────────────────────
+// 给每个 widget editor 用的 HSV 色调 + 圆角 字段块。HSV 比 HSL 更符合直觉
+// (V = 亮度;HSL 的 L 是亮度+黑白混合,饱满色调难调)。CSS 只支持 hsl(),
+// 所以保存时 HSV→HSL 转一次。bgColor 字符串形如 "hsl(180, 50%, 75%)",直接
+// 用作 CSS 值塞 --widget-bg。radius 是像素数。
+// 默认值:null → 用主题默认色 + 默认圆角(--radius-lg)。重置按钮把两个都
+// 清回 null,widget 回到主题默认。
+function hsvToHsl(h, s, v) {
+  // h: 0-360, s/v: 0-100
+  const sN = s / 100, vN = v / 100;
+  const l = vN * (1 - sN / 2);
+  const sl = (l === 0 || l === 1) ? 0 : (vN - l) / Math.min(l, 1 - l);
+  return { h: Math.round(h), s: Math.round(sl * 100), l: Math.round(l * 100) };
+}
+function hsvToCssHsl(h, s, v) {
+  const { h: hh, s: ss, l: ll } = hsvToHsl(h, s, v);
+  return `hsl(${hh}, ${ss}%, ${ll}%)`;
+}
+
+function bgColorAndRadiusFieldsHtml(currentHsv, currentRadius) {
+  // currentHsv: {h, s, v} | null;currentRadius: number | null
+  const h = currentHsv?.h ?? 0;
+  const s = currentHsv?.s ?? 0;       // 默认 0 = 灰色,user 调 H 后调 S 出彩
+  const v = currentHsv?.v ?? 100;
+  const enabled = !!currentHsv;
+  const r = Number.isFinite(currentRadius) ? currentRadius : 16;
+  const previewBg = enabled ? hsvToCssHsl(h, s, v) : 'transparent';
+  return `
+    <label>
+      <div class="label-text">
+        背景色
+        <label class="bg-color-toggle">
+          <input type="checkbox" name="bgColorEnabled"${enabled ? ' checked' : ''}>
+          <span>自定义</span>
+        </label>
+      </div>
+      <div class="bg-color-block"${enabled ? '' : ' data-disabled="true"'}>
+        <div class="bg-color-preview" style="background: ${previewBg};"></div>
+        <div class="bg-color-sliders">
+          <div class="bg-slider-row"><span class="bg-slider-label">色相 H</span><input type="range" min="0"   max="360" step="1"  name="bgH" value="${h}"><span class="bg-slider-readout" data-readout="bgH">${h}</span></div>
+          <div class="bg-slider-row"><span class="bg-slider-label">饱和 S</span><input type="range" min="0"   max="100" step="1"  name="bgS" value="${s}"><span class="bg-slider-readout" data-readout="bgS">${s}</span></div>
+          <div class="bg-slider-row"><span class="bg-slider-label">亮度 V</span><input type="range" min="0"   max="100" step="1"  name="bgV" value="${v}"><span class="bg-slider-readout" data-readout="bgV">${v}</span></div>
+        </div>
+      </div>
+    </label>
+    <label>
+      <div class="label-text">圆角:<span class="radius-readout">${r}</span>px</div>
+      <input type="range" min="0" max="30" step="1" name="bgRadius" value="${r}">
+    </label>
+  `;
+}
+
+// Wire HSV sliders + checkbox + preview live update. Call after the form is in DOM.
+function wireBgColorReadout(modal) {
+  const block = modal.querySelector('.bg-color-block');
+  const toggle = modal.querySelector('input[name="bgColorEnabled"]');
+  const preview = modal.querySelector('.bg-color-preview');
+  const hI = modal.querySelector('input[name="bgH"]');
+  const sI = modal.querySelector('input[name="bgS"]');
+  const vI = modal.querySelector('input[name="bgV"]');
+  const radiusI = modal.querySelector('input[name="bgRadius"]');
+  const radiusReadout = modal.querySelector('.radius-readout');
+  function refresh() {
+    if (!block) return;
+    block.dataset.disabled = toggle?.checked ? 'false' : 'true';
+    if (preview) {
+      preview.style.background = toggle?.checked
+        ? hsvToCssHsl(Number(hI.value), Number(sI.value), Number(vI.value))
+        : 'transparent';
+    }
+    if (hI) modal.querySelector('[data-readout="bgH"]').textContent = hI.value;
+    if (sI) modal.querySelector('[data-readout="bgS"]').textContent = sI.value;
+    if (vI) modal.querySelector('[data-readout="bgV"]').textContent = vI.value;
+    if (radiusI && radiusReadout) radiusReadout.textContent = radiusI.value;
+  }
+  [toggle, hI, sI, vI, radiusI].forEach(el => el?.addEventListener('input', refresh));
+  refresh();
+}
+
+// Parse HSV + radius out of FormData → { bgColor: string|null, radius: number }
+function parseBgColorAndRadius(fd) {
+  const enabled = fd.get('bgColorEnabled') === 'on';
+  const radius = Number(fd.get('bgRadius'));
+  const r = Number.isFinite(radius) ? Math.max(0, Math.min(30, radius)) : 16;
+  if (!enabled) return { bgColor: null, radius: r };
+  const h = Number(fd.get('bgH')) || 0;
+  const s = Number(fd.get('bgS')) || 0;
+  const v = Number(fd.get('bgV')) || 100;
+  return { bgColor: hsvToCssHsl(h, s, v), radius: r };
+}
+
+// Extract { h, s, v } from a CSS hsl() string, for re-opening editor. Returns
+// null if string doesn't parse — editor then shows "未自定义" defaults.
+// Note: we do the *reverse* of hsvToHsl, recovering V from L and S.
+function parseHslString(str) {
+  const m = /^hsl\(\s*(-?[\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)$/.exec(String(str || '').trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const sl = Number(m[2]) / 100;
+  const l = Number(m[3]) / 100;
+  // HSL → HSV
+  const v = l + sl * Math.min(l, 1 - l);
+  const sv = v === 0 ? 0 : 2 * (1 - l / v);
+  return { h: Math.round(h), s: Math.round(sv * 100), v: Math.round(v * 100) };
 }
 
 function parseSizePreset(sizeStr) {
@@ -731,13 +842,21 @@ async function pickImageAndSave(container, router) {
   });
   const opts = await askSizeAndTransparency(container, '4x2');
   if (!opts) return;
-  await saveNewWidget({ type: 'image', data, ...opts.span, transparency: opts.transparency }, router);
+  await saveNewWidget({
+    type: 'image', data,
+    ...opts.span,
+    transparency: opts.transparency,
+    bgColor: opts.bgColor,
+    radius: opts.radius,
+  }, router);
 }
 
 function renderNoteEditor(modal, container, router, existing) {
   const initText  = existing?.data ?? '';
   const initSpan  = existing ? widgetSpan(existing) : null;
   const initAlpha = existing?.transparency;
+  const initHsv = existing?.bgColor ? parseHslString(existing.bgColor) : null;
+  const initRadius = existing?.radius;
   modal.innerHTML = `
     <div class="modal">
       <div class="modal-header">${existing ? '编辑便签' : '便签'}</div>
@@ -748,6 +867,7 @@ function renderNoteEditor(modal, container, router, existing) {
         </label>
         ${sizeSelectHtml(initSpan?.colSpan, initSpan?.rowSpan, '4x2')}
         ${transparencyFieldHtml(initAlpha)}
+        ${bgColorAndRadiusFieldsHtml(initHsv, initRadius)}
         <div class="modal-actions">
           <button type="button" class="btn secondary cancel-btn">取消</button>
           <button type="submit" class="btn">${existing ? '保存' : '添加'}</button>
@@ -756,6 +876,7 @@ function renderNoteEditor(modal, container, router, existing) {
     </div>
   `;
   wireTransparencyReadout(modal);
+  wireBgColorReadout(modal);
   modal.querySelector('.cancel-btn').addEventListener('click', () => modal.remove());
   modal.querySelector('form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -764,12 +885,11 @@ function renderNoteEditor(modal, container, router, existing) {
     if (!text) return;
     const span = parseSizePreset(fd.get('sizePreset')) || { colSpan: 4, rowSpan: 2 };
     const transparency = Number(fd.get('transparency')) || 100;
+    const { bgColor, radius } = parseBgColorAndRadius(fd);
     modal.remove();
-    if (existing) {
-      await updateWidget(existing.id, { data: text, ...span, transparency }, router);
-    } else {
-      await saveNewWidget({ type: 'note', data: text, ...span, transparency }, router);
-    }
+    const patch = { data: text, ...span, transparency, bgColor, radius };
+    if (existing) await updateWidget(existing.id, patch, router);
+    else await saveNewWidget({ type: 'note', ...patch }, router);
   });
 }
 
@@ -803,6 +923,8 @@ async function pickPolaroidPhotosAndSave(container, router) {
     data: { photos, stackOrder: photos.map((_, i) => i) },
     ...opts.span,
     transparency: opts.transparency,
+    bgColor: opts.bgColor,
+    radius: opts.radius,
   }, router);
 }
 
@@ -813,6 +935,8 @@ async function renderImageEditor(modal, container, router, existing) {
   let imageData = existing?.data || null;
   const initSpan = existing ? widgetSpan(existing) : null;
   const initAlpha = existing?.transparency;
+  const initHsv = existing?.bgColor ? parseHslString(existing.bgColor) : null;
+  const initRadius = existing?.radius;
 
   function render() {
     modal.innerHTML = `
@@ -830,6 +954,7 @@ async function renderImageEditor(modal, container, router, existing) {
           </label>
           ${sizeSelectHtml(initSpan?.colSpan, initSpan?.rowSpan, '4x2')}
           ${transparencyFieldHtml(initAlpha)}
+          ${bgColorAndRadiusFieldsHtml(initHsv, initRadius)}
           <div class="modal-actions">
             <button type="button" class="btn secondary cancel-btn">取消</button>
             <button type="submit" class="btn">保存</button>
@@ -838,6 +963,7 @@ async function renderImageEditor(modal, container, router, existing) {
       </div>
     `;
     wireTransparencyReadout(modal);
+    wireBgColorReadout(modal);
     modal.querySelector('.cancel-btn').addEventListener('click', () => modal.remove());
     modal.querySelector('.swap-image').addEventListener('click', async () => {
       const data = await pickImageFile();
@@ -848,8 +974,9 @@ async function renderImageEditor(modal, container, router, existing) {
       const fd = new FormData(modal.querySelector('form'));
       const span = parseSizePreset(fd.get('sizePreset')) || { colSpan: 4, rowSpan: 2 };
       const transparency = Number(fd.get('transparency')) || 100;
+      const { bgColor, radius } = parseBgColorAndRadius(fd);
       modal.remove();
-      await updateWidget(existing.id, { data: imageData, ...span, transparency }, router);
+      await updateWidget(existing.id, { data: imageData, ...span, transparency, bgColor, radius }, router);
     });
   }
   render();
@@ -863,6 +990,8 @@ async function renderPolaroidEditor(modal, container, router, existing) {
   let pendingPhotos = Array.isArray(existing?.data?.photos) ? [...existing.data.photos].slice(0, 3) : [];
   const initSpan = existing ? widgetSpan(existing) : null;
   const initAlpha = existing?.transparency;
+  const initHsv = existing?.bgColor ? parseHslString(existing.bgColor) : null;
+  const initRadius = existing?.radius;
 
   function render() {
     const slots = Array.from({ length: 3 }, (_, i) => pendingPhotos[i] || null);
@@ -888,6 +1017,7 @@ async function renderPolaroidEditor(modal, container, router, existing) {
           </label>
           ${sizeSelectHtml(initSpan?.colSpan, initSpan?.rowSpan, '2x2')}
           ${transparencyFieldHtml(initAlpha)}
+          ${bgColorAndRadiusFieldsHtml(initHsv, initRadius)}
           <div class="modal-actions">
             <button type="button" class="btn secondary cancel-btn">取消</button>
             <button type="submit" class="btn">保存</button>
@@ -896,6 +1026,7 @@ async function renderPolaroidEditor(modal, container, router, existing) {
       </div>
     `;
     wireTransparencyReadout(modal);
+    wireBgColorReadout(modal);
     modal.querySelector('.cancel-btn').addEventListener('click', () => modal.remove());
 
     // 槽位按钮 — swap/del/add 都改 pendingPhotos 再 re-render。
@@ -923,6 +1054,7 @@ async function renderPolaroidEditor(modal, container, router, existing) {
       const fd = new FormData(modal.querySelector('form'));
       const span = parseSizePreset(fd.get('sizePreset')) || { colSpan: 2, rowSpan: 2 };
       const transparency = Number(fd.get('transparency')) || 100;
+      const { bgColor, radius } = parseBgColorAndRadius(fd);
       modal.remove();
       // stackOrder 重置成 [0..n-1] —— 改照片后老的 stackOrder 索引可能指向
       // 不存在的位置。点击交互重新累积 stackOrder。
@@ -930,7 +1062,7 @@ async function renderPolaroidEditor(modal, container, router, existing) {
       await updateWidget(existing.id, {
         data: { photos, stackOrder: photos.map((_, i) => i) },
         ...span,
-        transparency,
+        transparency, bgColor, radius,
       }, router);
     });
   }
@@ -962,6 +1094,8 @@ async function renderAnniversaryEditor(modal, container, router, existing) {
   else if (chars.length > 0) initMode = 'character';
   const initSpan      = existing ? widgetSpan(existing) : null;
   const initAlpha     = existing?.transparency;
+  const initHsv       = existing?.bgColor ? parseHslString(existing.bgColor) : null;
+  const initRadius    = existing?.radius;
 
   function milestoneLabel(m) {
     const title = String(m.title || '(未命名)').trim();
@@ -1014,6 +1148,7 @@ async function renderAnniversaryEditor(modal, container, router, existing) {
         </label>
         ${sizeSelectHtml(initSpan?.colSpan, initSpan?.rowSpan, '2x1')}
         ${transparencyFieldHtml(initAlpha)}
+        ${bgColorAndRadiusFieldsHtml(initHsv, initRadius)}
         <div class="modal-actions">
           <button type="button" class="btn secondary cancel-btn">取消</button>
           <button type="submit" class="btn">${existing ? '保存' : '添加'}</button>
@@ -1022,6 +1157,7 @@ async function renderAnniversaryEditor(modal, container, router, existing) {
     </div>
   `;
   wireTransparencyReadout(modal);
+  wireBgColorReadout(modal);
   modal.querySelector('.cancel-btn').addEventListener('click', () => modal.remove());
   modal.querySelectorAll('input[name="mode"]').forEach(r => {
     r.addEventListener('change', () => {
@@ -1060,12 +1196,11 @@ async function renderAnniversaryEditor(modal, container, router, existing) {
     }
     const span = parseSizePreset(fd.get('sizePreset')) || { colSpan: 2, rowSpan: 1 };
     const transparency = Number(fd.get('transparency')) || 100;
+    const { bgColor, radius } = parseBgColorAndRadius(fd);
     modal.remove();
-    if (existing) {
-      await updateWidget(existing.id, { data, ...span, transparency }, router);
-    } else {
-      await saveNewWidget({ type: 'anniversary', data, ...span, transparency }, router);
-    }
+    const patch = { data, ...span, transparency, bgColor, radius };
+    if (existing) await updateWidget(existing.id, patch, router);
+    else await saveNewWidget({ type: 'anniversary', ...patch }, router);
   });
 }
 
@@ -1082,6 +1217,8 @@ async function renderMusicEditor(modal, container, router, existing) {
   const initPlaying = existing ? (existing.data?.playing !== false) : true;
   const initSpan    = existing ? widgetSpan(existing) : null;
   const initAlpha   = existing?.transparency;
+  const initHsv     = existing?.bgColor ? parseHslString(existing.bgColor) : null;
+  const initRadius  = existing?.radius;
   // Subjects can be persona OR character; encoded as "kind:id" in the select
   // value. Legacy widgets had `characterId` only on the right earbud.
   function subjectValue(subj) {
@@ -1158,6 +1295,7 @@ async function renderMusicEditor(modal, container, router, existing) {
         </label>
         ${sizeSelectHtml(initSpan?.colSpan, initSpan?.rowSpan, '2x2')}
         ${transparencyFieldHtml(initAlpha)}
+        ${bgColorAndRadiusFieldsHtml(initHsv, initRadius)}
         <div class="modal-actions">
           <button type="button" class="btn secondary cancel-btn">取消</button>
           <button type="submit" class="btn">${existing ? '保存' : '添加'}</button>
@@ -1166,6 +1304,7 @@ async function renderMusicEditor(modal, container, router, existing) {
     </div>
   `;
   wireTransparencyReadout(modal);
+  wireBgColorReadout(modal);
   // Cover upload wiring — captures base64 into a closure var, written on submit.
   let coverImageData = initCoverImage;
   const coverPreview = modal.querySelector('.cover-preview');
@@ -1219,42 +1358,48 @@ async function renderMusicEditor(modal, container, router, existing) {
     const playing = fd.get('playing') === 'on';
     const span = parseSizePreset(fd.get('sizePreset')) || { colSpan: 2, rowSpan: 2 };
     const transparency = Number(fd.get('transparency')) || 100;
+    const { bgColor, radius } = parseBgColorAndRadius(fd);
     const data = {
       song, artist, lyrics, playing,
       leftSubject, rightSubject,
       coverImage: coverImageData || undefined,
     };
     modal.remove();
-    if (existing) {
-      await updateWidget(existing.id, { data, ...span, transparency }, router);
-    } else {
-      await saveNewWidget({ type: 'music', data, ...span, transparency }, router);
-    }
+    const patch = { data, ...span, transparency, bgColor, radius };
+    if (existing) await updateWidget(existing.id, patch, router);
+    else await saveNewWidget({ type: 'music', ...patch }, router);
   });
 }
 
 // Size + transparency modal — used by widget types that have no other
 // content fields (image after file picked, polaroid after photos picked,
-// favorites). Resolves to { span: { colSpan, rowSpan }, transparency } or null.
-function askSizeAndTransparency(container, defaultPreset, existingSpan, existingAlpha) {
+// favorites). Resolves to { span, transparency, bgColor, radius } or null.
+function askSizeAndTransparency(container, defaultPreset, existing) {
+  // existing 可以是 widget 对象(edit flow)或 null/undefined (add flow)
+  const existingSpan = existing ? widgetSpan(existing) : null;
+  const existingAlpha = existing?.transparency;
+  const existingHsv = existing?.bgColor ? parseHslString(existing.bgColor) : null;
+  const existingRadius = existing?.radius;
   return new Promise((resolve) => {
     const modal = document.createElement('div');
     modal.className = 'modal-backdrop';
     modal.innerHTML = `
       <div class="modal">
-        <div class="modal-header">大小 / 不透明度</div>
+        <div class="modal-header">外观</div>
         <form class="size-form">
           ${sizeSelectHtml(existingSpan?.colSpan, existingSpan?.rowSpan, defaultPreset)}
           ${transparencyFieldHtml(existingAlpha)}
+          ${bgColorAndRadiusFieldsHtml(existingHsv, existingRadius)}
           <div class="modal-actions">
             <button type="button" class="btn secondary cancel-btn">取消</button>
-            <button type="submit" class="btn">${existingSpan ? '保存' : '添加'}</button>
+            <button type="submit" class="btn">${existing ? '保存' : '添加'}</button>
           </div>
         </form>
       </div>
     `;
     container.appendChild(modal);
     wireTransparencyReadout(modal);
+    wireBgColorReadout(modal);
     const close = () => modal.remove();
     modal.querySelector('.cancel-btn').addEventListener('click', () => { close(); resolve(null); });
     modal.querySelector('form').addEventListener('submit', (e) => {
@@ -1262,8 +1407,9 @@ function askSizeAndTransparency(container, defaultPreset, existingSpan, existing
       const fd = new FormData(modal.querySelector('form'));
       const span = parseSizePreset(fd.get('sizePreset')) || { colSpan: 2, rowSpan: 2 };
       const transparency = Number(fd.get('transparency')) || 100;
+      const { bgColor, radius } = parseBgColorAndRadius(fd);
       close();
-      resolve({ span, transparency });
+      resolve({ span, transparency, bgColor, radius });
     });
   });
 }
@@ -1277,10 +1423,14 @@ async function openEditWidgetModal(container, router, widget) {
   //  - image / polaroid: 换图 / 换照片(本批新加)
   //  - note / anniversary / music: 内容编辑
   if (widget.type === 'favorites') {
-    const span = widgetSpan(widget);
-    const opts = await askSizeAndTransparency(container, null, span, widget.transparency);
+    const opts = await askSizeAndTransparency(container, null, widget);
     if (!opts) return;
-    await updateWidget(widget.id, { ...opts.span, transparency: opts.transparency }, router);
+    await updateWidget(widget.id, {
+      ...opts.span,
+      transparency: opts.transparency,
+      bgColor: opts.bgColor,
+      radius: opts.radius,
+    }, router);
     return;
   }
   // For widgets with content editors, open the existing editor pre-filled.
@@ -1608,7 +1758,10 @@ export async function mountHome(container, params, router) {
   const pagesHtml = await Promise.all(pageItemsList.map(async (items, pageIdx) => {
     const itemHtmls = await Promise.all(items.map(async (it) => {
       if (it.kind === 'app') return tileHtml(it.tile, it.row, it.col);
-      const gs = gridStyle(it.row, it.col, it.colSpan, it.rowSpan, it.widget.transparency);
+      const gs = gridStyle(it.row, it.col, it.colSpan, it.rowSpan, it.widget.transparency, {
+        bgColor: it.widget.bgColor,
+        radius: it.widget.radius,
+      });
       return await renderWidget(it.widget, gs);
     }));
     return `
