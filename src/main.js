@@ -5,6 +5,7 @@ import * as router from './core/router.js';
 import * as ai from './core/ai.js';
 import * as context from './core/context.js';
 import { applyTheme as applyThemeObj, applyWallpaper } from './core/theme.js';
+import { openConfirm, openAlert } from './core/modal.js';
 import { mountHome }        from './features/home/home.js';
 import { mountSettings }    from './features/settings/settings.js';
 import { mountApiSettings } from './features/settings/api-settings.js';
@@ -458,6 +459,11 @@ async function openMemoryHelperPanel(sessionId) {
               ${mems.length > 5 ? `<div class="mh-mem-more">还有 ${mems.length - 5} 条 — 进记忆 app 看全部</div>` : ''}
             </div>
           `}
+          <div class="mh-mem-actions">
+            <button type="button" class="btn secondary mh-reset-btn">重置记忆</button>
+            <button type="button" class="btn mh-resummarize-btn">重新提取</button>
+          </div>
+          <div class="mh-mem-status"></div>
         </div>
         <div class="mh-section">
           <div class="mh-label-row">
@@ -557,9 +563,73 @@ async function openMemoryHelperPanel(sessionId) {
         openMemoryHelperPanel(sessionId);
       });
     });
+
+    // 重置记忆 — 清 memories + 反 archive 所有消息 + 清相关 embeddings。
+    // 不立即压缩,让用户接下来自己决定要不要继续聊或手动「重新提取」。
+    const statusEl = backdrop.querySelector('.mh-mem-status');
+    backdrop.querySelector('.mh-reset-btn')?.addEventListener('click', async () => {
+      if (!await openConfirm(frame, {
+        title: '重置当前记忆',
+        message: '会删除本会话所有总结、把之前被压缩的消息恢复成正常聊天记录。不会立即重新生成总结。确定继续?',
+        confirmLabel: '重置', danger: true,
+      })) return;
+      statusEl.textContent = '重置中…';
+      try {
+        await resetMemoriesForSession(sessionId);
+        statusEl.textContent = '已重置';
+        setTimeout(() => { close(); openMemoryHelperPanel(sessionId); }, 600);
+      } catch (e) {
+        statusEl.textContent = '失败:' + String(e).slice(0, 100);
+      }
+    });
+
+    // 重新提取 — reset + 立即 maybeCompressMemory。一锤定音,基于当前所有
+    // 消息从头压缩。会调 AI(可能慢),用户得明白这点。
+    backdrop.querySelector('.mh-resummarize-btn')?.addEventListener('click', async () => {
+      if (!await openConfirm(frame, {
+        title: '重新提取记忆',
+        message: '会删除现有总结、恢复被压缩的消息,然后基于当前所有消息重新生成总结。会调用 AI(可能慢)。确定继续?',
+        confirmLabel: '重新提取', danger: true,
+      })) return;
+      statusEl.textContent = '重置 + AI 生成中…';
+      try {
+        await resetMemoriesForSession(sessionId);
+        await context.maybeCompressMemory(sessionId);
+        statusEl.textContent = '已重新提取';
+        setTimeout(() => { close(); openMemoryHelperPanel(sessionId); }, 800);
+      } catch (e) {
+        statusEl.textContent = '失败:' + String(e).slice(0, 100);
+      }
+    });
   }
 
   await render();
+}
+
+// 重置一个会话的所有记忆 — 三件事原子心态(逐项 await 但不放一个 tx 里,
+// 因为跨 3 个 store + maybeCompressMemory 后续也要写,大事务持有时间过长):
+//   1. 删 memories(L1 + L2)
+//   2. unarchive 所有 chatMessages(让被压缩进总结的消息恢复成活跃)
+//   3. 删该会话的 memory-source embeddings(否则向量表留孤儿,以后再压缩
+//      会重复 embed)
+// 调用方:memory-helper 的「重置」按钮 / 「重新提取」按钮(后者再调
+// maybeCompressMemory 跑一遍新压缩)。
+async function resetMemoriesForSession(sessionId) {
+  const mems = await db.query('memories', 'sessionId', sessionId);
+  for (const m of mems) await db.del('memories', m.id);
+  const msgs = await db.query('chatMessages', 'sessionId', sessionId);
+  for (const m of msgs) {
+    if (m.archived) {
+      delete m.archived;
+      delete m.archivedAt;
+      delete m.archivedIntoMemoryId;
+      await db.set('chatMessages', m);
+    }
+  }
+  const embs = await db.query('embeddings', 'sessionId', sessionId);
+  for (const e of embs) {
+    if (e.sourceType === 'memory') await db.del('embeddings', e.id);
+  }
 }
 
 boot().catch(err => console.error('[boot] failed:', err));

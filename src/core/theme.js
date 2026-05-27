@@ -225,6 +225,157 @@ export const THEME_PRESETS = [
       effects: { glass: 'metal', gradient: true, gradientTo: '#FCE6EE', texture: 'none', transparency: 0 },
     },
   },
+  // ────────────────────────────────────────────────────────────────────
+  // 雾屿系列(Glass · Ink)— 玻璃感对方气泡 + 墨蓝用户。雪夜深 / 晨雾浅
+  // 两个变体共用同一气泡逻辑,壁纸由 character.chatBackground 决定,主题
+  // 本身只负责气泡和文字反差关系。
+  //
+  // ⚠ caveat:bubbleChar 用 rgba(...) 字符串。CSS 端 var(--bubble-char)
+  // 完全 OK,但设置 → 外观 → 颜色 tab 的 `<input type="color">` 读 rgba
+  // 时会退化成近似 hex(浏览器实现限制),用户去看一眼就"丢透明",改完
+  // 保存就真丢。未来 polish:把 bubble alpha 抽成单独 effects.bubbleCharAlpha
+  // 滑条,跟现有 surfaceAlpha 同模式,色 picker 仍存 hex。
+  // ────────────────────────────────────────────────────────────────────
+  {
+    id: 'glass-ink-night',
+    label: '雾屿 · 雪夜',
+    theme: {
+      notch: false,
+      bg:           '#1A1A1F',
+      fg:           '#ECECEC',
+      surface:      '#16161A',
+      accent:       '#3A4A6E',          // 比 user 气泡稍亮一档,做按钮/链接
+      muted:        '#888890',
+      border:       '#2A2A30',
+      bubbleUser:   '#1F2A44',          // 墨蓝
+      bubbleUserFg: '#E8EBF2',
+      bubbleChar:   'rgba(40,40,46,0.55)',
+      bubbleCharFg: '#ECECEC',
+      outsideBg:    '#0B0B0E',
+      bgPinned:     '#22222A',
+      fontFamily:   'system',
+      fontSize:     15,
+      radius:       18,
+      effects: {
+        glass:          'liquid',
+        glassIntensity: 85,              // backdrop blur 强一点
+        gradient:       false,
+        gradientTo:     '#0E0E12',
+        texture:        'none',
+        transparency:   0,
+        surfaceAlpha:   70,              // 壁纸透出,让玻璃站得住
+      },
+    },
+  },
+  {
+    id: 'glass-ink-dawn',
+    label: '雾屿 · 晨雾',
+    theme: {
+      notch: false,
+      bg:           '#E8E6E2',
+      fg:           '#1A1A1F',
+      surface:      '#F5F3EE',
+      accent:       '#1F2A44',
+      muted:        '#7A7A7E',
+      border:       '#D0CEC8',
+      bubbleUser:   '#1F2A44',          // 墨蓝继承(主体不变)
+      bubbleUserFg: '#E8EBF2',
+      bubbleChar:   'rgba(255,255,255,0.55)',
+      bubbleCharFg: '#1A1A1F',
+      outsideBg:    '#C4C2BC',
+      bgPinned:     '#EFEDE8',
+      fontFamily:   'system',
+      fontSize:     15,
+      radius:       18,
+      effects: {
+        glass:          'liquid',
+        glassIntensity: 75,
+        gradient:       false,
+        gradientTo:     '#F0EEE8',
+        texture:        'none',
+        transparency:   0,
+        surfaceAlpha:   60,
+      },
+    },
+  },
+  // ────────────────────────────────────────────────────────────────────
+  // 缄默系列(Script · Mono)— 花体衬线 + 黑白灰。Cormorant Garamond
+  // italic 西文 + 真宋体中文 fallback(系统不会伪斜)。旧信亮 / 夜读暗
+  // 两个变体,夜读把 user 气泡反成米白(身份反转,"我在深夜读 ta 的信")。
+  //
+  // 字体加载:fontFamily: 'custom' 触发 theme.js 的 applyCustomFontImport
+  // 写一个 <link>。Google Fonts 首次 200-500ms FOUT,index.html 已有
+  // preconnect to fonts.gstatic.com 不需要再加。
+  //
+  // 中文伪斜兜底:base.css 已加 `.bubble :lang(zh) { font-style: normal }`
+  // 防个别浏览器对中文 fallback 强加 italic。
+  // ────────────────────────────────────────────────────────────────────
+  {
+    id: 'script-letter',
+    label: '缄默 · 旧信',
+    theme: {
+      notch: false,
+      bg:           '#ECE9E2',
+      fg:           '#1A1A1A',
+      surface:      '#F6F4ED',
+      accent:       '#2C2C2C',
+      muted:        '#8A8A85',
+      border:       '#D6D2C8',
+      bubbleUser:   '#2A2A2A',
+      bubbleUserFg: '#F5F2EA',
+      bubbleChar:   '#F0EDE4',
+      bubbleCharFg: '#1A1A1A',
+      outsideBg:    '#BFBAAE',
+      bgPinned:     '#E5E0D2',
+      fontFamily:   'custom',
+      customFontFamily:    `"Cormorant Garamond", "Songti SC", "Noto Serif SC", "SimSun", Georgia, serif`,
+      customFontImportUrl: 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&display=swap',
+      fontSize:     16,
+      radius:       6,                   // 小圆角 — 像信纸折角
+      effects: {
+        glass:          'none',
+        glassIntensity: 100,
+        gradient:       false,
+        gradientTo:     '#E5E0D2',
+        texture:        'none',          // 想要纸纹的话改成 'dots',强度低
+        transparency:   0,
+        surfaceAlpha:   0,
+      },
+    },
+  },
+  {
+    id: 'script-night',
+    label: '缄默 · 夜读',
+    theme: {
+      notch: false,
+      bg:           '#15130F',
+      fg:           '#E8E2D2',
+      surface:      '#1E1B16',
+      accent:       '#D4B98C',           // 老纸黄,做按钮/链接/标题
+      muted:        '#7A7468',
+      border:       '#2A2620',
+      bubbleUser:   '#E8E2D2',           // 反转 — user 是亮的
+      bubbleUserFg: '#15130F',
+      bubbleChar:   '#28231C',           // 深褐墨
+      bubbleCharFg: '#D4B98C',           // 老纸黄字 — 比白文字更有"读旧信"的暖
+      outsideBg:    '#08070A',
+      bgPinned:     '#22201A',
+      fontFamily:   'custom',
+      customFontFamily:    `"Cormorant Garamond", "Songti SC", "Noto Serif SC", "SimSun", Georgia, serif`,
+      customFontImportUrl: 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&display=swap',
+      fontSize:     16,
+      radius:       6,
+      effects: {
+        glass:          'none',
+        glassIntensity: 100,
+        gradient:       false,
+        gradientTo:     '#1E1B16',
+        texture:        'none',
+        transparency:   0,
+        surfaceAlpha:   0,
+      },
+    },
+  },
 ];
 
 export function applyTheme(theme) {

@@ -3405,6 +3405,14 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
   color: var(--bubble-char-fg);
   border-bottom-left-radius: 4px;
 }
+/* 中文防伪斜兜底 — script 主题(Cormorant Garamond italic)在中文 fallback
+   (Songti SC / Noto Serif SC)上,个别浏览器会强加 italic 把真宋体变成
+   伪斜难看。明确 normal 把它压回去。其他场景 :lang(zh) 也无害。 */
+.bubble :lang(zh),
+.bubble :lang(zh-CN),
+.bubble :lang(zh-Hans) {
+  font-style: normal;
+}
 .bubble-recall {
   align-self: center;
   color: var(--muted);
@@ -5078,6 +5086,18 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
   border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
 }
 .mh-section:last-of-type { border-bottom: none; }
+.mh-mem-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.mh-mem-actions .btn { padding: 6px 12px; font-size: 12px; }
+.mh-mem-status {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+  min-height: 14px;
+}
 .mh-label {
   font-size: 12px;
   color: var(--muted);
