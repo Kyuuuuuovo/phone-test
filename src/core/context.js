@@ -227,18 +227,16 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     editRoute: 'memory-manage',
     editParams: { sessionId },
   });
-  // 7c. 当前时间 — anchor for every relative time reference downstream
-  //     (memory mentions "下午"; schedule says "14:00"; the model reasons
-  //     about when "晚饭" is). Without this segment the model has no
-  //     absolute reference and drifts (e.g. reads 14:00 as morning).
-  //     Format matches surveillance.js's nowLine for cross-feature
-  //     consistency; placed between 「past」(memory) and 「now」(state)
-  //     so the transition reads naturally top-down. CLAUDE.md 铁律 9:
-  //     this is situational fact, not behavior guidance.
+  // 7c. 当前时间 — anchor for relative time references. SKIPPED in fictional
+  //     world mode (架空 character 不应该知道现实日期 — 比如中世纪扮演场景
+  //     给模型注入 "2026 年 5 月 27 日" 会出戏)。架空模式下用户可以在
+  //     character.persona 里写 "in-world 时间感:春末" 之类的。
+  //     现实模式下 anchor 行为不变。
+  const isFictional = character.worldMode === 'fictional';
   parts.push({
     key: 'current-time',
     title: '# 当前时间',
-    body: currentTimeLine(),
+    body: isFictional ? '' : currentTimeLine(),
     kind: 'computed',
   });
   // 8. 当前社交状态
@@ -261,8 +259,9 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     kind: 'data',
     editRoute: 'schedule',
   });
-  // 8c. 摄像头
-  const cameraLines = await buildCameraLines(character.id, persona?.name);
+  // 8c. 摄像头 — SKIPPED in fictional mode(架空里没有 IoT 摄像头这种现代设定,
+  //     除非角色 persona 主动声明)。
+  const cameraLines = isFictional ? '' : await buildCameraLines(character.id, persona?.name);
   parts.push({
     key: 'cameras',
     title: '# 摄像头',
@@ -270,10 +269,8 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     kind: 'data',
     editRoute: 'monitor',
   });
-  // 8d. 角色当前活动 — derived from activityLog. Opt-in (default off).
-  //     Rule 9: the prompt body is a first-person status ("你目前的状态:
-  //     卧室 · 坐在床上 · 看书"), never mentions cameras.
-  const activityLine = await buildActivityLine(character.id);
+  // 8d. 角色当前活动 — 同上,架空模式下 monitor 数据没意义。
+  const activityLine = isFictional ? '' : await buildActivityLine(character.id);
   parts.push({
     key: 'activity',
     title: '# 角色当前活动',

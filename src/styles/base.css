@@ -1347,20 +1347,23 @@ body[data-fx-glass="metal"] .widget.widget-music::after { display: none; }
   text-align: center;
 }
 
-/* Anniversary radio-row + conditional inputs (in the add-widget modal). */
-.anniv-mode-row {
+/* Anniversary + 世界模式 radio rows — 同样的"几个 radio 横排 + 圆点对齐"。 */
+.anniv-mode-row,
+.world-mode-row {
   display: flex;
   gap: 16px;
   padding-top: 4px;
 }
-.anniv-mode-row .radio-inline {
+.anniv-mode-row .radio-inline,
+.world-mode-row .radio-inline {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   cursor: pointer;
   margin-bottom: 0;
 }
-.anniv-mode-row .radio-inline input { width: auto; cursor: pointer; }
+.anniv-mode-row .radio-inline input,
+.world-mode-row .radio-inline input { width: auto; cursor: pointer; }
 .anniv-char-block[hidden],
 .anniv-custom-block[hidden] { display: none; }
 

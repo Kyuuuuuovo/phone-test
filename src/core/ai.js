@@ -123,7 +123,11 @@ export async function dispatchActions(actions, ctx) {
 }
 
 // Build a tools array based on what the session opted into.
-function buildToolsForSession(session) {
+function buildToolsForSession(session, character) {
+  // 阶段 0: 架空世界模式 — 真实时间/天气/地点工具一律不暴露(角色调了也只
+  // 拿到现实数据,跟架空设定冲突)。session 的 per-direction toggle 仍然可
+  // 以独立 disable 某个方向,但 worldMode='fictional' 是一刀切。
+  if (character?.worldMode === 'fictional') return [];
   const tools = [];
   const timeEnums = [];
   if (session.charTzEnabled) timeEnums.push('character');
@@ -269,8 +273,9 @@ async function _requestReplyImpl(sessionId, { featureContext, regenHint } = {}) 
   const systemPrompt = await context.buildSystemPrompt(sessionId, { featureContext, regenHint });
   const baseMessages = await context.buildMessageHistory(sessionId);
   const session = await db.get('chatSessions', sessionId);
+  const character = session ? await db.get('characters', session.characterId) : null;
 
-  const tools = buildToolsForSession(session || {});
+  const tools = buildToolsForSession(session || {}, character);
   const convo = [...baseMessages];
 
   let finalMessage = null;

@@ -53,6 +53,21 @@ export async function mountCharacterDetail(container, params, router) {
             <textarea name="notes" rows="3">${esc(character.notes)}</textarea>
           </label>
 
+          <label>
+            <div class="label-text">世界模式</div>
+            <div class="world-mode-row">
+              <label class="radio-inline">
+                <input type="radio" name="worldMode" value="real"${(character.worldMode || 'real') === 'real' ? ' checked' : ''}>
+                <span>现实世界</span>
+              </label>
+              <label class="radio-inline">
+                <input type="radio" name="worldMode" value="fictional"${character.worldMode === 'fictional' ? ' checked' : ''}>
+                <span>架空世界</span>
+              </label>
+            </div>
+            <div class="muted-hint">现实:注入真实时间/天气/地点工具;架空:这些都不注入,角色不会知道现实日期或你住哪</div>
+          </label>
+
           <div class="label-text">挂载世界书</div>
           <div class="wb-mount-list">
             ${worldbooks.length === 0
@@ -110,6 +125,7 @@ export async function mountCharacterDetail(container, params, router) {
       name:    String(fd.get('name')    || '').trim() || '(未命名)',
       persona: String(fd.get('persona') || '').trim(),
       notes:   String(fd.get('notes')   || '').trim(),
+      worldMode: String(fd.get('worldMode') || 'real') === 'fictional' ? 'fictional' : 'real',
       avatar:  avatarData,
       updatedAt: Date.now(),
     };
