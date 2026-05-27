@@ -48,6 +48,10 @@ export async function mountChatInfo(container, params, router) {
             }</span>
             <span class="settings-chevron">›</span>
           </button>
+          <label class="settings-item toggle-row">
+            <span class="settings-label">时间感知</span>
+            <input type="checkbox" data-toggle="timeAwareness"${session.timeAwareness !== 'off' ? ' checked' : ''}>
+          </label>
           <button class="settings-item" data-action="settings">
             <span class="settings-label">会话设置</span>
             <span class="settings-chevron">›</span>
@@ -90,7 +94,13 @@ export async function mountChatInfo(container, params, router) {
     if (!cb) return;
     const key = cb.dataset.toggle;
     const fresh = await db.get('chatSessions', sessionId);
-    fresh[key] = cb.checked;
+    // timeAwareness 是 'on'(默认,undefined 也算 on) / 'off' 的 string,不是
+    // bool 字段。其它 toggle 都是 bool 直接写 cb.checked。
+    if (key === 'timeAwareness') {
+      fresh.timeAwareness = cb.checked ? 'on' : 'off';
+    } else {
+      fresh[key] = cb.checked;
+    }
     await db.set('chatSessions', fresh);
   };
   container.addEventListener('change', onToggle);

@@ -211,10 +211,14 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     editRoute: 'settings-embedding',
   });
   // 7. 远期 + 近期记忆
+  // 1a: 时间感知 on (默认) 时,每条 memory 前缀【M月D日–M月D日】给模型时
+  // 间锚点。session.timeAwareness === 'off' 时退回 m.summary 裸文本。
+  // 老 memory 没 fromTs/toTs → 用 createdAt fallback(单点而不是范围)。
+  const memTimeOn = session?.timeAwareness !== 'off';
   parts.push({
     key: 'mem-l2',
     title: '# 远期记忆(章节,由老到新)',
-    body: l2Mem.map(m => m.summary).join('\n\n'),
+    body: l2Mem.map(m => formatMemoryWithDate(m, memTimeOn)).join('\n\n'),
     kind: 'data',
     editRoute: 'memory-manage',
     editParams: { sessionId },
@@ -222,7 +226,7 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
   parts.push({
     key: 'mem-l1',
     title: '# 近期记忆(由老到新)',
-    body: l1Mem.map(m => m.summary).join('\n\n'),
+    body: l1Mem.map(m => formatMemoryWithDate(m, memTimeOn)).join('\n\n'),
     kind: 'data',
     editRoute: 'memory-manage',
     editParams: { sessionId },
@@ -382,6 +386,23 @@ export const GROUP_LABELS = {
   output:    '输出格式',
   misc:      '其他',
 };
+
+// 1a: 给 memory summary 拼时间范围前缀。fromTs/toTs 是 chat msg createdAt
+// 范围;同一天显示「【M月D日】」,跨天显示「【M月D日–M月D日】」。timeOn
+// false 时直接返回 summary 不拼时间(架空场景 / 用户关掉时间感知 toggle)。
+// 老 memory 没 fromTs/toTs 时退回 createdAt 作单点。
+function formatMemoryWithDate(m, timeOn) {
+  if (!timeOn) return m.summary || '';
+  const fromTs = m.fromTs ?? m.createdAt;
+  const toTs   = m.toTs   ?? m.createdAt;
+  if (!Number.isFinite(fromTs)) return m.summary || '';
+  const fmt = (ts) => {
+    const d = new Date(ts);
+    return `${d.getMonth()+1}月${d.getDate()}日`;
+  };
+  const range = fmt(fromTs) === fmt(toTs) ? `【${fmt(fromTs)}】` : `【${fmt(fromTs)}–${fmt(toTs)}】`;
+  return `${range} ${m.summary || ''}`;
+}
 
 // Anchor line for the "# 当前时间" segment. Mirrors surveillance.js's
 // nowLine format so cross-feature debugging shows consistent strings;
@@ -598,7 +619,11 @@ export async function buildMessageHistory(sessionId, maxRecent = 40) {
   // 「[引用「原文」]\n回复内容」。注意:不截断,user 明确说不要前 N 字
   // (如果引用太长以后再加 truncate)。
   const ctx = makeRenderContext(all);
-  return collapseAdjacentSameRole(recent.map(m => toApiMessage(m, ctx)));
+  // 1a: 稀疏时间标记 — session.timeAwareness === 'off' 时不插任何 gap 标记
+  // (架空场景用,真实间隔在 in-world 无意义)。默认 on。
+  const session = await db.get('chatSessions', sessionId);
+  const enableGaps = session?.timeAwareness !== 'off';
+  return collapseAdjacentSameRole(recent.map(m => toApiMessage(m, ctx)), { enableGaps });
 }
 
 // Build a render-context with resolveQuote so renderActionsAsText can inline
@@ -625,11 +650,19 @@ function makeRenderContext(allMessages) {
 // blank line. Only safe for plain string content — tool_calls / tool-role
 // messages have structure that can't be flattened, so we leave them alone.
 //
-// Time-aware: when two same-role messages span a noticeable gap (>5min),
-// insert a「[过了 N 分钟/小时/天]」marker between them so the model can see
-// the user didn't say both things in one breath. Without this, the
-// "morning vent + evening apology" arc collapses into one indistinct lump.
-function collapseAdjacentSameRole(msgs) {
+// Time-aware (1a): inject gap markers at two granularities.
+//  - Same-role gap > 5min: 「[过了 N]」 inside the merged content
+//  - Cross-role gap > 30min: prepend「[过了 N]\n\n」to the next message's
+//    content (can't be a separate row — would break OpenAI strict
+//    user/assistant alternation). 这一条是修 chat 报的 bug — 之前只在合
+//    并同 role 时插标记,正常 user→character→user 永远不触发,模型完全
+//    看不到"用户隔了一天才回"这种最关键的时间结构。
+// opts.enableGaps = false → 两种 gap 标记都不插(架空模式 / 用户关掉
+// 时间感知 toggle 时用)。
+function collapseAdjacentSameRole(msgs, opts = {}) {
+  const enableGaps = opts.enableGaps !== false;
+  const sameRoleGapMs  = 5  * 60 * 1000;
+  const crossRoleGapMs = 30 * 60 * 1000;
   const out = [];
   for (const m of msgs) {
     const last = out[out.length - 1];
@@ -641,14 +674,23 @@ function collapseAdjacentSameRole(msgs) {
         && !m.tool_calls
         && last.role !== 'tool'
         && m.role !== 'tool') {
+      // Same-role merge — 在 join 处插标记
       const gap = (m._ts ?? 0) - (last._lastTs ?? 0);
-      const sep = gap > 5 * 60 * 1000
+      const sep = (enableGaps && gap > sameRoleGapMs)
         ? `\n\n[过了 ${humanGap(gap)}]\n\n`
         : '\n\n';
       last.content = `${last.content}${sep}${m.content}`;
       last._lastTs = m._ts;
     } else {
-      out.push({ ...m, _lastTs: m._ts });
+      // Cross-role 或首条 — 在 m.content 前面 prepend 标记
+      let content = m.content;
+      if (enableGaps && last && typeof content === 'string') {
+        const gap = (m._ts ?? 0) - (last._lastTs ?? 0);
+        if (gap > crossRoleGapMs) {
+          content = `[过了 ${humanGap(gap)}]\n\n${content}`;
+        }
+      }
+      out.push({ ...m, content, _lastTs: m._ts });
     }
   }
   // Strip the internal _ts / _lastTs fields before handing to the API.
@@ -783,6 +825,11 @@ export async function maybeCompressMemory(sessionId) {
     summary: summary.trim(),
     fromMsgId: overflow[0].id,
     toMsgId: overflow[overflow.length - 1].id,
+    // 1a: 保留这段记忆覆盖的 wall-clock 时间范围。注入时拼成日期前缀
+    // 【M月D日–M月D日】(同一天就显示一次),模型有时间锚点对应每段记忆。
+    // 老 memory 没这俩字段 → buildSystemPromptParts 里 fallback 到 createdAt。
+    fromTs: overflow[0].createdAt,
+    toTs: overflow[overflow.length - 1].createdAt,
     createdAt: Date.now(),
   };
   // Stamp every overflow row with the archive metadata so the atomic
