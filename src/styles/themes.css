@@ -20,8 +20,12 @@ body[data-theme="notch"] .phone-frame {
 
 /* The notch — black pill that visually carves out of the top of the screen.
    No top gap, no separate frame; just a flat-topped pill clipped by the
-   frame's overflow:hidden + border-radius so it merges with the screen edge. */
-body[data-theme="notch"] .phone-frame::before {
+   frame's overflow:hidden + border-radius so it merges with the screen edge.
+   Bug 修复:之前用 ::before,但 base.css 已经把 .phone-frame::before 用做
+   non-home 路由的 backdrop(挡 wallpaper)。同选择器后写者赢 → backdrop
+   被 notch 覆盖,non-home 页 wallpaper 透出来。改用 ::after,base 的
+   backdrop ::before 保留,notch 在它之上层叠(z-index: 100)。 */
+body[data-theme="notch"] .phone-frame::after {
   content: "";
   position: absolute;
   top: 0;

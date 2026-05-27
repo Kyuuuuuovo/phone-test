@@ -97,7 +97,7 @@ export async function mountSettings(container, params, router) {
         <h3 class="settings-section-title">通知</h3>
         <div class="settings-list">
           <label class="settings-item toggle-row">
-            <span class="settings-label">AI 回复时弹系统通知
+            <span class="settings-label">AI 回复 / 行程到点 弹系统通知
               <div class="settings-sub">${esc(notifyHint)}</div>
             </span>
             <input type="checkbox" data-toggle="notifyOnReply"${notifyOnReply ? ' checked' : ''}${(!notifySupported || notifyPerm === 'denied') ? ' disabled' : ''}>

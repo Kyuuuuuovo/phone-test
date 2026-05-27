@@ -373,7 +373,14 @@ export async function mountTheme(container, params, router) {
         render();
         return;
       }
-      // Apply a preset
+      // Apply a preset.
+      // 之前会 render() 重建整个面板。问题:render() 重建 .preset-picker 的
+      // DOM,触屏 :hover 状态在新 DOM 上看起来落在错的 chip 上(用户报的
+      // "先 highlight 蓝灰衬线,再点一次正常"),而且 scroll position 被
+      // 重置。修法:不 re-render。applyDraft 写 :root CSS vars,mini-preview
+      // 和 phone-frame 都直接联动。color/font 等其他 tab 的 input 值要等到
+      // user 切到那个 tab 时下次 render 才更新 — 可接受,user 切 preset 后
+      // 一般继续在 preset tab 看效果,不会立刻切到 color tab。
       const wrap = e.target.closest('[data-preset-id]');
       if (!wrap) return;
       const p = allPresets().find(x => x.id === wrap.dataset.presetId);
@@ -381,7 +388,6 @@ export async function mountTheme(container, params, router) {
       draft = JSON.parse(JSON.stringify(p.theme));
       draft.effects = { ...p.theme.effects };
       applyDraft();
-      render();
       status(`已套用「${p.label}」(还没保存)`, 'success');
     });
   }

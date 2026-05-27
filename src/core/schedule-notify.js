@@ -47,13 +47,11 @@ export function stop() {
 }
 
 async function tick() {
-  // Don't bother computing when hidden — we'd just queue a banner the
-  // user can't see. The next visible tick will catch it (with up to a
-  // POLL_MS lag, which is acceptable for a "reminder" feature).
-  if (document.hidden) return;
-  // If a banner is already up, hold off — show one at a time so the
-  // user has a chance to deal with it before the next one piles on.
-  if (bannerEl) return;
+  // Always tick — even when hidden,我们可以走系统通知联动手机锁屏(只要 user
+  // 在设置开了「弹系统通知」且授权了 Notification.permission)。banner 只在
+  // tab 可见时弹(隐藏时弹 banner 没意义),OS notification 是 hidden 时的
+  // 路径。
+  if (bannerEl) return;  // 一次只弹一条 banner
   const settings = (await db.get('settings', 'default')) || {};
   const notified = new Set(settings.scheduleNotifiedIds || []);
   const all = await db.getAll('schedule');
@@ -71,7 +69,36 @@ async function tick() {
   await db.updateSettings(s => {
     s.scheduleNotifiedIds = [...notified].slice(-KEEP_IDS);
   });
-  showBanner(due);
+  if (document.hidden) {
+    // tab 不在前台 → 系统通知联动(锁屏弹出、桌面 toast 等)。前提:user
+    // 在设置打开过「弹系统通知」+ 浏览器授权。permission denied 时静默
+    // 跳过(用户已经明确说"不要")。
+    fireOsNotification(due, settings);
+  } else {
+    showBanner(due);
+  }
+}
+
+// 系统级 Notification — 跟 in-app banner 互补:可见时显 banner,隐藏时显
+// OS 通知。复用 settings.notifyOnReply 开关(那个开关本来就叫"AI 回复 +
+// 行程到点 时弹系统通知"覆盖两路)。失败静默 — 弹不出不影响 app 流程。
+function fireOsNotification(entry, settings) {
+  if (typeof Notification === 'undefined') return;
+  if (Notification.permission !== 'granted') return;
+  if (settings.notifyOnReply !== true) return;  // 共用 toggle
+  try {
+    const n = new Notification(entry.title || '行程到点', {
+      body: `${formatTime(entry.startTs)}${entry.desc ? ' · ' + entry.desc : ''}`,
+      tag: `sched-${entry.id}`,
+    });
+    n.onclick = () => {
+      try { window.focus(); } catch (_) {}
+      try { routerRef?.navigate('schedule'); } catch (_) {}
+      n.close();
+    };
+  } catch (e) {
+    console.warn('[schedule-notify] OS notification failed:', e);
+  }
 }
 
 function showBanner(entry) {
@@ -83,7 +110,12 @@ function showBanner(entry) {
   banner.className = 'schedule-banner';
   banner.innerHTML = `
     <div class="sb-inner">
-      <div class="sb-icon">⏰</div>
+      <div class="sb-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/>
+          <path d="M10 20a2 2 0 0 0 4 0"/>
+        </svg>
+      </div>
       <div class="sb-body">
         <div class="sb-title">${esc(entry.title || '行程到点')}</div>
         <div class="sb-meta">${esc(time)}${entry.desc ? ' · ' + esc(entry.desc) : ''}</div>
