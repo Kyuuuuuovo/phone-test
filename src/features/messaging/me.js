@@ -22,6 +22,8 @@ export async function mountMe(container, params, router) {
   // session.personaId 找对应 persona 的状态。
   const statusText = persona?.statusText || '';
   const statusAgo = persona?.statusSetAt ? formatRelTime(persona.statusSetAt) : '';
+  const signature = persona?.signature || '';
+  const personaContent = persona?.persona || '';
 
   container.innerHTML = `
     <div class="me-body">
@@ -32,15 +34,26 @@ export async function mountMe(container, params, router) {
         </div>
         <div class="me-profile-text">
           <div class="me-name">${esc(persona?.name || '未设置人设')}</div>
-          <div class="me-sub">${esc((persona?.persona || '').slice(0, 40)) || '点「当前人设」选一个'}</div>
+          <button class="me-signature${signature ? '' : ' empty'}${persona ? '' : ' disabled'}" type="button" aria-label="${persona ? '编辑签名' : '先选一个人设'}">
+            ${signature ? esc(signature) : (persona ? '点这里写个签名' : '点「当前人设」选一个')}
+          </button>
         </div>
       </div>
 
       <button class="me-status-card${persona ? '' : ' disabled'}" type="button" aria-label="${persona ? '编辑状态' : '先选一个人设'}">
         <span class="me-status-label">状态</span>
-        <span class="me-status-text${statusText ? '' : ' empty'}">${statusText ? esc(statusText) : (persona ? '点这里写一句状态' : '先选个人设')}</span>
-        ${statusAgo ? `<span class="me-status-ago">${esc(statusAgo)}</span>` : ''}
+        <span class="me-status-line">
+          <span class="me-status-text${statusText ? '' : ' empty'}">${statusText ? esc(statusText) : (persona ? '点这里写一句状态' : '先选个人设')}</span>
+          ${statusAgo ? `<span class="me-status-ago">${esc(statusAgo)}</span>` : ''}
+        </span>
       </button>
+
+      ${personaContent ? `
+        <details class="me-persona-card">
+          <summary><span class="me-persona-card-label">我的设定</span><span class="me-persona-card-hint">展开 / 收起</span></summary>
+          <div class="me-persona-card-body">${esc(personaContent)}</div>
+        </details>
+      ` : ''}
 
       <div class="settings-list me-list">
         <button class="settings-item" data-target="wallet">
@@ -142,10 +155,42 @@ export async function mountMe(container, params, router) {
       editStatus();
       return;
     }
+    if (e.target.closest('.me-signature')) {
+      editSignature();
+      return;
+    }
     const item = e.target.closest('[data-target]');
     if (!item) return;
     router.navigate(item.dataset.target);
   };
+
+  // 签名编辑 — 跟 status 同一套交互模式,改的是 persona.signature。短句(40 字
+  // 上限),空字符串 = 清空签名。
+  async function editSignature() {
+    if (!persona) {
+      await openAlert(container, {
+        title: '先选个人设',
+        message: '当前没有 active persona — 点「当前人设」选一个,再回来设置签名。',
+      });
+      return;
+    }
+    const result = await openModal(container, {
+      title: '编辑签名',
+      fields: [
+        { name: 'text', label: '签名(40 字内 · 留空 = 清空)', kind: 'text', defaultValue: persona.signature || '', placeholder: '一句话标签 · 比如「在写代码 / 周末爬山」' },
+      ],
+      submitLabel: '保存',
+    });
+    if (!result) return;
+    const text = String(result.text || '').trim().slice(0, 40);
+    const fresh = await db.get('personas', persona.id);
+    if (!fresh) return;
+    if (text) fresh.signature = text;
+    else      delete fresh.signature;
+    fresh.updatedAt = Date.now();
+    await db.set('personas', fresh);
+    await mountMe(container, params, router);
+  }
   container.addEventListener('click', onClick);
   return () => container.removeEventListener('click', onClick);
 }

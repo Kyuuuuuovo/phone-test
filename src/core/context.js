@@ -6,6 +6,12 @@ import { HUMANIZER_PROMPT } from './humanizer.js';
 import { BEHAVIOR_GUIDANCE } from './behavior.js';
 import * as embedding from './embedding.js';
 import * as timeline from './timeline.js';
+import { parseTolerantJSON } from './util.js';
+
+// 向量打标 6 类固定 enum — 转折 / 亲密 / 冲突 / 发现 / 约定 / 日常。每条 L1
+// memory 生成时随 summary 同步打标(单次 AI 调用,不双倍 token)。enum 内
+// 模型容易选,UI 上 chip 颜色固定。Phase 4 加 boost 时用 tag 加权 cosine。
+const MEMORY_TAGS = ['转折', '亲密', '冲突', '发现', '约定', '日常'];
 
 // Output format constraints — split into two segments so they sit at different
 // positions in the prompt: count + JSON-only rule first (before per-turn data),
@@ -999,7 +1005,22 @@ function renderActionsAsText(actions, ctx) {
 // memoryPromptOverride is appended below this so the user can tweak the
 // *style* of the summary (e.g. "以日记体" / "用第三人称冷淡口吻") without
 // having to re-specify the structural rules.
-const DEFAULT_MEMORY_SYS = '你是对话压缩助手。把下面这段对话压成不超过 300 字的中文摘要,只保留关键信息(谁说了什么、做了什么、关系/情绪变化、约定、提到的人物或地点)。摘要不分段、不列表、不加任何前缀或解释,只输出摘要文本本身。';
+// V1:纯文本 summary。V2:bundle 进 JSON {summary, tag},tag 用于检索 boost。
+// 切回 V1 的话:把 MEMORY_OUTPUT_RULES 留空 + 解析逻辑 fallback 到 plain text。
+const DEFAULT_MEMORY_SYS = '你是对话压缩助手。把下面这段对话压成不超过 300 字的中文摘要,只保留关键信息(谁说了什么、做了什么、关系/情绪变化、约定、提到的人物或地点)。';
+const MEMORY_OUTPUT_RULES = `
+**输出格式严格 JSON**(不加 markdown 包裹、不加前后缀文字):
+{ "summary": "...摘要文本...", "tag": "<6 类之一>" }
+
+tag 从下列 6 类挑 1 个:
+- 转折 — 关系的关键节点(初见 / 表白 / 误会冰释 / 分别 等)
+- 亲密 — 温柔、深入、暖的时刻
+- 冲突 — 摩擦、争吵、紧张
+- 发现 — 知道对方 / 自己的新事实
+- 约定 — 计划 / 承诺
+- 日常 — 闲聊、未归类(兜底)
+
+拿不准就选「日常」。`;
 
 // Compress oldest overflow messages into a memory summary, then delete them.
 // Returns the new memory id, or null if nothing to compress.
@@ -1052,22 +1073,39 @@ export async function maybeCompressMemory(sessionId) {
 
   const session = await db.get('chatSessions', sessionId);
   const override = (session?.memoryPromptOverride || '').trim();
-  const sys = override
-    ? `${DEFAULT_MEMORY_SYS}\n\n# 风格补充\n${override}`
-    : DEFAULT_MEMORY_SYS;
+  // 拼三段:压缩规则 + 输出格式(JSON + 6 类 tag) + 风格补充(session-level)
+  const sys = [
+    DEFAULT_MEMORY_SYS,
+    MEMORY_OUTPUT_RULES,
+    override ? `\n# 风格补充(适用于 summary 字段的语气)\n${override}` : '',
+  ].filter(Boolean).join('\n');
 
-  const summary = await ai.callAI({
+  const raw = await ai.callAI({
     systemPrompt: sys,
     messages: [{ role: 'user', content: dump }],
     temperature: 0.3,
   });
+
+  // 容错解析:JSON 失败 → 把 raw 当 summary 用,tag 留空(后续 memory-app 的
+  // 启发式 fallback 处理 / 用户可手动补)。
+  let summary = '', tag = '';
+  const parsed = parseTolerantJSON(raw, { expect: 'object' });
+  if (parsed && typeof parsed.summary === 'string' && parsed.summary.trim()) {
+    summary = parsed.summary.trim();
+    if (typeof parsed.tag === 'string' && MEMORY_TAGS.includes(parsed.tag.trim())) {
+      tag = parsed.tag.trim();
+    }
+  } else {
+    summary = String(raw || '').trim();
+  }
 
   const memId = db.newId();
   const newMem = {
     id: memId,
     sessionId,
     tier: 1,
-    summary: summary.trim(),
+    summary,
+    ...(tag ? { tag } : {}),
     fromMsgId: overflow[0].id,
     toMsgId: overflow[overflow.length - 1].id,
     // 1a: 保留这段记忆覆盖的 wall-clock 时间范围。注入时拼成日期前缀

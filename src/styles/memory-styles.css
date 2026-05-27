@@ -229,7 +229,9 @@ body[data-mono="1"] .memory-app-page .mem-chips {
 }
 .memory-app-page .mem-vh-input {
   flex: 1;
-  font-size: 13px;
+  /* 16px 是 iOS Safari 不触发 focus auto-zoom 的最小尺寸,小于这个就强行
+     放大整个视口。其他平台无影响。 */
+  font-size: 16px;
   padding: 4px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;

@@ -347,9 +347,11 @@ async function setupPet(router) {
     if (wasLongPress) return;  // chat already navigated
     // 短点行为:聊天页打开「记忆助手」面板;其他页弹 ambient 气泡。
     // 「记忆助手」让 user 在聊天时不用切到其他 app 就能速览本会话记忆 +
-    // 常用词 / 指令(点击复制到剪贴板)。
+    // 常用词 / 指令(点击复制到剪贴板)。再点桌宠 = 关闭面板(toggle)。
     const cur = router.current();
     if (cur?.id === 'chat' && cur.params?.sessionId) {
+      const existing = document.querySelector('.memory-helper-backdrop');
+      if (existing) { existing.remove(); return; }
       await openMemoryHelperPanel(cur.params.sessionId);
       return;
     }

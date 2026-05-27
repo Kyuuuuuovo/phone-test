@@ -52,6 +52,10 @@ export async function mountMemoryApp(container, params, router) {
   let vectorQuery = '';
   let vectorHits = null;     // null = 未搜过;[] = 搜过没结果;[...] = 有命中
   let vectorBusy = false;
+  // 向量打标 backfill 状态。老 memory 没 tag 字段,新生成的(context MVP)有。
+  // user 点按钮 → 串行扫所有缺 tag 的 memory,逐条 AI 分类,写回 m.tag。
+  let backfillBusy = false;
+  let backfillStatus = { text: '', cls: '' };
 
   async function render() {
     const chars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
@@ -166,8 +170,13 @@ export async function mountMemoryApp(container, params, router) {
     `;
   }
 
-  // 启发式 tag 分类 — 在向量打标 Phase 4 数据落地前的占位方案。命中关键词
-  // 优先级:转折 > 亲密 / 冲突(情感互斥)> 发现 > 约定 > 日常(兜底)。
+  // tag 优先 saved(向量打标 MVP — context.maybeCompressMemory 现在生成时
+  // 顺带打 tag),没保存的(老 memory + 解析失败的)走启发式 fallback。
+  // 启发式优先级:转折 > 冲突 > 亲密 > 发现 > 约定 > 日常(兜底)。
+  function tagOf(m) {
+    if (typeof m?.tag === 'string' && m.tag.trim()) return m.tag.trim();
+    return heuristicTag(m?.summary);
+  }
   function heuristicTag(text) {
     const t = String(text || '');
     if (/第一次|表白|分手|和好|决定|改变|转变/.test(t))                       return '转折';
@@ -600,13 +609,23 @@ export async function mountMemoryApp(container, params, router) {
                 body: h.memory.summary,
                 tier: h.memory.tier,
                 timeRange: timeRangeOf(h.memory, msgIdx),
-                tag: heuristicTag(h.memory.summary),
+                tag: tagOf(h.memory),
                 score: h.score,
                 cardClass: 'vh-row',
               });
             }).join('')}
           </div>
         `}
+      </div>
+    ` : '';
+
+    // 补齐缺失 tag 按钮 — 只在有 memory 但部分没 tag 时显示。把 saved tag
+    // 缺的逐条 AI 分类。
+    const untaggedCount = allMems.filter(m => !m.tag).length;
+    const backfillBlock = untaggedCount > 0 ? `
+      <div class="ma-tl-head">
+        <button class="ma-tag-backfill btn" type="button"${backfillBusy ? ' disabled' : ''}>${backfillBusy ? '打标中…' : `补齐 ${untaggedCount} 条缺失的 tag`}</button>
+        <span class="ma-tl-status${backfillStatus.cls || ''}">${esc(backfillStatus.text || '')}</span>
       </div>
     ` : '';
 
@@ -622,7 +641,7 @@ export async function mountMemoryApp(container, params, router) {
     const groups = [...bySession.entries()]
       .map(([sid, mems]) => ({ sid, mems, latest: mems[0]?.createdAt || 0 }))
       .sort((a, b) => b.latest - a.latest);
-    return vectorBlock + `
+    return vectorBlock + backfillBlock + `
       <div class="ma-list">
         ${groups.map(g => {
           const s = sessions.find(x => x.id === g.sid);
@@ -635,7 +654,7 @@ export async function mountMemoryApp(container, params, router) {
                 body: m.summary,
                 tier: m.tier,
                 timeRange: timeRangeOf(m, msgIdx),
-                tag: heuristicTag(m.summary),
+                tag: tagOf(m),
               })).join('')}
             </details>
           `;
@@ -681,6 +700,52 @@ export async function mountMemoryApp(container, params, router) {
     } finally {
       vectorBusy = false;
       await render();
+    }
+  }
+
+  // 向量打标 backfill — 扫 memories 里 m.tag 为空的(老 memory + 当时解析
+  // 失败的),串行调 AI 分类。每次最多 30 条,避免一次性烧 token / 撞限速。
+  // Prompt 极简,只让模型从 6 类挑 1 个,不二次复述 summary。
+  async function runTagBackfill() {
+    if (backfillBusy) return;
+    backfillBusy = true;
+    backfillStatus = { text: '扫描中…', cls: '' };
+    await render();
+    const ai = await import('../../core/ai.js');
+    const TAGS = ['转折', '亲密', '冲突', '发现', '约定', '日常'];
+    const sys = `分类下面这段记忆摘要,从 6 类挑 1 个最贴切的:转折(关系关键节点)/ 亲密(温柔深入暖)/ 冲突(摩擦紧张)/ 发现(新事实)/ 约定(计划承诺)/ 日常(闲聊兜底)。**只输出 tag 名**(2 字),不加引号、不加解释、不加标点。`;
+    let done = 0, errors = 0;
+    try {
+      const all = (await db.getAll('memories')).filter(m => !m.tag).slice(0, 30);
+      const total = all.length;
+      for (const m of all) {
+        try {
+          const raw = await ai.callAI({
+            systemPrompt: sys,
+            messages: [{ role: 'user', content: m.summary || '(空)' }],
+            temperature: 0.2,
+          });
+          const tag = String(raw || '').trim().slice(0, 4);  // 模型可能多吐字符,截 4 字内
+          if (TAGS.includes(tag)) {
+            const fresh = await db.get('memories', m.id);
+            if (fresh) { fresh.tag = tag; await db.set('memories', fresh); }
+            done++;
+          } else {
+            errors++;
+          }
+        } catch (e) {
+          console.warn('[memory-app] tag backfill failed for', m.id, e);
+          errors++;
+        }
+        const live = container.querySelector('.ma-tag-backfill + .ma-tl-status');
+        if (live) { live.textContent = `${done + errors} / ${total}`; }
+      }
+      backfillStatus = { text: `打标完成:成功 ${done}${errors ? ` · 失败 ${errors}` : ''}`, cls: errors ? ' error' : ' success' };
+    } catch (e) {
+      backfillStatus = { text: `失败:${String(e).slice(0, 200)}`, cls: ' error' };
+    } finally {
+      backfillBusy = false;
+      if (activeTab === 'summary') await render();
     }
   }
 
@@ -744,6 +809,7 @@ export async function mountMemoryApp(container, params, router) {
       });
     }
     container.querySelector('.mem-vh-search')?.addEventListener('click', () => runVectorSearch());
+    container.querySelector('.ma-tag-backfill')?.addEventListener('click', () => runTagBackfill());
 
     container.querySelector('.ma-nav-btn.prev')?.addEventListener('click', async () => {
       calendarCursor = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() - 1, 1);

@@ -22,29 +22,42 @@
        视觉:iOS 锁屏感 — 渐变"壁纸"背景,中央大字时间,下面日期。
        不用 spinner — 加载本来就秒级,spinner 反而显得卡。 -->
   <style>
+    /* Splash 现在是"phone-frame skeleton" — 外层灰色背板撑满视口,内层
+       phone-shaped 框跟 base.css 里 .phone-frame 同尺寸 + 圆角 + 壁纸。
+       boot 跑完真 phone-frame 出现,无缝过渡(同位置 / 同尺寸 / 同壁纸)。
+       桌面端不再 fullscreen 撑屏。 */
     .splash {
       position: fixed;
       inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #c7c7cc;  /* 跟 DEFAULT_THEME.outsideBg 对齐 */
+      z-index: 9999;
+    }
+    .splash-phone {
+      position: relative;
+      width: clamp(400px, calc((100vh - 24px) * 9 / 19.5), 480px);
+      height: calc(100vh - 24px);
+      max-height: calc(480px * 19.5 / 9);
+      border-radius: 36px;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       /* 默认背景:紫蓝粉渐变(没设过壁纸 / IDB 不可用时 fallback)。
-         splash inline JS 会异步读用户在设置里设的壁纸 → set background-image
-         盖掉这层渐变。background-size: cover 一并设好,即使后面只覆盖 image
-         也能正确撑满。 */
+         splash inline JS 会读 settings.wallpaper 盖掉这层。 */
       background: linear-gradient(155deg, #5b6dca 0%, #8062c9 55%, #c87fa6 100%);
       background-size: cover;
       background-position: center;
       color: #fff;
-      z-index: 9999;
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "PingFang SC", sans-serif;
       text-shadow: 0 2px 16px rgba(0, 0, 0, 0.35);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
     }
-    /* 半透明遮罩 — user 上传的壁纸可能是亮图,白字读起来弱。给上下都加
-       一点暗色 vignette,文字对比度更稳。fallback 渐变本来就深色,加这
-       层也不会显得发灰。 */
-    .splash::before {
+    /* 手机内的暗色 vignette,user 上传的浅色壁纸文字仍能读清 */
+    .splash-phone::before {
       content: '';
       position: absolute;
       inset: 0;
@@ -57,7 +70,7 @@
       z-index: 1;
     }
     .splash-clock {
-      font-size: clamp(56px, 13vw, 92px);
+      font-size: clamp(56px, 11vw, 84px);
       font-weight: 200;  /* iOS 锁屏是细字 */
       letter-spacing: -0.02em;
       line-height: 1;
@@ -70,13 +83,24 @@
       margin-top: 10px;
       letter-spacing: 0.04em;
     }
+    /* 极窄屏(真手机)— clamp 顶到 400 也太宽时退回 100% */
+    @media (max-width: 440px) {
+      .splash-phone {
+        width: 100vw;
+        height: 100vh;
+        max-height: none;
+        border-radius: 0;
+      }
+    }
   </style>
 </head>
 <body>
   <div id="app">
     <div class="splash" aria-label="正在启动">
-      <div class="splash-clock">--:--</div>
-      <div class="splash-date">&nbsp;</div>
+      <div class="splash-phone">
+        <div class="splash-clock">--:--</div>
+        <div class="splash-date">&nbsp;</div>
+      </div>
     </div>
   </div>
   <!-- splash inline 脚本 — 不依赖任何模块,立即跑:
@@ -110,9 +134,9 @@
             const get = tx.objectStore('settings').get('default');
             get.onsuccess = () => {
               const wp = get.result && get.result.wallpaper;
-              const splash = document.querySelector('.splash');
-              if (wp && splash) {
-                splash.style.backgroundImage = 'url("' + wp + '")';
+              const splashPhone = document.querySelector('.splash-phone');
+              if (wp && splashPhone) {
+                splashPhone.style.backgroundImage = 'url("' + wp + '")';
               }
               idb.close();
             };

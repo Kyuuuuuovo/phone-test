@@ -40,6 +40,10 @@ export async function mountPersonaDetail(container, params, router) {
             <input name="name" required value="${esc(persona.name)}">
           </label>
           <label>
+            <div class="label-text">个人签名(短句 · 「我」tab 显示在名字下方)</div>
+            <input name="signature" type="text" maxlength="40" value="${esc(persona.signature || '')}" placeholder="一句话标签 · 比如「在写代码 / 周末爬山」">
+          </label>
+          <label>
             <div class="label-text">人设描述(角色聊天时看到的「你是谁」)</div>
             <textarea name="persona" rows="10" placeholder="比如:我叫小白,大三程序员,作息黑白颠倒...">${esc(persona.persona)}</textarea>
           </label>
@@ -81,9 +85,10 @@ export async function mountPersonaDetail(container, params, router) {
     e.preventDefault();
     const fd = new FormData(form);
     Object.assign(persona, {
-      name:    String(fd.get('name')    || '').trim() || '(未命名)',
-      persona: String(fd.get('persona') || '').trim(),
-      avatar:  avatarData,
+      name:      String(fd.get('name')      || '').trim() || '(未命名)',
+      signature: String(fd.get('signature') || '').trim(),
+      persona:   String(fd.get('persona')   || '').trim(),
+      avatar:    avatarData,
       updatedAt: Date.now(),
     });
     await db.set('personas', persona);
