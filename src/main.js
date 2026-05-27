@@ -16,6 +16,7 @@ import { mountEmbeddingSettings } from './features/settings/embedding.js';
 import { mountDataBackup }  from './features/settings/data-backup.js';
 import { mountClearData }   from './features/settings/clear-data.js';
 import { mountAppIcons }    from './features/settings/app-icons.js';
+import { mountWidgetPresets } from './features/settings/widget-presets.js';
 import { mountChatList }    from './features/chat-list/chat-list.js';
 import { mountMessaging }   from './features/messaging/messaging.js';
 import { mountWallet }      from './features/wallet/wallet.js';
@@ -160,6 +161,7 @@ async function boot() {
   router.registerPage('settings-data',  mountDataBackup);
   router.registerPage('settings-clear', mountClearData);
   router.registerPage('settings-app-icons', mountAppIcons);
+  router.registerPage('settings-widget-presets', mountWidgetPresets);
   router.registerPage('chat-list',         mountChatList);
   router.registerPage('messaging',         mountMessaging);
   router.registerPage('wallet',            mountWallet);

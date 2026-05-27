@@ -42,6 +42,10 @@ export async function mountSettings(container, params, router) {
             <span class="settings-label">app 图标</span>
             <span class="settings-chevron">›</span>
           </button>
+          <button class="settings-item" data-target="settings-widget-presets">
+            <span class="settings-label">widget 风格</span>
+            <span class="settings-chevron">›</span>
+          </button>
           <button class="settings-item" data-target="settings-memory">
             <span class="settings-label">记忆总结</span>
             <span class="settings-chevron">›</span>

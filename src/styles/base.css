@@ -1940,6 +1940,49 @@ body[data-fx-glass="metal"] .widget.widget-music::after { display: none; }
   padding: 8px 16px 12px;
   line-height: 1.5;
 }
+
+/* widget 风格 preset 卡片网格 — 2 列,每张卡片:60x40 色样、名字、一句
+   hint。点击 = batch 应用到所有 widget。 */
+.widget-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  padding: 0 16px;
+}
+.widget-preset-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.1s, border-color 0.15s;
+}
+.widget-preset-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.widget-preset-card:active { transform: scale(0.98); }
+.widget-preset-swatch {
+  width: 100%;
+  height: 50px;
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.widget-preset-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.widget-preset-hint {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
 /* iOS-style "squircle" tile —— 圆角正方形,占 cell 大头(min(85% 宽, 1fr 高
    - label 空间)),label 在下方小字。aspect-ratio: 1 让 tile 始终正方形,
    width clamp 防止 tile 在大/小 cell 里失控。border-radius: 22% 接近 iOS

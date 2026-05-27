@@ -29,6 +29,7 @@ export async function mountChatInfo(container, params, router) {
           ${renderAvatar(character)}
           <div class="chat-info-name">${esc(character?.name ?? '(未知角色)')}${isBlocked ? ' <span class="blocked-badge">已拉黑</span>' : ''}</div>
         </div>
+        <h3 class="settings-section-title">常用</h3>
         <div class="settings-list">
           <button class="settings-item" data-action="pin">
             <span class="settings-label">${session.isPinned ? '取消置顶' : '置顶聊天'}</span>
@@ -42,32 +43,40 @@ export async function mountChatInfo(container, params, router) {
             <span class="settings-label">显示头像</span>
             <input type="checkbox" data-toggle="showAvatars"${session.showAvatars !== false ? ' checked' : ''}>
           </label>
-          <button class="settings-item" data-action="worldMode">
-            <span class="settings-label">世界模式 · ${
-              (session.worldMode ?? character?.worldMode) === 'fictional' ? '架空' : '现实'
-            }</span>
-            <span class="settings-chevron">›</span>
-          </button>
           <label class="settings-item toggle-row">
             <span class="settings-label">时间感知</span>
             <input type="checkbox" data-toggle="timeAwareness"${session.timeAwareness !== 'off' ? ' checked' : ''}>
           </label>
-          <button class="settings-item" data-action="settings">
-            <span class="settings-label">会话设置</span>
-            <span class="settings-chevron">›</span>
-          </button>
           <button class="settings-item" data-action="beautify">
             <span class="settings-label">聊天美化</span>
-            <span class="settings-chevron">›</span>
-          </button>
-          <button class="settings-item" data-action="memory">
-            <span class="settings-label">记忆总结</span>
             <span class="settings-chevron">›</span>
           </button>
           <button class="settings-item" data-action="character">
             <span class="settings-label">编辑角色资料</span>
             <span class="settings-chevron">›</span>
           </button>
+        </div>
+
+        <h3 class="settings-section-title">扩展</h3>
+        <div class="settings-list">
+          <button class="settings-item" data-action="worldMode">
+            <span class="settings-label">世界模式 · ${
+              (session.worldMode ?? character?.worldMode) === 'fictional' ? '架空' : '现实'
+            }</span>
+            <span class="settings-chevron">›</span>
+          </button>
+          <button class="settings-item" data-action="settings">
+            <span class="settings-label">会话设置</span>
+            <span class="settings-chevron">›</span>
+          </button>
+          <button class="settings-item" data-action="memory">
+            <span class="settings-label">记忆总结</span>
+            <span class="settings-chevron">›</span>
+          </button>
+        </div>
+
+        <h3 class="settings-section-title">数据</h3>
+        <div class="settings-list">
           <button class="settings-item" data-action="export">
             <span class="settings-label">导出聊天数据</span>
             <span class="settings-chevron">›</span>
@@ -76,6 +85,10 @@ export async function mountChatInfo(container, params, router) {
             <span class="settings-label">导入聊天数据</span>
             <span class="settings-chevron">›</span>
           </button>
+        </div>
+
+        <h3 class="settings-section-title">危险</h3>
+        <div class="settings-list">
           <button class="settings-item danger" data-action="clear">
             <span class="settings-label">清空聊天记录</span>
             <span class="settings-chevron">›</span>
