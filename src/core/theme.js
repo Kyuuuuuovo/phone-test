@@ -498,6 +498,23 @@ export function applyTheme(theme) {
   body.dataset.fxTransparent = (t.effects.transparency || 0) > 0 ? 'on' : 'off';
   // Keep the old "theme" attribute around for any legacy CSS rules.
   body.dataset.theme = t.notch ? 'notch' : 'default';
+  // 单色主题检测 — accent RGB 三通道差 < 24 时算"灰系",CSS 可用
+  // `body[data-mono="1"]` 关掉 / 灰化那些硬编码鲜艳颜色(tag chip / planner
+  // 纸胶带 等),避免在 黑白灰 / 素白 这种主题上违和。
+  if (isMonochromeColor(t.accent)) {
+    body.dataset.mono = '1';
+  } else {
+    delete body.dataset.mono;
+  }
+}
+
+function isMonochromeColor(hex) {
+  const m = String(hex || '').match(/^#([0-9a-f]{6})$/i);
+  if (!m) return false;
+  const r = parseInt(m[1].slice(0, 2), 16);
+  const g = parseInt(m[1].slice(2, 4), 16);
+  const b = parseInt(m[1].slice(4, 6), 16);
+  return (Math.max(r, g, b) - Math.min(r, g, b)) < 24;
 }
 
 function resolveFontStack(t) {

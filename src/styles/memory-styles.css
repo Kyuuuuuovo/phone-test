@@ -108,6 +108,12 @@
 .memory-app-page .mem-tag-发现 { background: rgba(110, 150, 200, 0.18); color: #4a78a8; }
 .memory-app-page .mem-tag-约定 { background: rgba(140, 180, 120, 0.18); color: #5e8a47; }
 .memory-app-page .mem-tag-日常 { background: rgba(150, 150, 150, 0.18); color: #6b6b6b; }
+/* 单色主题(黑白灰 / 素白 等 accent 是灰系)下,tag 的语义色 / planner 纸
+   胶带的奶油色 / 其他硬编码彩色都违和。整个 .mem-chips 灰化覆盖所有内部
+   chip(tier / timerange / tag / score)。 */
+body[data-mono="1"] .memory-app-page .mem-chips {
+  filter: grayscale(1);
+}
 .memory-app-page .mem-score {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   color: color-mix(in srgb, var(--accent) 90%, black);
@@ -249,6 +255,11 @@
    纸纹用 var(--fg) 透明度叠加,自动适应深浅主题(浅主题黑线 / 深主题白线)
    ═════════════════════════════════════════════════════════════════════ */
 body[data-mem-style="planner"] .memory-app-page.page {
+  background: var(--bg);
+}
+/* 横线纸 — 只在内容区(月历 / 列表 等)下方铺,header 跟 tab 切换条不要,
+   避免视觉太乱(user 反馈"标题这里太乱")。 */
+body[data-mem-style="planner"] .memory-app-page .ma-tab-body {
   background:
     repeating-linear-gradient(
       transparent 0,
@@ -256,7 +267,8 @@ body[data-mem-style="planner"] .memory-app-page.page {
       color-mix(in srgb, var(--fg) 14%, transparent) 27px,
       color-mix(in srgb, var(--fg) 14%, transparent) 28px
     ),
-    var(--bg);
+    transparent;
+  padding: 8px 4px;
 }
 body[data-mem-style="planner"] .memory-app-page .ma-tabs {
   border-bottom: 2px dashed color-mix(in srgb, var(--fg) 25%, transparent);
@@ -341,12 +353,15 @@ body[data-mem-style="planner"] .memory-app-page .ma-month-label {
 body[data-mem-style="cabinet"] .memory-app-page.page {
   background: var(--bg);
 }
+/* cabinet tabs:胶囊 pill 容器。block context 里 inline-flex + margin auto 不
+   能居中(margin auto 只对 block 元素生效)。改成 flex + width:fit-content
+   保证胶囊宽度只包内容、margin auto 让 block 居中。 */
 body[data-mem-style="cabinet"] .memory-app-page .ma-tabs {
   background: color-mix(in srgb, var(--fg) 6%, transparent);
   border-radius: 999px;
   padding: 3px;
-  display: inline-flex;
-  width: max-content;
+  display: flex;
+  width: fit-content;
   border: none;
   margin: 0 auto 12px;
 }
