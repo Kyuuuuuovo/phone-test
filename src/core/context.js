@@ -336,6 +336,17 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     kind: 'data',
     editRoute: 'schedule',
   });
+  // 8e. 用户画像 — per (角色×人设) 的画像。lookup 先精确匹配 charId|personaId
+  //  再 fallback charId|(共享行)。500 字以内,渲染 likes/dislikes/discoveries
+  //  三行(空段不出现)。手动编辑入口:记忆 app → 用户画像 tab。
+  const profileLines = await buildUserProfileLine(character.id, session.personaId);
+  parts.push({
+    key: 'user-profile',
+    title: '# 用户画像',
+    body: profileLines,
+    kind: 'data',
+    editRoute: 'memory',
+  });
   // 8c. 摄像头 — SKIPPED in fictional mode(架空里没有 IoT 摄像头这种现代设定,
   //     除非角色 persona 主动声明)。
   const cameraLines = isFictional ? '' : await buildCameraLines(character.id, persona?.name);
@@ -791,6 +802,29 @@ export async function buildCheckinLines() {
       : (t.targetFreq === 'daily') ? ' · 目标每天' : '';
     lines.push(`- ${t.name}:本月已打 ${monthCount}/${todayDay} 天${streakNote}${freqNote}`);
   }
+  return lines.join('\n');
+}
+
+// 用户画像 — per (角色×人设) 的"角色眼中的 ta"。
+// id = composite `${characterId}|${personaId}`,personaId 留空 = "所有人设共享"。
+// Lookup:先精确匹配 charId|sessionPersonaId,落空 fallback charId|;两者皆无
+// 返回 ''(prompt 注入空 → 不渲染该 part)。
+// 渲染格式(空段跳过):
+//   ta 喜欢:...
+//   ta 不喜欢:...
+//   你发现 ta:...
+// 整段尽量简洁,不要长篇大论 — UI 已限 500 字。
+export async function buildUserProfileLine(characterId, sessionPersonaId) {
+  if (!characterId) return '';
+  const exactId = `${characterId}|${sessionPersonaId || ''}`;
+  const sharedId = `${characterId}|`;
+  let row = await db.get('userProfiles', exactId);
+  if (!row && exactId !== sharedId) row = await db.get('userProfiles', sharedId);
+  if (!row) return '';
+  const lines = [];
+  if (row.likes && row.likes.trim())       lines.push(`ta 喜欢:${row.likes.trim()}`);
+  if (row.dislikes && row.dislikes.trim()) lines.push(`ta 不喜欢:${row.dislikes.trim()}`);
+  if (row.discoveries && row.discoveries.trim()) lines.push(`你发现 ta:${row.discoveries.trim()}`);
   return lines.join('\n');
 }
 

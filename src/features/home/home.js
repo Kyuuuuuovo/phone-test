@@ -2049,7 +2049,11 @@ function resolveTilesForPage(pageIdx, tileOrder) {
   }
   const remaining = basePage.filter(t => !used.has(t.id) && !usedAcrossAll.has(t.id));
   if (remaining.length > 0) {
-    let nextRow = out.length > 0 ? Math.max(...out.map(x => x.row)) + 1 : 0;
+    // page 0 默认从 row 5 起(跟 migration 同步,见 migrateUnifiedGridV1 注释)。
+    // 这样 PAGES 后续加新 app,首次 mount 也排在底部一行而非顶部。
+    let nextRow = out.length > 0
+      ? Math.max(...out.map(x => x.row)) + 1
+      : (pageIdx === 0 ? 5 : 0);
     let nextCol = 0;
     for (const t of remaining) {
       out.push({ ...t, row: nextRow, col: nextCol });
@@ -2091,13 +2095,18 @@ async function migrateUnifiedGridV1(settings, widgets) {
 
   // Resolve page-0 apps in their saved string order then assign coords below
   // the above-widgets.
+  //
+  // 默认布局:page 0 的 4 个 builder app(角色 / 世界书 / 人设 / 记忆)放底部
+  // 行(row 5,0-indexed,最后一行),上方 rows 0-4 留给 user 加 widget。
+  // 之前是紧贴 above-widget 之下(row=1 if favorites),那样底部留空看着浪费。
+  // page 1+ 仍从 row 0 开始(8 个 app 顺序占两行)。
   const newTileOrder = [];
   for (let p = 0; p < PAGES.length; p++) {
     const legacyEntries = settings?.tileOrder?.[p];
     const ids = Array.isArray(legacyEntries)
       ? legacyEntries.map(e => (typeof e === 'string' ? e : e?.id)).filter(Boolean)
       : PAGES[p].map(t => t.id);
-    const startRow = p === 0 ? row : 0;
+    const startRow = p === 0 ? Math.max(5, row) : 0;
     const page = [];
     let nextRow = startRow;
     let nextCol = 0;

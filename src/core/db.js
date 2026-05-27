@@ -2,7 +2,7 @@
 // Data model frozen in STORES below — bump DB_VERSION when changing schema.
 
 export const DB_NAME = 'phone-app';
-export const DB_VERSION = 11;
+export const DB_VERSION = 12;
 
 // Object store definitions. Applied during onupgradeneeded.
 // keyPath = primary key field; indexes = secondary lookup paths.
@@ -179,6 +179,17 @@ export const STORES = {
     indexes: [
       { name: 'typeId', keyPath: 'typeId' },
       { name: 'dayKey', keyPath: 'dayKey' },
+    ],
+  },
+  // 用户画像 — per (角色×人设) 的画像总结。id = composite `${charId}|${personaId}`
+  // (personaId 为空 = "所有人设共享")。Lookup:context.buildUserProfileLine 先
+  // 精确匹配 charId|sessionPersonaId,落空 fallback charId|(共享)。
+  // 字段:characterId / personaId / likes / dislikes / discoveries(三段 textarea
+  // 文本,3 段加起来 ≤500 字让 prompt 注入不爆)/ createdAt / updatedAt。
+  userProfiles: {
+    keyPath: 'id',
+    indexes: [
+      { name: 'characterId', keyPath: 'characterId' },
     ],
   },
 };

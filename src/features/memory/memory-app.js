@@ -84,6 +84,7 @@ export async function mountMemoryApp(container, params, router) {
             <button class="ma-tab${activeTab === 'calendar'   ? ' active' : ''}" data-tab="calendar">月历</button>
             <button class="ma-tab${activeTab === 'timeline'   ? ' active' : ''}" data-tab="timeline">时间线</button>
             <button class="ma-tab${activeTab === 'milestones' ? ' active' : ''}" data-tab="milestones">纪念日</button>
+            <button class="ma-tab${activeTab === 'profile'    ? ' active' : ''}" data-tab="profile">用户画像</button>
             <button class="ma-tab${activeTab === 'summary'    ? ' active' : ''}" data-tab="summary">总结</button>
           </div>
           ${showFilter ? renderCharFilter(chars) : ''}
@@ -91,6 +92,7 @@ export async function mountMemoryApp(container, params, router) {
             ${activeTab === 'calendar'   ? await renderCalendar()
             : activeTab === 'timeline'   ? await renderTimeline()
             : activeTab === 'milestones' ? await renderMilestones()
+            : activeTab === 'profile'    ? await renderProfiles()
             :                              await renderSummary()}
           </div>
         </div>
@@ -425,6 +427,137 @@ export async function mountMemoryApp(container, params, router) {
     `;
   }
 
+  // ── User profile tab ────────────────────────────────────────────────
+  // 每条 profile = 一对 (角色×人设) 的"在你眼里 ta 是什么人"。三段:喜欢 /
+  // 不喜欢 / 你发现。注入到「# 用户画像」prompt section,context 端 lookup 先
+  // 精确匹配后 fallback 共享行。受角色 filter 限定。
+  async function renderProfiles() {
+    let all = await db.getAll('userProfiles');
+    const chars    = await db.getAll('characters');
+    const personas = await db.getAll('personas');
+    if (filterCharId) {
+      all = all.filter(p => p.characterId === filterCharId);
+    }
+    all.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+    const charLabel    = (cid) => cid ? (chars.find(c => c.id === cid)?.name || '(未知角色)') : '';
+    const personaLabel = (pid) => pid ? (personas.find(p => p.id === pid)?.name || '(未知人设)') : '所有人设共享';
+    return `
+      <div class="ma-ms-head">
+        <button class="ma-profile-new btn" type="button">+ 新建画像</button>
+      </div>
+      ${all.length === 0 ? `
+        <p class="hint">还没有用户画像。新建后,聊天 system prompt 会注入「# 用户画像」段,让 ta 知道你的喜好。每条 500 字以内,空段不渲染。</p>
+      ` : `
+        <div class="ma-list">
+          ${all.map(p => {
+            const meta = [charLabel(p.characterId), personaLabel(p.personaId)];
+            const previewBits = [];
+            if (p.likes)       previewBits.push(`喜欢:${p.likes.split('\n')[0].slice(0, 30)}`);
+            if (p.dislikes)    previewBits.push(`不喜欢:${p.dislikes.split('\n')[0].slice(0, 30)}`);
+            if (p.discoveries) previewBits.push(`发现:${p.discoveries.split('\n')[0].slice(0, 30)}`);
+            const body = previewBits.length > 0 ? previewBits.join(' · ') : '(空 — 点击编辑)';
+            const extras = `<button class="ma-row-del" type="button" title="删除">×</button>`;
+            return buildMemCard({
+              meta,
+              body,
+              cardClass: 'profile-row',
+              dataAttrs: `data-profile-id="${esc(p.id)}"`,
+              extras,
+            });
+          }).join('')}
+        </div>
+      `}
+    `;
+  }
+
+  // 用户画像编辑器 — 新建或编辑。三段 textarea + 角色 picker + 人设 picker。
+  // 总字数提示但不强卡,模型 prompt 端 ≤500 字时效果最好(超了仍可保存)。
+  async function openProfileEditor(id, defaults = {}) {
+    const chars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
+    const personas = await db.getAll('personas');
+    const existing = id ? await db.get('userProfiles', id) : null;
+    const p = existing || {
+      characterId: defaults.characterId || filterCharId || chars[0]?.id || '',
+      personaId: '',
+      likes: '', dislikes: '', discoveries: '',
+    };
+    const modal = document.createElement('div');
+    modal.className = 'modal-backdrop';
+    modal.innerHTML = `
+      <div class="modal">
+        <div class="modal-header">${existing ? '编辑画像' : '新建画像'}</div>
+        <form class="profile-form" autocomplete="off">
+          <label>
+            <div class="label-text">角色</div>
+            <select name="characterId" ${existing ? 'disabled' : ''} required>
+              ${chars.map(c => `<option value="${esc(c.id)}"${c.id === p.characterId ? ' selected' : ''}>${esc(c.name || '(未命名)')}</option>`).join('')}
+            </select>
+          </label>
+          <label>
+            <div class="label-text">人设(留空 = 所有人设共享)</div>
+            <select name="personaId" ${existing ? 'disabled' : ''}>
+              <option value=""${!p.personaId ? ' selected' : ''}>所有人设共享</option>
+              ${personas.map(pp => `<option value="${esc(pp.id)}"${pp.id === p.personaId ? ' selected' : ''}>${esc(pp.name || '(未命名)')}</option>`).join('')}
+            </select>
+          </label>
+          <label>
+            <div class="label-text">ta 喜欢的</div>
+            <textarea name="likes" rows="3" placeholder="比如:咖啡、周末爬山、推理小说">${esc(p.likes)}</textarea>
+          </label>
+          <label>
+            <div class="label-text">ta 不喜欢的</div>
+            <textarea name="dislikes" rows="3" placeholder="比如:迟到、油腻食物">${esc(p.dislikes)}</textarea>
+          </label>
+          <label>
+            <div class="label-text">你发现的事</div>
+            <textarea name="discoveries" rows="4" placeholder="ta 是程序员,养了只猫叫毛毛,最近备战马拉松…">${esc(p.discoveries)}</textarea>
+          </label>
+          <p class="hint">三段加起来建议 ≤500 字。注入到 prompt 时空段会自动跳过。${existing ? '<br>id 锁定(角色 + 人设不能改),想换组合请新建。' : ''}</p>
+          <div class="modal-actions">
+            <button type="button" class="btn secondary cancel-btn">取消</button>
+            <button type="submit" class="btn">${existing ? '保存' : '创建'}</button>
+          </div>
+        </form>
+      </div>
+    `;
+    container.appendChild(modal);
+    modal.querySelector('.cancel-btn').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    modal.querySelector('form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const fd = new FormData(modal.querySelector('form'));
+      // 锁定字段在 disabled 状态下不进 FormData — 从 existing 拿
+      const characterId = existing ? existing.characterId : String(fd.get('characterId') || '');
+      const personaId   = existing ? existing.personaId   : String(fd.get('personaId') || '');
+      if (!characterId) { modal.querySelector('select[name="characterId"]').focus(); return; }
+      const compositeId = `${characterId}|${personaId}`;
+      // 不允许同一 (char, persona) 创建两条 — 提示用户去编辑现有
+      if (!existing) {
+        const dup = await db.get('userProfiles', compositeId);
+        if (dup) {
+          const status = document.createElement('div');
+          status.className = 'form-status error';
+          status.textContent = '这个组合已有画像了,关闭后从列表里编辑。';
+          modal.querySelector('form').appendChild(status);
+          return;
+        }
+      }
+      const next = {
+        id: compositeId,
+        characterId,
+        personaId,
+        likes:       String(fd.get('likes')       || '').trim(),
+        dislikes:    String(fd.get('dislikes')    || '').trim(),
+        discoveries: String(fd.get('discoveries') || '').trim(),
+        createdAt: existing?.createdAt || Date.now(),
+        updatedAt: Date.now(),
+      };
+      await db.set('userProfiles', next);
+      modal.remove();
+      await render();
+    });
+  }
+
   // ── Summary tab (cross-session memories) ────────────────────────────
   // 多了 3 件事(per critique):
   //   1. 顶部 .mem-vector-hits 区(配了 embedding 才显)— 输入框 + 跨会话召回
@@ -633,16 +766,34 @@ export async function mountMemoryApp(container, params, router) {
         openMilestoneEditor(r.dataset.msId);
       });
     });
+    container.querySelector('.ma-profile-new')?.addEventListener('click', () => openProfileEditor(null));
+    container.querySelectorAll('.profile-row').forEach(r => {
+      r.addEventListener('click', (e) => {
+        if (e.target.closest('.ma-row-del')) return;
+        openProfileEditor(r.dataset.profileId);
+      });
+    });
+    // ma-row-del 通用 — 根据父 row 的 data 属性判断属于哪种数据,删对应 store
     container.querySelectorAll('.ma-row-del').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const row = btn.closest('[data-ms-id]');
-        if (!await openConfirm(container, {
-          title: '删除纪念日', message: '确定删除这条纪念日?',
-          confirmLabel: '删除', danger: true,
-        })) return;
-        await db.del('milestones', row.dataset.msId);
-        await render();
+        const msRow = btn.closest('[data-ms-id]');
+        const profileRow = btn.closest('[data-profile-id]');
+        if (msRow) {
+          if (!await openConfirm(container, {
+            title: '删除纪念日', message: '确定删除这条纪念日?',
+            confirmLabel: '删除', danger: true,
+          })) return;
+          await db.del('milestones', msRow.dataset.msId);
+          await render();
+        } else if (profileRow) {
+          if (!await openConfirm(container, {
+            title: '删除画像', message: '确定删除这条用户画像?这会让聊天 prompt 不再注入对应 (角色×人设) 的画像段。',
+            confirmLabel: '删除', danger: true,
+          })) return;
+          await db.del('userProfiles', profileRow.dataset.profileId);
+          await render();
+        }
       });
     });
   }
