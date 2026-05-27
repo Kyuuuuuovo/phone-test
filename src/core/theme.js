@@ -6,14 +6,33 @@
 // Legacy: settings.theme was a string ('default' / 'notch'). normalizeTheme()
 // upgrades it to the object shape on read; the editor writes objects back.
 
+// 字体库。每条带可选 importUrl(Google Fonts CSS2 endpoint),applyTheme 会
+// 自动 reconcile <link> 元素,user 选到这条字体就懒加载,不选不下载。
+// 系统已有的字体(serif / rounded / kaiti)不需要 importUrl。custom 用户自填。
 export const FONT_OPTIONS = [
   { id: 'system',  label: '系统默认',  stack: `-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif` },
   { id: 'serif',   label: '宋体 / 衬线', stack: `"Songti SC", "SimSun", "Noto Serif SC", Georgia, serif` },
-  { id: 'crimson', label: 'Crimson Pro × 思源宋体', stack: `"Crimson Pro", "Noto Serif SC", "Songti SC", Georgia, serif` },
+  { id: 'crimson', label: 'Crimson × 思源宋体', stack: `"Crimson Pro", "Noto Serif SC", "Songti SC", Georgia, serif`,
+    importUrl: 'https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;1,400;1,600&family=Noto+Serif+SC:wght@400;600&display=swap' },
   { id: 'rounded', label: '圆体',       stack: `"Hiragino Sans GB", "PingFang SC", "Microsoft YaHei", "Source Han Sans CN", system-ui, sans-serif` },
   { id: 'kaiti',   label: '楷体',       stack: `"Kaiti SC", "STKaiti", "KaiTi", serif` },
-  { id: 'mono',    label: '等宽',       stack: `"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace` },
-  { id: 'custom',  label: '自定义',     stack: null },  // uses theme.customFontFamily + theme.customFontImportUrl
+  { id: 'mono',    label: '等宽',       stack: `"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace`,
+    importUrl: 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap' },
+  // 萌系中文 — Google Fonts 提供,系统不一定装。importUrl 自动拉。
+  { id: 'zcool-kuaile', label: '站酷快乐体(萌系)', stack: `"ZCOOL KuaiLe", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif`,
+    importUrl: 'https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap' },
+  { id: 'ma-shan-zheng', label: '马善政(手写)', stack: `"Ma Shan Zheng", "Kaiti SC", "STKaiti", cursive`,
+    importUrl: 'https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&display=swap' },
+  { id: 'long-cang', label: '龙藏(行书)', stack: `"Long Cang", "Kaiti SC", "STKaiti", cursive`,
+    importUrl: 'https://fonts.googleapis.com/css2?family=Long+Cang&display=swap' },
+  // 花体英文 — 西文专用,中文会 fallback 到系统字体(stack 末尾)
+  { id: 'dancing-script', label: 'Dancing Script(花体英)', stack: `"Dancing Script", "PingFang SC", "Microsoft YaHei", cursive`,
+    importUrl: 'https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;600&display=swap' },
+  { id: 'great-vibes', label: 'Great Vibes(优雅花体)', stack: `"Great Vibes", "PingFang SC", "Microsoft YaHei", cursive`,
+    importUrl: 'https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap' },
+  { id: 'caveat', label: 'Caveat(随性手写)', stack: `"Caveat", "PingFang SC", "Microsoft YaHei", cursive`,
+    importUrl: 'https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&display=swap' },
+  { id: 'custom',  label: '自定义(中英双导)', stack: null },  // 用 customFontFamilyCn/En + URL
 ];
 
 export const TEXTURE_OPTIONS = [
@@ -54,8 +73,14 @@ export const DEFAULT_THEME = Object.freeze({
   bgPinned:     '#ebebef',
   fontFamily:   'system',
   fontSize:     15,
-  // Used when fontFamily === 'custom'. customFontImportUrl is loaded as a
-  // <link rel=stylesheet> (Google Fonts / fonts.bunny.net / etc.).
+  // 自定义字体:fontFamily === 'custom' 时生效,中文 / 英文各一对(family +
+  // import URL)。stack 拼 `En, Cn, system-fallback` — 英文字体优先匹配 ASCII,
+  // 中文字符 fallback 到中文字体。两边 URL 各自一个 <link>。
+  customFontFamilyCn:    '',
+  customFontImportUrlCn: '',
+  customFontFamilyEn:    '',
+  customFontImportUrlEn: '',
+  // Legacy(旧版只支持一种自定义)— normalizeTheme 会把它迁移到 Cn 字段。
   customFontFamily:    '',
   customFontImportUrl: '',
   radius:       10,   // border-radius for cards/bubbles in px
@@ -90,6 +115,14 @@ export function normalizeTheme(stored) {
   }
   if (!GLASS_OPTIONS.some(g => g.id === merged.effects.glass)) {
     merged.effects.glass = 'none';
+  }
+  // Legacy 单字段 → 中文字段(老用户改了 customFontFamily 不能丢)。仅在 Cn
+  // 字段为空时迁,避免覆盖已经填好的新字段。
+  if (!merged.customFontFamilyCn && merged.customFontFamily) {
+    merged.customFontFamilyCn = merged.customFontFamily;
+  }
+  if (!merged.customFontImportUrlCn && merged.customFontImportUrl) {
+    merged.customFontImportUrlCn = merged.customFontImportUrl;
   }
   return merged;
 }
@@ -414,7 +447,7 @@ export const THEME_PRESETS = [
 
 export function applyTheme(theme) {
   const t = normalizeTheme(theme);
-  applyCustomFontImport(t.fontFamily === 'custom' ? t.customFontImportUrl : '');
+  reconcileFontImports(t);
   const r = document.documentElement;
   const fontStack = resolveFontStack(t);
   // Glass intensity defaults to 100 if missing — keeps old themes / presets
@@ -469,11 +502,36 @@ export function applyTheme(theme) {
 
 function resolveFontStack(t) {
   if (t.fontFamily === 'custom') {
-    const fam = (t.customFontFamily || '').trim();
-    if (fam) return fam;  // user-supplied raw CSS font-family value
+    // 拼 stack:英文字体优先(ASCII 匹配),中文 fallback(浏览器 unicode-range
+    // 自动从 En 跳到 Cn),最后兜底系统中文。两侧家族名要加引号防"My Font"
+    // 这种带空格的拆掉。
+    const en = (t.customFontFamilyEn || '').trim();
+    const cn = (t.customFontFamilyCn || '').trim();
+    // Legacy 单字段:如果用户老配置只填了 customFontFamily,normalizeTheme 已
+    // 把它迁进 Cn,所以这里不重复处理。
+    const parts = [];
+    if (en) parts.push(quoteIfNeeded(en));
+    if (cn) parts.push(quoteIfNeeded(cn));
+    parts.push('-apple-system', 'BlinkMacSystemFont', '"PingFang SC"', '"Microsoft YaHei"', 'system-ui', 'sans-serif');
+    return parts.length > 6 ? parts.join(', ') : FONT_OPTIONS[0].stack;
   }
   const found = FONT_OPTIONS.find(f => f.id === t.fontFamily);
   return found?.stack || FONT_OPTIONS[0].stack;
+}
+
+// 给可能带空格的 family name 加引号(`My Font` → `"My Font"`)。如果已带
+// 引号或本身就一个单词,原样返回。CSS font-family 标识符规则:不带引号的
+// 必须是 ident,带空格 / 数字开头 / 包含 ! 等都要引号。
+function quoteIfNeeded(name) {
+  const trimmed = name.trim();
+  if (!trimmed) return '';
+  // 已经带引号
+  if (/^["'].*["']$/.test(trimmed)) return trimmed;
+  // 多 token / 含非 ident 字符 → 引号包
+  if (/[^A-Za-z0-9_\-一-鿿]/.test(trimmed) || /^[0-9]/.test(trimmed)) {
+    return `"${trimmed.replace(/"/g, '\\"')}"`;
+  }
+  return trimmed;
 }
 
 // Apply a wallpaper image to the .phone-frame so it shows through any
@@ -501,25 +559,42 @@ export function applyWallpaper(url) {
   document.body.dataset.fxWallpaper = url ? 'on' : 'off';
 }
 
-// Add or replace the <link> that loads the user's custom font import URL.
-// Removes the link when URL is empty. Safe to call repeatedly.
-const CUSTOM_FONT_LINK_ID = 'custom-font-import';
-function applyCustomFontImport(url) {
-  const existing = document.getElementById(CUSTOM_FONT_LINK_ID);
+// 字体 <link> 多元素 reconciler。每个 import URL 一个 <link>,id 是 prefix +
+// key,用 key 标识来源(`preset-zcool-kuaile`、`custom-cn`、`custom-en`)。
+// reconcile 时:把当前主题需要的 URL 集合算出来 → 加缺的 <link>,删多的。
+// 这样切预设字体 → 老 link 自动清掉,不会污染 head。
+const FONT_LINK_PREFIX = 'font-import-';
+function ensureFontLink(key, url) {
+  const id = `${FONT_LINK_PREFIX}${key}`;
+  const existing = document.getElementById(id);
   const trimmed = String(url || '').trim();
   if (!trimmed) {
     if (existing) existing.remove();
     return;
   }
-  if (existing && existing.href === trimmed) return;  // already set
   if (existing) {
-    existing.href = trimmed;
+    if (existing.href !== trimmed) existing.href = trimmed;
     return;
   }
   const link = document.createElement('link');
-  link.id   = CUSTOM_FONT_LINK_ID;
+  link.id   = id;
   link.rel  = 'stylesheet';
   link.href = trimmed;
   link.crossOrigin = 'anonymous';
   document.head.appendChild(link);
+}
+function reconcileFontImports(t) {
+  const keep = new Set();
+  if (t.fontFamily === 'custom') {
+    if (t.customFontImportUrlCn) { ensureFontLink('custom-cn', t.customFontImportUrlCn); keep.add('custom-cn'); }
+    if (t.customFontImportUrlEn) { ensureFontLink('custom-en', t.customFontImportUrlEn); keep.add('custom-en'); }
+  } else {
+    const opt = FONT_OPTIONS.find(f => f.id === t.fontFamily);
+    if (opt?.importUrl) { ensureFontLink(`preset-${opt.id}`, opt.importUrl); keep.add(`preset-${opt.id}`); }
+  }
+  // 清掉不在 keep 集合里的(切了字体 / 关了 custom 留下的 stale link)
+  document.querySelectorAll(`link[id^="${FONT_LINK_PREFIX}"]`).forEach(el => {
+    const key = el.id.slice(FONT_LINK_PREFIX.length);
+    if (!keep.has(key)) el.remove();
+  });
 }

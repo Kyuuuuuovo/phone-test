@@ -2097,6 +2097,22 @@ body[data-fx-glass="metal"] .widget.widget-music::after { display: none; }
   letter-spacing: 0.5px;
 }
 .theme-editor-page .section-title:first-child { margin-top: 4px; }
+/* 自定义字体的中英双输入块 — 两个 .font-pair 竖排,内部小标题 + 两个 input */
+.font-pair {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: color-mix(in srgb, var(--fg) 3%, var(--surface));
+}
+.font-pair-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
 
 /* Tab bar — sits between header and the scrollable body. flex:1 each so
    five tabs share the width evenly inside the phone-frame's 375-480px. */

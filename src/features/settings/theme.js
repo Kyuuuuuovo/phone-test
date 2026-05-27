@@ -165,14 +165,29 @@ export async function mountTheme(container, params, router) {
         </select>
       </label>
       <div class="custom-font-block"${draft.fontFamily === 'custom' ? '' : ' hidden'}>
-        <label>
-          <div class="label-text">font-family(可填多个,逗号分隔。例:<code>"Crimson Pro", "Noto Serif SC", serif</code>)</div>
-          <input type="text" data-key="customFontFamily" value="${esc(draft.customFontFamily)}" placeholder='"My Font", serif'>
-        </label>
-        <label>
-          <div class="label-text">@import URL(可选 · 如 Google Fonts 的 css 链接,留空表示字体已系统安装)</div>
-          <input type="text" data-key="customFontImportUrl" value="${esc(draft.customFontImportUrl)}" placeholder="https://fonts.googleapis.com/css2?family=...">
-        </label>
+        <p class="hint">中英文可分别指定。最终 font-family 会拼成「英文, 中文, 系统兜底」— 英文优先匹配 ASCII,中文字符自动 fallback 到中文字体。两侧 import URL 各自加 &lt;link&gt;,只留空表示字体本机已安装。</p>
+        <div class="font-pair">
+          <div class="font-pair-title">中文字体</div>
+          <label>
+            <div class="label-text">font-family 名(单个,不要逗号)</div>
+            <input type="text" data-key="customFontFamilyCn" value="${esc(draft.customFontFamilyCn)}" placeholder="比如 ZCOOL KuaiLe / Noto Serif SC">
+          </label>
+          <label>
+            <div class="label-text">@import URL(可选 · Google Fonts 等)</div>
+            <input type="text" data-key="customFontImportUrlCn" value="${esc(draft.customFontImportUrlCn)}" placeholder="https://fonts.googleapis.com/css2?family=...">
+          </label>
+        </div>
+        <div class="font-pair">
+          <div class="font-pair-title">英文字体</div>
+          <label>
+            <div class="label-text">font-family 名(单个)</div>
+            <input type="text" data-key="customFontFamilyEn" value="${esc(draft.customFontFamilyEn)}" placeholder="比如 Great Vibes / Crimson Pro">
+          </label>
+          <label>
+            <div class="label-text">@import URL(可选)</div>
+            <input type="text" data-key="customFontImportUrlEn" value="${esc(draft.customFontImportUrlEn)}" placeholder="https://fonts.googleapis.com/css2?family=...">
+          </label>
+        </div>
       </div>
       <label>
         <div class="label-text">字号:<span class="font-size-readout">${draft.fontSize}</span> px</div>
