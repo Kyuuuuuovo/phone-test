@@ -59,8 +59,9 @@ export async function mountMessaging(container, params, router) {
     });
 
     // Header primary action — chats / contacts both use openNewChatModal.
-    // Moments tab has no primary action yet.
-    newBtn.hidden = tab.id === 'moments';
+    // Moments + Me tabs have no primary action,加号隐藏(否则 user 误以为
+    // 这俩 tab 也能"新建什么")。
+    newBtn.hidden = tab.id === 'moments' || tab.id === 'me';
     newBtn.title = tab.id === 'contacts' ? '添加联系人(从已有角色里选)' : '新建对话';
 
     // Teardown previous subview, mount new

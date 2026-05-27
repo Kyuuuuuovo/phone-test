@@ -1406,6 +1406,19 @@ body[data-fx-glass="metal"] .widget.widget-music::after { display: none; }
 .bg-slider-row input[type="range"] { width: 100%; }
 .radius-readout { font-variant-numeric: tabular-nums; }
 
+/* D: widget size 两 dropdown 横排 + × 分隔 */
+.size-wh-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.size-wh-row select { flex: 1; }
+.size-x {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
 /* 用户行程可见性 — radio + 角色 checkbox 列表(仅 mode='some' 时显示) */
 .user-visibility {
   margin-bottom: 12px;
@@ -2359,6 +2372,29 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
   overflow: hidden;
 }
 .me-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* #49: 头像可点 — wrap 加 hover 提示 + 右下角 mini「换」徽章。点 wrap 触发
+   file picker → 上传后 patch persona.avatar。 */
+.me-avatar-wrap {
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.me-avatar-edit-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--surface);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
 .me-profile-text { flex: 1; min-width: 0; }
 .me-name { font-size: 17px; font-weight: 600; }
 .me-sub {
@@ -2410,6 +2446,9 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
   align-items: flex-start;
   max-width: 100%;
 }
+/* #50: 已读标跟 actions 之间多 8px gap 太宽,user 反馈想更紧。.read-mark 单独
+   negative margin 抵掉一半 gap,只对它生效不影响 avatar 那边。 */
+.msg-row .read-mark { margin-left: -4px; margin-right: -4px; }
 .msg-row.user { flex-direction: row-reverse; }
 .msg-row .msg-actions {
   display: flex;
@@ -2460,14 +2499,14 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
 /* Read receipt mark — 挂在 .msg-row 的 flex 兄弟位置(.msg-actions 旁边)。
    .msg-row.user 是 row-reverse,所以 DOM 末尾的 .read-mark 视觉上落在 actions
    左侧(气泡的左边),align-self: flex-end 让标贴齐气泡底边。
-   之前是塞 .msg-actions 里 column flex 末尾 → 在气泡下方,user 想挪到左侧。 */
+   #50: padding 0 6px → 0 2px,margin-bottom 4 → 2px,贴气泡更紧。 */
 .read-mark {
   color: var(--muted);
   font-size: 11px;
-  padding: 0 6px;
+  padding: 0 2px;
   align-self: flex-end;
   white-space: nowrap;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .bubble {

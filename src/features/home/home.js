@@ -560,19 +560,26 @@ async function openAddWidgetModal(container, router) {
 // editor implementing the same controls.
 
 function sizeSelectHtml(currentColSpan, currentRowSpan, defaultPreset) {
-  // defaultPreset = '2x2' or '4x1' etc. — used when no current value.
-  const def = defaultPreset || '2x2';
+  // D: 改成"宽 × 高"两个独立 dropdown(宽 1-4 / 高 1-5),不再 fixed preset。
+  // user 反馈想自由调任意组合,而不是预设几组。defaultPreset 参数保留向后
+  // 兼容('WxH' string),从中解析出 default W/H。
+  let dW = 2, dH = 2;
+  if (defaultPreset) {
+    const m = /^(\d+)x(\d+)$/.exec(defaultPreset);
+    if (m) { dW = Number(m[1]); dH = Number(m[2]); }
+  }
+  const w = Number.isFinite(currentColSpan) ? currentColSpan : dW;
+  const h = Number.isFinite(currentRowSpan) ? currentRowSpan : dH;
+  const widths  = [1, 2, 3, 4];
+  const heights = [1, 2, 3, 4, 5];
   return `
     <label>
-      <div class="label-text">大小</div>
-      <select name="sizePreset">
-        ${SIZE_PRESETS.map(p => {
-          const isCurrent = (Number.isFinite(currentColSpan) && Number.isFinite(currentRowSpan))
-            ? (p.col === currentColSpan && p.row === currentRowSpan)
-            : (`${p.col}x${p.row}` === def);
-          return `<option value="${p.col}x${p.row}"${isCurrent ? ' selected' : ''}>${p.label}</option>`;
-        }).join('')}
-      </select>
+      <div class="label-text">大小(宽 × 高 格子数)</div>
+      <div class="size-wh-row">
+        <select name="sizeW">${widths.map(n => `<option value="${n}"${n===w?' selected':''}>${n}</option>`).join('')}</select>
+        <span class="size-x">×</span>
+        <select name="sizeH">${heights.map(n => `<option value="${n}"${n===h?' selected':''}>${n}</option>`).join('')}</select>
+      </div>
     </label>
   `;
 }
@@ -703,9 +710,20 @@ function parseHslString(str) {
 }
 
 function parseSizePreset(sizeStr) {
+  // legacy 老形式 'WxH' 字符串(还有几处 fallback default 用)
   const m = /^(\d+)x(\d+)$/.exec(String(sizeStr || ''));
   if (!m) return null;
   return { colSpan: Number(m[1]), rowSpan: Number(m[2]) };
+}
+
+// D: 新 sizeSelectHtml 的两 dropdown FormData 解析。fallback 给个安全默认。
+function parseSizeFromForm(fd, fallback = { colSpan: 2, rowSpan: 2 }) {
+  const w = Number(fd.get('sizeW'));
+  const h = Number(fd.get('sizeH'));
+  return {
+    colSpan: (Number.isFinite(w) && w >= 1 && w <= 4) ? w : fallback.colSpan,
+    rowSpan: (Number.isFinite(h) && h >= 1 && h <= 5) ? h : fallback.rowSpan,
+  };
 }
 
 const ROWS = 5;  // 4 cols × 5 rows;一度试过 6 行,手机底部装不下被截,回退
@@ -883,7 +901,7 @@ function renderNoteEditor(modal, container, router, existing) {
     const fd = new FormData(modal.querySelector('form'));
     const text = String(fd.get('text') || '').trim();
     if (!text) return;
-    const span = parseSizePreset(fd.get('sizePreset')) || { colSpan: 4, rowSpan: 2 };
+    const span = parseSizeFromForm(fd, { colSpan: 4, rowSpan: 2 });
     const transparency = Number(fd.get('transparency')) || 100;
     const { bgColor, radius } = parseBgColorAndRadius(fd);
     modal.remove();
@@ -972,7 +990,7 @@ async function renderImageEditor(modal, container, router, existing) {
     modal.querySelector('form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(modal.querySelector('form'));
-      const span = parseSizePreset(fd.get('sizePreset')) || { colSpan: 4, rowSpan: 2 };
+      const span = parseSizeFromForm(fd, { colSpan: 4, rowSpan: 2 });
       const transparency = Number(fd.get('transparency')) || 100;
       const { bgColor, radius } = parseBgColorAndRadius(fd);
       modal.remove();
@@ -1052,7 +1070,7 @@ async function renderPolaroidEditor(modal, container, router, existing) {
     modal.querySelector('form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(modal.querySelector('form'));
-      const span = parseSizePreset(fd.get('sizePreset')) || { colSpan: 2, rowSpan: 2 };
+      const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 2 });
       const transparency = Number(fd.get('transparency')) || 100;
       const { bgColor, radius } = parseBgColorAndRadius(fd);
       modal.remove();
@@ -1194,7 +1212,7 @@ async function renderAnniversaryEditor(modal, container, router, existing) {
         data.name = name;
       }
     }
-    const span = parseSizePreset(fd.get('sizePreset')) || { colSpan: 2, rowSpan: 1 };
+    const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 1 });
     const transparency = Number(fd.get('transparency')) || 100;
     const { bgColor, radius } = parseBgColorAndRadius(fd);
     modal.remove();
@@ -1356,7 +1374,7 @@ async function renderMusicEditor(modal, container, router, existing) {
     const artist  = String(fd.get('artist')  || '').trim();
     const lyrics  = String(fd.get('lyrics')  || '');
     const playing = fd.get('playing') === 'on';
-    const span = parseSizePreset(fd.get('sizePreset')) || { colSpan: 2, rowSpan: 2 };
+    const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 2 });
     const transparency = Number(fd.get('transparency')) || 100;
     const { bgColor, radius } = parseBgColorAndRadius(fd);
     const data = {
@@ -1405,7 +1423,7 @@ function askSizeAndTransparency(container, defaultPreset, existing) {
     modal.querySelector('form').addEventListener('submit', (e) => {
       e.preventDefault();
       const fd = new FormData(modal.querySelector('form'));
-      const span = parseSizePreset(fd.get('sizePreset')) || { colSpan: 2, rowSpan: 2 };
+      const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 2 });
       const transparency = Number(fd.get('transparency')) || 100;
       const { bgColor, radius } = parseBgColorAndRadius(fd);
       close();
