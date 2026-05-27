@@ -54,6 +54,10 @@ export const ACTION_SCHEMAS_TEXT = `# 动作定义表
 9. location — 发送地点(name 是地点名,desc 可选用作地址 / 短描述。前端渲染成带定位图标的卡片,纯展示)
    { "type": "location", "name": "外滩", "desc": "黄浦江边" }
 
+10. add_schedule_entry — 把对话里提到的"之后要做的事"自动写进你自己的行程(who=character,会用当前会话的 character 自动绑定)。
+    { "type": "add_schedule_entry", "title": "开会", "startTs": "2026-05-28T15:00:00", "endTs": "2026-05-28T16:00:00", "desc": "可选" }
+    startTs / endTs 用 ISO 本地时间字符串(YYYY-MM-DDTHH:MM:SS,无时区后缀,按你的本地时区解析)。endTs 可省。这条不显示气泡 — 前端只渲染一个小卡片提示"已添加到行程"。**只在对话里明确提到时间 + 事件时用**(比如「明天下午 3 点要去开会」「礼拜五我去取快递」)— 模糊语义如「以后再说」「有空了来」不要触发。
+
 你可以在一个数组里发多条动作(用来断句、补刀、撤回等)。
 
 示例(只是示例,不要照抄):
@@ -629,9 +633,12 @@ export async function buildScheduleLines(characterId, sessionPersonaId) {
   if (settings.syncScheduleToChat === false) return '';
   const all = await db.getAll('schedule');
   if (all.length === 0) return '';
+  // 注入窗口:前 3 天 + 当天 + 后 3 天 = 7 天。user 想让 AI 看到更宽时间
+  // 范围的行程,知道"昨天做了 X 今天接着做 Y"这种连续性,也能在角色提
+  // "下周二开会"时记得没忘。过 3 天以上的行程仍在 IDB 但不注入。
   const now = Date.now();
-  const winStart = now - 6 * 60 * 60 * 1000;
-  const winEnd   = now + 24 * 60 * 60 * 1000;
+  const winStart = now - 3 * 24 * 60 * 60 * 1000;
+  const winEnd   = now + 3 * 24 * 60 * 60 * 1000;
   const relevant = all
     .filter(e => {
       if (e.syncToChat === false) return false;  // per-entry mute
@@ -829,6 +836,8 @@ function renderActionsAsText(actions, ctx) {
       }
       case 'location':
         return `[位置: ${a.name || ''}${a.desc ? ' · ' + a.desc : ''}]`;
+      case 'add_schedule_entry':
+        return `[已加进行程: ${a.title || ''} · ${a.startTs || ''}]`;
       default:       return `[${a.type}]`;
     }
   }).filter(Boolean).join('\n');

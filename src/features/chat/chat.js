@@ -1139,6 +1139,22 @@ function renderAction(a, side, msgId, idx, previewMap, character) {
           ${a.desc ? `<div class="location-desc">${esc(a.desc)}</div>` : ''}
         </div>
       </div>`;
+    case 'add_schedule_entry': {
+      // AI 自动加行程的卡片。startTs 是 ISO 字符串,parse 失败显示原始字符串。
+      let timeStr = String(a.startTs || '');
+      const ts = a.startTs != null ? new Date(String(a.startTs)).getTime() : NaN;
+      if (Number.isFinite(ts)) {
+        timeStr = formatChatTime(ts);
+      }
+      return `<div class="bubble ${side} bubble-schedule-add" ${attrs}>
+        <span class="sa-icon">📅</span>
+        <div class="sa-body">
+          <div class="sa-label">已添加到行程</div>
+          <div class="sa-title">${esc(a.title || '(无标题)')}</div>
+          <div class="sa-time">${esc(timeStr)}</div>
+        </div>
+      </div>`;
+    }
     default:
       return `<div class="bubble ${side} bubble-unknown" ${attrs}>[${esc(a.type)}]</div>`;
   }

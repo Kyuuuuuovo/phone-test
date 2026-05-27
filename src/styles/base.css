@@ -3175,6 +3175,41 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
 }
 .bubble-image, .bubble-reply { font-style: italic; opacity: 0.92; }
 
+/* AI 自动加行程的卡片 — 浅色背景 + 日历 icon + 标题 + 时间。窄一点紧凑
+   显示,跟红包卡片同样宽矮风格但不可点(纯通知,数据已写 schedule)。 */
+.bubble-schedule-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px !important;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface)) !important;
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent) !important;
+  font-style: normal !important;
+  max-width: 80%;
+}
+.bubble-schedule-add .sa-icon { font-size: 22px; flex-shrink: 0; }
+.bubble-schedule-add .sa-body { flex: 1; min-width: 0; }
+.bubble-schedule-add .sa-label {
+  font-size: 10px;
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 2px;
+  letter-spacing: 0.02em;
+}
+.bubble-schedule-add .sa-title {
+  font-size: 13px;
+  color: var(--fg);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bubble-schedule-add .sa-time {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* 翻译气泡 — 默认只显示原文(trans-original),trans-translation 收起。
    点击 → .expanded 展开下面中文翻译,跟 voice 气泡同套机制。border-top
    分隔原文和翻译,小字 + 略淡。 */

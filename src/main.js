@@ -200,6 +200,36 @@ async function boot() {
   notify.init(router);
   scheduleNotify.start(router);
 
+  // 注册 AI 主动动作的副作用 handler。dispatchActions 调它把 action 写到
+  // 业务 store 里。目前只有 add_schedule_entry — 角色对话里提了"明天 3
+  // 点开会"模型输出这个 action,handler 自动写入 schedule store。
+  ai.registerHandler('add_schedule_entry', async (action, ctx) => {
+    const session = await db.get('chatSessions', ctx.sessionId);
+    if (!session) return;
+    const parseTs = (raw) => {
+      if (raw == null || raw === '') return null;
+      if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+      const t = new Date(String(raw)).getTime();
+      return Number.isFinite(t) ? t : null;
+    };
+    const startTs = parseTs(action.startTs);
+    if (startTs == null) {
+      console.warn('[ai] add_schedule_entry: invalid startTs', action.startTs);
+      return;
+    }
+    await db.set('schedule', {
+      id: db.newId(),
+      who: 'character',
+      characterId: session.characterId,
+      startTs,
+      endTs: parseTs(action.endTs),
+      title: String(action.title || '').trim() || '(无标题)',
+      desc: String(action.desc || '').trim(),
+      syncToChat: true,
+      createdAt: Date.now(),
+    });
+  });
+
   await router.navigate('home');
   console.log('[boot] mounted home');
 }

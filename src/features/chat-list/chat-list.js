@@ -596,6 +596,7 @@ function previewOfMessage(msg) {
     case 'red_packet': return `[红包] ¥${Number(a.amount || 0).toFixed(2)}`;
     case 'transfer':   return `[转账] ¥${Number(a.amount || 0).toFixed(2)}`;
     case 'location':   return `[位置] ${a.name || ''}`;
+    case 'add_schedule_entry': return `[行程] ${a.title || ''}`;
     default:       return `[${a.type}]`;
   }
 }
