@@ -135,16 +135,87 @@
 
 ## 路线图
 
-### 已完成 (此处保留备忘,后面来回看代码哪个版本做的)
-- ✅ **桌面装饰拖拽重排** —— `homeWidgets` 改 row/col/colSpan/rowSpan 自由定位 (unifiedGridV1)
-- ✅ **首页 app-icon 排序 + 跨页拖** —— `settings.tileOrder[]`,app 可跨页拖,边缘自动 scroll (B#5)
-- ✅ **Dock 可拖** —— 4-slot grid + `settings.dockOrder`,app 可双向拖 dock↔pages (B#6)
-- ✅ **加 widget 不溢出** —— `findFirstFreeCell` 扫 4×6 找洞,真满了 openAlert (B#1)
-- ✅ **拖拽几何缓存** —— dragStart 算一次 `gridGeometry`,onPointerMove 复用 (B#2)
-- ✅ **snapshotItems 改数据源** —— 从 pageItemsList 查,不靠正则解析 inline style (B#3)
-- ✅ **长按阈值调宽** —— 8→20px + 水平占主导立刻 cancel,不误触发 edit (B#4)
-- ✅ **编辑 toolbar** —— 顶上一条 `.home-edit-toolbar`,装 + 添加装饰 / 完成,只 editing 显示
-- ✅ **纪念日 widget milestone 模式** —— anniversary 加第 3 种 mode `milestoneId`,联动 milestones store (recurring → 下次倒计时 / 非 recurring → 距今或已过)
+### 已完成 (备忘 + 看代码哪个版本做的对应 git tag)
+**Home / Widget 系统**
+- ✅ 桌面装饰拖拽重排 — `homeWidgets` 改 row/col/colSpan/rowSpan 自由定位 (unifiedGridV1)
+- ✅ 首页 app-icon 排序 + 跨页拖 — `settings.tileOrder[]`,edge 自动 scroll
+- ✅ Dock 可拖 — 4-slot grid + `settings.dockOrder`,app 双向拖 dock↔pages
+- ✅ 加 widget 不溢出 — `findFirstFreeCell` 扫 4×5 找洞,真满了 openAlert
+- ✅ 拖拽几何缓存 — dragStart 算一次 `gridGeometry`,onPointerMove 复用
+- ✅ snapshotItems 数据驱动 — 从 pageItemsList 查,不靠正则解析 inline style
+- ✅ 长按阈值调宽 + 横向占主导立刻 cancel — 8→20px,不误触发 edit
+- ✅ 编辑 toolbar — `.home-edit-toolbar`,左 + 添加装饰、右 完成,只 editing 显示
+- ✅ 5 行 grid + 手机 viewport 撑满 — 桌面 aspect 4/5 严格正方;`@media (max-width:440)` drop aspect-ratio 用 flex:1 让 grid 填满
+- ✅ migration 清 stale row > 4 — 6 行实验后回退残留数据
+- ✅ 跨页拖 app 回加 + scroll restore — `_restoreScrollToPage` re-mount 后 scrollTo
+- ✅ widget 编辑 SVG 图标 — ⚙/× emoji 改 SVG + flex 居中
+- ✅ image widget 可换图 / polaroid widget 可换照片 (3 槽)
+- ✅ anniversary widget milestone 模式 + 大于 365 天显黎年
+- ✅ Phase B widget HSV 色 + 圆角 自定义 — 每个 editor 加 HSV 三滑条 + radius + 「自定义」toggle,bgColor / radius 写 `--widget-bg / --widget-radius` CSS var
+- ✅ widget 宽×高自由选 — 宽 1-4 / 高 1-5 两 dropdown 代替 5 固定预设
+
+**主题 / 外观**
+- ✅ 黑白灰主题 preset (mono)
+- ✅ 主题 preset 点击不再 re-render(避免触屏 :hover 错位)
+- ✅ mini preview 始终显示壁纸 — surface 加 margin
+- ✅ 刘海 ::before → ::after,base ::before 的 backdrop 保留(non-home wallpaper 不再透出)
+- ✅ 设置页分两段 — 基础(API/外观/记忆/数据/清空) + 扩展(天气/向量)
+
+**Chat**
+- ✅ 横向 + 纵向 scroll 锁,100vh→100dvh,iOS Safari URL bar 不再让 body 比可见区高
+- ✅ 触屏 :hover 粘住修复 — `@media (hover: hover)` 包 widget edit/del button
+- ✅ 通讯录拼音排序 — Chinese 哨兵代替 Latin A-Z 做 collator probe
+- ✅ 引用消息注入完整原文 — `makeRenderContext.resolveQuote`,reply case 拼 `[引用「原文」]\n回复`
+- ✅ 已读标志改用户气泡左侧 + 紧贴气泡
+- ✅ 删/复制按 action 粒度 — `activeBubbleActionIdx` 记下用户长按的具体气泡,handler 用它而不是 querySelector 第一个
+- ✅ 长按 regenerate 弹 hint modal — `regenHint` 注入 `# 本次重新生成的要求` 段,只此一次不进 history
+- ✅ 调试面板 3 tab(API / 分段 / 完整)+ 分段按 group 归类(世界观/记忆/状态/规范/输出)
+- ✅ iOS 输入框 zoom 残留 — input/textarea/select 强制 font-size: max(16px, 1rem)
+- ✅ 复制 bubble 真正修(actionIdx 来源 querySelector 永远 0 的 bug)
+- ✅ 微信「我」tab 加号隐藏 + 头像可点换图(写 persona.avatar)
+
+**世界 / 时间 / 记忆**
+- ✅ 阶段 0 worldMode 'real'/'fictional' — per character 起步,后挪到 per session;架空模式 skip current-time / cameras / activity 段 + 不暴露 weather/location 工具
+- ✅ 阶段 1a 稀疏时间标记 — `collapseAdjacentSameRole` 加跨 role gap >30min 标记,memories 加 `fromTs/toTs`,注入前缀【M月D日】或【M月D日–M月D日】
+- ✅ A 时间感知 toggle in chat-info(session.timeAwareness 'on'/'off',off 时不插 gap 不前缀日期)
+- ✅ 1b 用户行程 visibleTo — schedule.visibleTo,默认 undefined=所有可见,[]=全私,['c1']=只对列出的
+
+**通知 / 行程**
+- ✅ 行程 banner ⏰ emoji → SVG 铃铛
+- ✅ 行程提醒联动系统通知 — `fireOsNotification`,hidden 时走 Notification API,复用 `settings.notifyOnReply` 开关
+
+---
+
+### TODO 待办(用户已确认要做,等下一轮)
+
+**批 A — widget 类(~5h)** — 用户 dump 的 14 件里 widget 相关 5 件,主题一致:
+- 行程 widget(home schedule preview)
+- 游戏机 widget(装饰类)
+- 便签竖排选项
+- 拍立得右上角 ×/⚙ 跟切照片点击重叠 — z-index 或位置调
+- 图片/拍立得合并成一个分类,可调 1-3 张(1=image,2-3=polaroid)
+
+**批 B — 主页交互(~3h)**:
+- ⚙/× 隐蔽性提示(非编辑模式下点 widget 角无视觉提示) — 加 hint 或长按出
+- 点击 app vs 点击 widget 效果不一致 — 统一动效
+- 拖小组件到下一页底部自动新建页
+
+**批 C — 聊天/调试(~2.5h)**:
+- 聊天加号:加「拍照」描述模式 + 现有「图片」改成真实图片上传
+- 开发模式聊天页加「当前 tokens 预估」
+
+**批 D — 大改(单独)**:
+- app 图标更换功能 — 需要 icon 集 + 上传 / 选择 UI
+
+**记忆架构(chat 提的 Phase 2+,等批 ABCD 后再开)**:
+- 阶段 2 用户画像 per (角色×人设) — 压缩 prompt 同时吐画像 patch,inject system prompt 顶部
+- 阶段 3 角色 `add_schedule_entry` 工具
+- 阶段 4 向量打标(转折点/情感/日常)+ `buildVectorRecallLines` boost
+- 阶段 5 悬浮球记忆助手(手动 N→M 总结 + 快捷短语)
+
+**永远会做的小事**:
+- 红包/转账动画 + 详情页 + AI 自动接收
+- 位置功能进阶(地图选点)
 
 ### 下一轮 follow-up(明确知道要做)
 - **红包/转账细节** —— 动画(打开红包翻转)、详情页(来自谁/几号/几点)、AI 自动接收用户红包(模型在收到时下一轮 reply 标 `claimed`)
