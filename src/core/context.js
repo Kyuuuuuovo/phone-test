@@ -342,13 +342,13 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     kind: 'data',
     editRoute: 'schedule',
   });
-  // 8e. 用户画像 — per (角色×人设) 的画像。lookup 先精确匹配 charId|personaId
+  // 8e. 关于你 — per (角色×人设) 的画像。lookup 先精确匹配 charId|personaId
   //  再 fallback charId|(共享行)。500 字以内,渲染 likes/dislikes/discoveries
-  //  三行(空段不出现)。手动编辑入口:记忆 app → 用户画像 tab。
+  //  三行(空段不出现)。手动编辑入口:记忆 app → 关于你 tab。
   const profileLines = await buildUserProfileLine(character.id, session.personaId);
   parts.push({
     key: 'user-profile',
-    title: '# 用户画像',
+    title: '# 关于你',
     body: profileLines,
     kind: 'data',
     editRoute: 'memory',

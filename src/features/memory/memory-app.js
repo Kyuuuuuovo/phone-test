@@ -88,7 +88,7 @@ export async function mountMemoryApp(container, params, router) {
             <button class="ma-tab${activeTab === 'calendar'   ? ' active' : ''}" data-tab="calendar">月历</button>
             <button class="ma-tab${activeTab === 'timeline'   ? ' active' : ''}" data-tab="timeline">时间线</button>
             <button class="ma-tab${activeTab === 'milestones' ? ' active' : ''}" data-tab="milestones">纪念日</button>
-            <button class="ma-tab${activeTab === 'profile'    ? ' active' : ''}" data-tab="profile">用户画像</button>
+            <button class="ma-tab${activeTab === 'profile'    ? ' active' : ''}" data-tab="profile">关于你</button>
             <button class="ma-tab${activeTab === 'summary'    ? ' active' : ''}" data-tab="summary">总结</button>
           </div>
           ${showFilter ? renderCharFilter(chars) : ''}
@@ -452,10 +452,10 @@ export async function mountMemoryApp(container, params, router) {
     const personaLabel = (pid) => pid ? (personas.find(p => p.id === pid)?.name || '(未知人设)') : '所有人设共享';
     return `
       <div class="ma-ms-head">
-        <button class="ma-profile-new btn" type="button">+ 新建画像</button>
+        <button class="ma-profile-new btn" type="button">+ 新建</button>
       </div>
       ${all.length === 0 ? `
-        <p class="hint">还没有用户画像。新建后,聊天 system prompt 会注入「# 用户画像」段,让 ta 知道你的喜好。每条 500 字以内,空段不渲染。</p>
+        <p class="hint">还没有「关于你」的记录。新建后,聊天 system prompt 会注入「# 关于你」段,让 ta 知道你的喜好。每条 500 字以内,空段不渲染。</p>
       ` : `
         <div class="ma-list">
           ${all.map(p => {
@@ -494,7 +494,7 @@ export async function mountMemoryApp(container, params, router) {
     modal.className = 'modal-backdrop';
     modal.innerHTML = `
       <div class="modal">
-        <div class="modal-header">${existing ? '编辑画像' : '新建画像'}</div>
+        <div class="modal-header">${existing ? '编辑「关于你」' : '新建「关于你」'}</div>
         <form class="profile-form" autocomplete="off">
           <label>
             <div class="label-text">角色</div>
@@ -521,7 +521,7 @@ export async function mountMemoryApp(container, params, router) {
             <div class="label-text">你发现的事</div>
             <textarea name="discoveries" rows="4" placeholder="ta 是程序员,养了只猫叫毛毛,最近备战马拉松…">${esc(p.discoveries)}</textarea>
           </label>
-          <p class="hint">三段加起来建议 ≤500 字。注入到 prompt 时空段会自动跳过。${existing ? '<br>id 锁定(角色 + 人设不能改),想换组合请新建。' : ''}</p>
+          <p class="hint">三段加起来建议 ≤500 字。注入 prompt 的「# 关于你」段时空段自动跳过。${existing ? '<br>id 锁定(角色 + 人设不能改),想换组合请新建。' : ''}</p>
           <div class="modal-actions">
             <button type="button" class="btn secondary cancel-btn">取消</button>
             <button type="submit" class="btn">${existing ? '保存' : '创建'}</button>
@@ -854,7 +854,7 @@ export async function mountMemoryApp(container, params, router) {
           await render();
         } else if (profileRow) {
           if (!await openConfirm(container, {
-            title: '删除画像', message: '确定删除这条用户画像?这会让聊天 prompt 不再注入对应 (角色×人设) 的画像段。',
+            title: '删除', message: '确定删除这条「关于你」?这会让聊天 prompt 不再注入对应 (角色×人设) 的「关于你」段。',
             confirmLabel: '删除', danger: true,
           })) return;
           await db.del('userProfiles', profileRow.dataset.profileId);
