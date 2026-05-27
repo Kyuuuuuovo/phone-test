@@ -67,6 +67,7 @@ const PAGES = [
     { id: 'shop',           label: '商城',   icon: SVG.shop },
     { id: 'monitor',        label: '监控',   icon: SVG.camera },
     { id: 'bottle',         label: '漂流瓶', icon: SVG.bottle },
+    { id: 'keepsake',       label: '千纸鹤', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12 L21 5 L12 14 L8 12 L21 5"/><path d="M12 14 L13 21 L10 17"/></svg>` },
   ],
 ];
 

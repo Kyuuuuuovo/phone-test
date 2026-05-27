@@ -792,9 +792,15 @@ function toApiMessage(msg, ctx) {
     // Echo the model's own past JSON-array output verbatim — reinforces format.
     return { role: 'assistant', content: JSON.stringify(msg.actions ?? []), _ts: msg.createdAt };
   }
+  let content = renderActionsAsText(msg.actions ?? [], ctx);
+  // 用户心声(msg.innerVoice)— 拼在正文后面,带明显标记让模型知道这是真
+  // 实情绪。BEHAVIOR_GUIDANCE 告诉模型「据此调整态度但不要复述」。
+  if (msg.innerVoice) {
+    content = `${content}\n[心声:${msg.innerVoice}]`;
+  }
   return {
     role: msg.role === 'system' ? 'system' : 'user',
-    content: renderActionsAsText(msg.actions ?? [], ctx),
+    content,
     _ts: msg.createdAt,
   };
 }

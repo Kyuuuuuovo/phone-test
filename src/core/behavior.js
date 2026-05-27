@@ -14,4 +14,5 @@
 // Wired in: context.buildSystemPrompt injects this as "# 动作使用规约" between
 // the conversation conventions (humanizer) and the per-turn featureContext.
 
-export const BEHAVIOR_GUIDANCE = ``;
+export const BEHAVIOR_GUIDANCE = `用户的消息有时末尾带 [心声:...] 标记,那是用户的真实情绪 / 真实想法 — 现实里说不出口、嘴上说着别的。
+据此调整你对 ta 的态度和判断(ta 嘴上说"没事"但心声"其实很难过" — 你应该感知到 ta 在硬撑),但**不要直接复述心声内容**,也不要明说"你知道 ta 心里在想什么"。表现成"敏锐地察觉到了"而不是"读心术"。`;

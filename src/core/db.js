@@ -2,7 +2,7 @@
 // Data model frozen in STORES below — bump DB_VERSION when changing schema.
 
 export const DB_NAME = 'phone-app';
-export const DB_VERSION = 9;
+export const DB_VERSION = 10;
 
 // Object store definitions. Applied during onupgradeneeded.
 // keyPath = primary key field; indexes = secondary lookup paths.
@@ -147,6 +147,18 @@ export const STORES = {
     indexes: [
       { name: 'sessionId', keyPath: 'sessionId' },
       { name: 'sourceId',  keyPath: 'sourceId'  },
+    ],
+  },
+  // 千纸鹤 / 叠星星 — 角色给 user 折的延迟揭晓信物。lazy 生成:user 出
+  // 主题 + 数量,N 行 status='folded' 不调 API;点拆 → 调 API 生成 content
+  // → status='opened';留下 → 'kept'(可反复重读);丢掉 → 数据库 hard delete。
+  // 字段:characterId / type ('crane'|'star') / theme / status / content? /
+  // createdAt / openedAt? / nth(这是第几颗,1-indexed,让生成时带"第 N 颗")
+  keepsakes: {
+    keyPath: 'id',
+    indexes: [
+      { name: 'characterId', keyPath: 'characterId' },
+      { name: 'status',      keyPath: 'status'      },
     ],
   },
 };

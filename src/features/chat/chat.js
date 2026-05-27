@@ -19,6 +19,7 @@ const SVG = {
   pin:   `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>`,
   redpacket: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 3h12a2 2 0 0 1 2 2v3H4V5a2 2 0 0 1 2-2zm-2 7h16v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-9zm8 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>`,
   transfer:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9.5h.01M18 14.5h.01"/></svg>`,
+  thought: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10c0-2.2 2.2-4 5-4s5 1.8 5 4-2.2 4-5 4c-.5 0-1 0-1.4-.1L7 16l.6-2.7C7.2 12.5 7 11.3 7 10z"/><circle cx="5" cy="19" r="1"/><circle cx="3" cy="21.5" r="0.6"/></svg>`,
 };
 
 export async function mountChat(container, params, router) {
@@ -60,8 +61,12 @@ export async function mountChat(container, params, router) {
         </div>
         <button class="reply-cancel" title="取消引用">×</button>
       </div>
+      <div class="inner-voice-row" hidden>
+        <textarea class="inner-voice-input" rows="1" placeholder="心声(角色感知到但不复述)..."></textarea>
+      </div>
       <div class="chat-input">
         <button class="icon-btn plus-btn" title="附件">${SVG.plus}</button>
+        <button class="icon-btn iv-btn" title="心声(给角色看真实情绪,角色不复述)">${SVG.thought}</button>
         <textarea class="text-input" rows="1" placeholder="说点什么..."></textarea>
         <button class="icon-btn send-btn" title="发送">${SVG.send}</button>
         <button class="icon-btn ai-btn"   title="让 AI 回复">${SVG.ai}</button>
@@ -99,6 +104,7 @@ export async function mountChat(container, params, router) {
         <button data-action="edit" class="only-user">编辑</button>
         <button data-action="regenerate">重新生成</button>
         <button data-action="resummarize" class="only-user">从这里重新总结</button>
+        <button data-action="inner-voice" class="only-char">心声</button>
         <button data-action="delete" class="danger">删除</button>
       </div>
     </div>
@@ -125,6 +131,9 @@ export async function mountChat(container, params, router) {
     stream.style.fontSize = `${character.chatFontSize}px`;
   }
   const input       = container.querySelector('.text-input');
+  const ivBtn       = container.querySelector('.iv-btn');
+  const ivRow       = container.querySelector('.inner-voice-row');
+  const ivInput     = container.querySelector('.inner-voice-input');
   const sendBtn     = container.querySelector('.send-btn');
   const aiBtn       = container.querySelector('.ai-btn');
   const plusBtn     = container.querySelector('.plus-btn');
@@ -152,9 +161,98 @@ export async function mountChat(container, params, router) {
   // so toggling expand survives re-renders triggered by reply / send / edit.
   const expandedArchiveGroups = new Set();
 
+  // 红包 / 转账详情 modal — 点击非 claimable 的卡片时弹出,显示 from /
+  // 时间 / 金额 / 留言 / 状态。modal 自己创建,不用 openModal helper(那
+  // 个是 form 输入用的)。
+  async function openMoneyDetail(msg, action) {
+    const isUserSent = msg.role === 'user';
+    const persona = session.personaId ? await db.get('personas', session.personaId) : null;
+    const fromName = isUserSent ? (persona?.name || '我') : (character?.name || '(未知角色)');
+    const kindLabel = action.type === 'red_packet' ? '红包' : '转账';
+    const amount = Number(action.amount || 0).toFixed(2);
+    const fmtFull = (ts) => {
+      const d = new Date(ts);
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    let stateLine;
+    if (action.returned) {
+      stateLine = `已退回 · ${action.returnedAt ? fmtFull(action.returnedAt) : '未知时间'}(对方 24 小时未领取,金额已退回钱包)`;
+    } else if (action.claimed) {
+      stateLine = `${action.type === 'red_packet' ? '已领取' : '已接收'} · ${action.claimedAt ? fmtFull(action.claimedAt) : '未知时间'}`;
+    } else {
+      stateLine = `等待对方${action.type === 'red_packet' ? '领取' : '接收'}`;
+    }
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-backdrop';
+    modal.innerHTML = `
+      <div class="modal money-detail-modal">
+        <div class="modal-header">${kindLabel}详情</div>
+        <div class="money-detail-body">
+          <div class="money-detail-amount">¥${amount}</div>
+          ${action.message ? `<div class="money-detail-msg">${esc(action.message)}</div>` : ''}
+          <div class="money-detail-rows">
+            <div class="md-row"><span class="md-label">来自</span><span class="md-value">${esc(fromName)}</span></div>
+            <div class="md-row"><span class="md-label">发送时间</span><span class="md-value">${esc(fmtFull(msg.createdAt))}</span></div>
+            <div class="md-row"><span class="md-label">状态</span><span class="md-value">${esc(stateLine)}</span></div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn close-btn">关闭</button>
+        </div>
+      </div>
+    `;
+    container.appendChild(modal);
+    const close = () => modal.remove();
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    modal.querySelector('.close-btn').addEventListener('click', close);
+  }
+
+  // 24h 拒收退回扫描:user 发的红包 / 转账,超 24h 仍未领取 → mark returned
+  // + 退还金额到 user wallet。在 refresh 顶部跑,所以每次刷新 chat 都自动
+  // 处理过期的。仅 user 发的(role=user),AI 发的不退(逻辑上 AI 是 sender,
+  // user 收的不存在"对方不领"问题)。
+  const RETURN_AFTER_MS = 24 * 60 * 60 * 1000;
+  async function expireOldMoneyActions(msgs) {
+    const now = Date.now();
+    let changed = false;
+    for (const msg of msgs) {
+      if (msg.role !== 'user' || msg.archived) continue;
+      if (!Array.isArray(msg.actions)) continue;
+      const age = now - (msg.createdAt || 0);
+      if (age < RETURN_AFTER_MS) continue;
+      let dirty = false;
+      for (let i = 0; i < msg.actions.length; i++) {
+        const a = msg.actions[i];
+        if (a.type !== 'red_packet' && a.type !== 'transfer') continue;
+        if (a.claimed || a.returned) continue;
+        // 退还金额到 user wallet
+        const amt = Number(a.amount || 0);
+        if (amt > 0) await creditWallet(amt, a.type);
+        msg.actions[i] = { ...a, returned: true, returnedAt: now };
+        dirty = true;
+      }
+      if (dirty) {
+        await db.set('chatMessages', msg);
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
   async function refresh() {
     const msgs = await db.query('chatMessages', 'sessionId', sessionId);
     msgs.sort((a, b) => a.createdAt - b.createdAt);
+    // 先 expire 过期红包,再渲染 — refresh 内只跑一次扫描,完事就 redo query
+    // (一些 row 被 mutate 写回了)。fire-and-forget 不行因为渲染要看到新状态。
+    if (await expireOldMoneyActions(msgs)) {
+      // 重新 query 拿到 fresh 数据
+      const freshMsgs = await db.query('chatMessages', 'sessionId', sessionId);
+      freshMsgs.sort((a, b) => a.createdAt - b.createdAt);
+      msgs.length = 0;
+      msgs.push(...freshMsgs);
+    }
     previewMap = new Map(msgs.map(m => [m.id, firstActionText(m)]));
     // Re-read character + session every refresh — pin / read receipt / blocked
     // can change behind the scenes.
@@ -260,12 +358,15 @@ export async function mountChat(container, params, router) {
     console.log(`[wallet] +${amount} (${kindType}); balance: ${w.balance}`);
   }
 
-  async function appendUserMessage(actions) {
+  async function appendUserMessage(actions, innerVoice) {
     const id = db.newId();
     const now = Date.now();
-    await db.set('chatMessages', {
-      id, sessionId, role: 'user', actions, createdAt: now,
-    });
+    const row = { id, sessionId, role: 'user', actions, createdAt: now };
+    // 心声(可选)— 跟 msg 一起存,渲染时在 user 气泡下方浅色斜体显示,
+    // prompt 注入时拼成「正文[心声:xxx]」给 AI 看到真实情绪。
+    const iv = String(innerVoice || '').trim();
+    if (iv) row.innerVoice = iv;
+    await db.set('chatMessages', row);
     session.lastMessageAt = now;
     await db.set('chatSessions', session);
     await refresh();
@@ -335,7 +436,11 @@ export async function mountChat(container, params, router) {
     const text = input.value.trim();
     if (!text) return;
     const quoteId = replyingTo;
+    const innerVoice = (ivInput?.value || '').trim();
     input.value = '';
+    if (ivInput) ivInput.value = '';
+    if (ivRow) ivRow.hidden = true;
+    if (ivBtn) ivBtn.classList.remove('active');
     autosize();
     closePanel();
     closeBubbleMenu();
@@ -343,7 +448,17 @@ export async function mountChat(container, params, router) {
       ? { type: 'reply', content: text, quoteMsgId: quoteId }
       : { type: 'text',  content: text };
     if (quoteId) clearReply();
-    await appendUserMessage([action]);
+    await appendUserMessage([action], innerVoice);
+  };
+
+  // 心声 toggle button — 点击 显示/隐藏 .inner-voice-row。row 可见时
+  // textarea 自动 focus,让 user 直接输入。
+  const onInnerVoiceToggle = () => {
+    if (!ivRow) return;
+    const wasHidden = ivRow.hidden;
+    ivRow.hidden = !wasHidden;
+    if (ivBtn) ivBtn.classList.toggle('active', wasHidden);
+    if (wasHidden && ivInput) ivInput.focus();
   };
 
   const onAI = async () => {
@@ -597,6 +712,18 @@ export async function mountChat(container, params, router) {
       return;
     }
 
+    // 详情 modal — 红包 / 转账非 claimable 状态(已领 / 已退 / user 自己发
+    // 未领)点击 → 弹详情:from / when / amount / message + 状态。
+    const detailEl = e.target.closest('.bubble-money[data-money-detail]');
+    if (detailEl) {
+      const msgId = detailEl.dataset.msgId;
+      const idx = Number(detailEl.dataset.actionIdx);
+      const msg = await db.get('chatMessages', msgId);
+      if (!msg || !Array.isArray(msg.actions) || !msg.actions[idx]) return;
+      await openMoneyDetail(msg, msg.actions[idx]);
+      return;
+    }
+
     // Unblock request
     const ub = e.target.closest('.unblock-btn');
     if (!ub || ub.disabled) return;
@@ -810,6 +937,61 @@ export async function mountChat(container, params, router) {
       await db.set('chatMessages', msg);
       await refresh();
 
+    } else if (btn.dataset.action === 'inner-voice') {
+      // 角色心声 — 点击生成 / 显示。已 archived 不让生(被压缩后 history 改
+      // 了,事后再补"当时在想啥"准确度低)。msg.aiInnerVoice 已存 = toggle
+      // 显示,不再调 API(一锤定音)。
+      const msg = await db.get('chatMessages', msgId);
+      if (!msg) return;
+      if (msg.archived) {
+        await openAlert(container, { title: '已总结', message: '这条已经被压缩进记忆,无法查看心声了。' });
+        return;
+      }
+      if (msg.aiInnerVoice) {
+        // 已生成 → 找气泡 toggle 展开 / 收起
+        const row = stream.querySelector(`[data-msg-id="${msgId}"]`)?.closest('.msg-row');
+        const existing = row?.querySelector('.ai-inner-voice-display');
+        if (existing) {
+          existing.remove();
+        } else if (row) {
+          const div = document.createElement('div');
+          div.className = 'ai-inner-voice-display';
+          div.textContent = `心声:${msg.aiInnerVoice}`;
+          row.querySelector('.msg-actions')?.appendChild(div);
+        }
+        return;
+      }
+      // 第一次生成 — 调 ai 让模型回想"当时在想啥"
+      try {
+        const allMsgs = (await db.query('chatMessages', 'sessionId', sessionId))
+          .filter(m => !m.archived)
+          .sort((a, b) => a.createdAt - b.createdAt);
+        const idxInAll = allMsgs.findIndex(m => m.id === msgId);
+        const historySlice = allMsgs.slice(Math.max(0, idxInAll - 8), idxInAll + 1);
+        const cur = await db.get('characters', session.characterId);
+        const sys = `你是【${cur?.name || '角色'}】。下面给你看你跟用户最近的几条对话(最后一条是你刚发的)。请用第一人称简短写出**你发出最后一条回复那一刻**内心的真实想法 — 嘴上说着什么,内心可能在想完全不一样的事。只输出这一句话,不超过 40 字,不带任何前后缀、引号或解释。\n\n你的人设:\n${cur?.persona || ''}`;
+        const hist = historySlice.map(m => {
+          const who = m.role === 'user' ? '用户' : '你';
+          const texts = (m.actions || []).map(a => a.content || a.description || a.name || '').filter(Boolean).join(' ');
+          return `${who}:${texts}`;
+        }).join('\n');
+        const result = await ai.callAI({
+          systemPrompt: sys,
+          messages: [{ role: 'user', content: hist }],
+          temperature: 0.7,
+        });
+        const voice = String(result || '').trim().slice(0, 100);
+        if (!voice) {
+          await openAlert(container, { title: '生成失败', message: '模型没返回内容。' });
+          return;
+        }
+        msg.aiInnerVoice = voice;
+        await db.set('chatMessages', msg);
+        await refresh();
+      } catch (err) {
+        await openAlert(container, { title: '心声生成失败', message: String(err).slice(0, 300), danger: true });
+      }
+
     } else if (btn.dataset.action === 'regenerate') {
       // M4: 短按 = 直接重新生成;长按 = 长按 handler 已经处理(开 hint modal
       // 然后调 doRegenerate with hint),这里跳过避免双跑。flag 在 600ms
@@ -934,6 +1116,7 @@ export async function mountChat(container, params, router) {
   sendBtn.addEventListener('click', onSend);
   aiBtn.addEventListener('click', onAI);
   plusBtn.addEventListener('click', onPlusToggle);
+  if (ivBtn) ivBtn.addEventListener('click', onInnerVoiceToggle);
   panel.addEventListener('click', onPanelClick);
   moreBtn.addEventListener('click', onMoreToggle);
   if (inspectorBtn) inspectorBtn.addEventListener('click', onInspector);
@@ -953,6 +1136,7 @@ export async function mountChat(container, params, router) {
     sendBtn.removeEventListener('click', onSend);
     aiBtn.removeEventListener('click', onAI);
     plusBtn.removeEventListener('click', onPlusToggle);
+    if (ivBtn) ivBtn.removeEventListener('click', onInnerVoiceToggle);
     panel.removeEventListener('click', onPanelClick);
     moreBtn.removeEventListener('click', onMoreToggle);
     if (inspectorBtn) inspectorBtn.removeEventListener('click', onInspector);
@@ -1037,7 +1221,16 @@ function renderMessageRow(msg, ctx) {
   const clsList = ['msg-row', side];
   if (!ctx.showAvatars) clsList.push('no-avatar');
   if (msg.archived) clsList.push('archived');
-  return `<div class="${clsList.join(' ')}">${avatar}<div class="msg-actions">${bubbles}</div>${readMark}</div>`;
+  // 用户心声(只在 user 消息 + msg.innerVoice 存在时显示)/ 角色心声
+  // (character + msg.aiInnerVoice)— 浅色斜体小字在气泡下方。前者发消息
+  // 时一起存,后者 user 在 bubble menu 点击「心声」 → ai 生成 → 写回 cache。
+  let voiceDiv = '';
+  if (side === 'user' && msg.innerVoice) {
+    voiceDiv = `<div class="inner-voice-display">心声:${esc(msg.innerVoice)}</div>`;
+  } else if (side === 'char' && msg.aiInnerVoice) {
+    voiceDiv = `<div class="ai-inner-voice-display">心声:${esc(msg.aiInnerVoice)}</div>`;
+  }
+  return `<div class="${clsList.join(' ')}">${avatar}<div class="msg-actions">${bubbles}${voiceDiv}</div>${readMark}</div>`;
 }
 
 function renderRowAvatar(who, side) {
@@ -1168,15 +1361,21 @@ function renderAction(a, side, msgId, idx, previewMap, character) {
 // button, simpler hit area and matches WeChat's actual interaction.
 function renderMoneyBubble({ kind, a, side, attrs, label, verb, verbDone }) {
   const claimed = !!a.claimed;
+  const returned = !!a.returned;
   const amount = Number(a.amount || 0).toFixed(2);
   const userIsReceiver = side === 'char';
-  const claimable = !claimed && userIsReceiver;
-  const stateLabel = claimed ? verbDone
+  // claimable: AI 发 + 未领 + 未退 + user 是 receiver
+  const claimable = !claimed && !returned && userIsReceiver;
+  // 24h 退回:已退回时显示「已退回」灰显;其他状态走原 logic。
+  const stateLabel = returned ? '已退回(对方 24 小时未领取)'
+    : claimed ? verbDone
     : claimable ? `点击${verb}`
     : `等待对方${verb}`;
   const icon = kind === 'red_packet' ? SVG.redpacket : SVG.transfer;
   const claimAttr = claimable ? ' data-claim-kind="' + kind + '"' : '';
-  return `<div class="bubble ${side} bubble-money bubble-${kind}${claimed ? ' claimed' : ''}${claimable ? ' claimable' : ''}" ${attrs}${claimAttr}>
+  // 非 claimable 状态(claimed / returned / user 自己发的未领)→ 点击看详情
+  const detailAttr = !claimable ? ' data-money-detail="1"' : '';
+  return `<div class="bubble ${side} bubble-money bubble-${kind}${claimed ? ' claimed' : ''}${returned ? ' returned' : ''}${claimable ? ' claimable' : ''}" ${attrs}${claimAttr}${detailAttr}>
     <div class="money-top">
       <div class="money-icon">${icon}</div>
       <div class="money-body">

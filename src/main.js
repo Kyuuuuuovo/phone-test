@@ -39,6 +39,7 @@ import { mountMonitor }         from './features/monitor/monitor.js';
 import { mountMonitorView }     from './features/monitor/monitor-view.js';
 import { mountBottle }          from './features/bottle/bottle.js';
 import { mountMemoryApp }       from './features/memory/memory-app.js';
+import { mountKeepsakeApp }     from './features/keepsake/keepsake-app.js';
 import {
   BEAR_CHARACTER_ID, BEAR_SESSION_ID, DEFAULT_BEAR_AVATAR,
   ensureBearExists, pickAmbientLine,
@@ -184,6 +185,7 @@ async function boot() {
   router.registerPage('monitor-view',      mountMonitorView);
   router.registerPage('bottle',            mountBottle);
   router.registerPage('memory',            mountMemoryApp);
+  router.registerPage('keepsake',          mountKeepsakeApp);
 
   // Reserved bear character + session (id-stable, idempotent).
   await ensureBearExists(db, ai.getActiveApiConfig);
@@ -342,8 +344,14 @@ async function setupPet(router) {
       return;
     }
     if (wasLongPress) return;  // chat already navigated
-    // Plain short tap → pop an ambient bubble. If one's already up we just
-    // re-trigger so the user sees a fresh line.
+    // 短点行为:聊天页打开「记忆助手」面板;其他页弹 ambient 气泡。
+    // 「记忆助手」让 user 在聊天时不用切到其他 app 就能速览本会话记忆 +
+    // 常用词 / 指令(点击复制到剪贴板)。
+    const cur = router.current();
+    if (cur?.id === 'chat' && cur.params?.sessionId) {
+      await openMemoryHelperPanel(cur.params.sessionId);
+      return;
+    }
     await showBubble({ forceFresh: true });
   });
   // Right-click anywhere on the orb → go straight to chat.
@@ -409,6 +417,149 @@ async function setupPet(router) {
 
   // Fire once at boot, after a short delay so the page can mount first.
   setTimeout(() => { showBubble().catch(() => {}); }, 800);
+}
+
+// 记忆助手面板 — 聊天页戳桌宠短点触发。三段:本会话记忆速览 + 常用词
+// + 常用指令。点击词 / 指令复制到剪贴板,user 自己粘到 chat input。
+// 数据:settings.frequentPhrases / quickCommands(string[]),user 在
+// 面板底部加新条目。本会话记忆从 memories store 拿(L1+L2)。
+async function openMemoryHelperPanel(sessionId) {
+  const frame = document.querySelector('.phone-frame');
+  if (!frame) return;
+  // 移除已存在的面板(防重复打开)
+  document.querySelector('.memory-helper-backdrop')?.remove();
+
+  async function render() {
+    const settings = (await db.get('settings', 'default')) || {};
+    const phrases = Array.isArray(settings.frequentPhrases) ? settings.frequentPhrases : [];
+    const commands = Array.isArray(settings.quickCommands) ? settings.quickCommands : [];
+    const mems = (await db.query('memories', 'sessionId', sessionId))
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+    const esc = (s) => String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop memory-helper-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal memory-helper-modal">
+        <div class="modal-header">记忆助手</div>
+        <div class="mh-section">
+          <div class="mh-label">本会话记忆(${mems.length})</div>
+          ${mems.length === 0 ? `
+            <div class="mh-empty">还没有总结,聊得多了会自动生成。</div>
+          ` : `
+            <div class="mh-mem-list">
+              ${mems.slice(0, 5).map(m => `
+                <div class="mh-mem-row">
+                  <span class="mh-tier">${m.tier === 2 ? '远期' : '近期'}</span>
+                  <span class="mh-mem-summary">${esc((m.summary || '').slice(0, 80))}${(m.summary || '').length > 80 ? '…' : ''}</span>
+                </div>
+              `).join('')}
+              ${mems.length > 5 ? `<div class="mh-mem-more">还有 ${mems.length - 5} 条 — 进记忆 app 看全部</div>` : ''}
+            </div>
+          `}
+        </div>
+        <div class="mh-section">
+          <div class="mh-label-row">
+            <span class="mh-label">常用词(点击复制)</span>
+            <button type="button" class="mh-add-btn" data-add="phrase">+</button>
+          </div>
+          ${phrases.length === 0 ? `
+            <div class="mh-empty">还没有常用词。点 + 加一个。</div>
+          ` : `
+            <div class="mh-chips">
+              ${phrases.map((p, i) => `
+                <span class="mh-chip" data-copy="${esc(p)}">${esc(p)}<button class="mh-chip-del" data-del-phrase="${i}" title="删除">×</button></span>
+              `).join('')}
+            </div>
+          `}
+        </div>
+        <div class="mh-section">
+          <div class="mh-label-row">
+            <span class="mh-label">常用指令(点击复制 → 粘到长按重新生成的 modal)</span>
+            <button type="button" class="mh-add-btn" data-add="command">+</button>
+          </div>
+          ${commands.length === 0 ? `
+            <div class="mh-empty">还没有常用指令。点 + 加一个,比如「换个角度」「短一点」。</div>
+          ` : `
+            <div class="mh-chips">
+              ${commands.map((c, i) => `
+                <span class="mh-chip" data-copy="${esc(c)}">${esc(c)}<button class="mh-chip-del" data-del-command="${i}" title="删除">×</button></span>
+              `).join('')}
+            </div>
+          `}
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn close-btn">关闭</button>
+        </div>
+      </div>
+    `;
+    frame.appendChild(backdrop);
+
+    const close = () => backdrop.remove();
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) close();
+    });
+    backdrop.querySelector('.close-btn').addEventListener('click', close);
+
+    // 点击 chip 复制
+    backdrop.querySelectorAll('.mh-chip').forEach(chip => {
+      chip.addEventListener('click', async (e) => {
+        if (e.target.closest('.mh-chip-del')) return;  // 删除子按钮自己处理
+        const text = chip.dataset.copy;
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (_) {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand('copy'); } catch (_) {}
+          document.body.removeChild(ta);
+        }
+        // 简单提示已复制(临时 toast)
+        const orig = chip.textContent;
+        const tag = document.createElement('span');
+        tag.className = 'mh-copied';
+        tag.textContent = '已复制';
+        chip.appendChild(tag);
+        setTimeout(() => tag.remove(), 1000);
+      });
+    });
+
+    // 删除 chip
+    backdrop.querySelectorAll('.mh-chip-del').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const idx = btn.dataset.delPhrase ?? btn.dataset.delCommand;
+        const key = btn.dataset.delPhrase != null ? 'frequentPhrases' : 'quickCommands';
+        await db.updateSettings(s => {
+          if (!Array.isArray(s[key])) return;
+          s[key].splice(Number(idx), 1);
+        });
+        close();
+        openMemoryHelperPanel(sessionId);
+      });
+    });
+
+    // 加新 chip
+    backdrop.querySelectorAll('.mh-add-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const kind = btn.dataset.add;
+        const text = window.prompt(kind === 'phrase' ? '常用词 / 短语' : '常用指令');
+        if (!text || !text.trim()) return;
+        const key = kind === 'phrase' ? 'frequentPhrases' : 'quickCommands';
+        await db.updateSettings(s => {
+          if (!Array.isArray(s[key])) s[key] = [];
+          s[key].push(text.trim());
+        });
+        close();
+        openMemoryHelperPanel(sessionId);
+      });
+    });
+  }
+
+  await render();
 }
 
 boot().catch(err => console.error('[boot] failed:', err));

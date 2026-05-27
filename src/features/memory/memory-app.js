@@ -25,8 +25,13 @@ export async function mountMemoryApp(container, params, router) {
   // last result text after the gen-driven render() lands.
   let tlGenBusy = false;
   let tlStatus = { text: '', cls: '' };
+  // 角色筛选(timeline / milestones / summary tab 用,月历不动) — 空 = 全部。
+  // user 先选角色才能进各 tab,也可以一直留"全部"看全局。
+  let filterCharId = '';
 
   async function render() {
+    const chars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
+    const showFilter = activeTab !== 'calendar';
     container.innerHTML = `
       <div class="page memory-app-page">
         <header class="page-header">
@@ -40,6 +45,17 @@ export async function mountMemoryApp(container, params, router) {
             <button class="ma-tab${activeTab === 'milestones' ? ' active' : ''}" data-tab="milestones">纪念日</button>
             <button class="ma-tab${activeTab === 'summary'    ? ' active' : ''}" data-tab="summary">总结</button>
           </div>
+          ${showFilter ? `
+            <div class="ma-char-filter">
+              <label>
+                <span class="ma-filter-label">角色</span>
+                <select class="ma-filter-select">
+                  <option value=""${!filterCharId ? ' selected' : ''}>全部</option>
+                  ${chars.map(c => `<option value="${esc(c.id)}"${c.id === filterCharId ? ' selected' : ''}>${esc(c.name || '(未命名)')}</option>`).join('')}
+                </select>
+              </label>
+            </div>
+          ` : ''}
           <div class="ma-tab-body">
             ${activeTab === 'calendar'   ? await renderCalendar()
             : activeTab === 'timeline'   ? await renderTimeline()
@@ -139,10 +155,15 @@ export async function mountMemoryApp(container, params, router) {
     // hides mergedInto rows so they don't show up twice.
     const allTl = await db.getAll('timeline');
     const byId = new Map(allTl.map(t => [t.id, t]));
-    const topLevel = allTl.filter(t => !t.mergedInto);
-    topLevel.sort((a, b) => (b.dayKey || '').localeCompare(a.dayKey || ''));
     const sessions = await db.getAll('chatSessions');
     const chars    = await db.getAll('characters');
+    // 角色 filter:把 sessionId 映射到 characterId,然后过滤
+    let topLevel = allTl.filter(t => !t.mergedInto);
+    if (filterCharId) {
+      const sidByChar = new Set(sessions.filter(s => s.characterId === filterCharId).map(s => s.id));
+      topLevel = topLevel.filter(t => sidByChar.has(t.sessionId));
+    }
+    topLevel.sort((a, b) => (b.dayKey || '').localeCompare(a.dayKey || ''));
     const labelFor = (sid) => {
       const s = sessions.find(x => x.id === sid);
       if (!s) return '(未知会话)';
@@ -236,7 +257,10 @@ export async function mountMemoryApp(container, params, router) {
 
   // ── Milestones tab ──────────────────────────────────────────────────
   async function renderMilestones() {
-    const all = await db.getAll('milestones');
+    let all = await db.getAll('milestones');
+    if (filterCharId) {
+      all = all.filter(m => m.characterId === filterCharId);
+    }
     all.sort((a, b) => (b.dayKey || '').localeCompare(a.dayKey || ''));
     const chars = await db.getAll('characters');
     const charLabel = (cid) => cid ? (chars.find(c => c.id === cid)?.name || '(未知角色)') : '';
@@ -266,13 +290,17 @@ export async function mountMemoryApp(container, params, router) {
 
   // ── Summary tab (cross-session memories) ────────────────────────────
   async function renderSummary() {
-    const allMems = await db.getAll('memories');
+    let allMems = await db.getAll('memories');
+    const sessions = await db.getAll('chatSessions');
+    const chars    = await db.getAll('characters');
+    if (filterCharId) {
+      const sidByChar = new Set(sessions.filter(s => s.characterId === filterCharId).map(s => s.id));
+      allMems = allMems.filter(m => sidByChar.has(m.sessionId));
+    }
     if (allMems.length === 0) {
       return `<p class="hint">还没有总结。在某个会话里聊到超过 threshold(设置 → 记忆总结)后会自动生成。</p>`;
     }
     allMems.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-    const sessions = await db.getAll('chatSessions');
-    const chars    = await db.getAll('characters');
     const bySession = new Map();
     for (const m of allMems) {
       if (!bySession.has(m.sessionId)) bySession.set(m.sessionId, []);
@@ -312,6 +340,11 @@ export async function mountMemoryApp(container, params, router) {
         activeTab = t.dataset.tab;
         await render();
       });
+    });
+    // 角色 filter change → re-render 当前 tab(filterCharId 是 closure)
+    container.querySelector('.ma-filter-select')?.addEventListener('change', async (e) => {
+      filterCharId = e.target.value || '';
+      await render();
     });
 
     container.querySelector('.ma-nav-btn.prev')?.addEventListener('click', async () => {

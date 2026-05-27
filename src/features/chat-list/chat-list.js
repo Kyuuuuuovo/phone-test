@@ -593,8 +593,8 @@ function previewOfMessage(msg) {
     case 'voice':  return '[语音]';
     case 'recall': return '[消息已撤回]';
     case 'unblock_request': return '[请求解除拉黑]';
-    case 'red_packet': return `[红包] ¥${Number(a.amount || 0).toFixed(2)}`;
-    case 'transfer':   return `[转账] ¥${Number(a.amount || 0).toFixed(2)}`;
+    case 'red_packet': return `[红包${a.returned ? ' · 已退回' : (a.claimed ? ' · 已领' : '')}] ¥${Number(a.amount || 0).toFixed(2)}`;
+    case 'transfer':   return `[转账${a.returned ? ' · 已退回' : (a.claimed ? ' · 已接收' : '')}] ¥${Number(a.amount || 0).toFixed(2)}`;
     case 'location':   return `[位置] ${a.name || ''}`;
     case 'add_schedule_entry': return `[行程] ${a.title || ''}`;
     default:       return `[${a.type}]`;
