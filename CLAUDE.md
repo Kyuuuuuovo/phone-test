@@ -8,7 +8,8 @@
 
 ### 后端核心(`src/core/`)
 
-- `db.js` —— IndexedDB 封装。`STORES` 常量是数据模型唯一来源。改动需 bump `DB_VERSION`。当前 `DB_VERSION = 9`。导出 `init / get / set / getAll / query(store, indexName, value) / del / clear / newId / updateSettings`。
+- `db.js` —— IndexedDB 封装。`STORES` 常量是数据模型唯一来源。改动需 bump `DB_VERSION`。当前 `DB_VERSION = 11`。导出 `init / get / set / getAll / query(store, indexName, value) / del / clear / newId / updateSettings / txnPut(plan) / txnReplace(storeName, rows)`。`txnReplace` 是 `clear + put-many` 在同一 IDB tx 内,data-backup 导入用,避免半 store 数据。
+- `util.js` —— 公共小工具。`esc(s)` HTML 转义、`dayKeyOf(ts)` 本地 `YYYY-MM-DD`、`parseTolerantJSON(raw, { expect })` LLM 输出容错解析。**关键改进**:`parseTolerantJSON` 用 stack-balanced 扫描代替 5 处旧文件里的 `match(/\[[\s\S]*\]/)` 贪婪正则 — 后者遇到模型在 JSON 之后追加带 `]` 的文字(`[注:see ref [1]]`)会扩到末尾炸 parse。新代码识别 `{` `}` `[` `]` 配对 + 字符串字面量保护,精确切到第一段完整 JSON 块。`expect: 'array' | 'object' | 'any'`(默认 array)。旧 copy(各 feature 文件里的本地 `esc` / `dayKeyOf`)按"碰到了再迁"策略,不一次性扫,避免 noise diff;新写代码直接 import。
 - `pet.js` —— 桌宠模块。常量 `BEAR_PERSONA / AMBIENT_LINES`(作者锁定文案,普通用户改不到),保留 ID `BEAR_CHARACTER_ID = '__bear__'` / `BEAR_SESSION_ID = '__bear_session__'`;`ensureBearExists()` boot 时幂等保证两条 row 存在;`pickAmbientLine()` 按规则(无 API / 无角色 / lastMessageAt 老旧 / 时段)挑一条气泡文案,**不调 API**。聊天复用现有 chat 管线,不另起。
 - `bottle.js` —— 漂流瓶核心。`scanDueBottles(db, ai)` 找 `replyDueAt <= now` 的 drifting 瓶子懒生成回信(boot + open app 时调用);`replyAsContact` / `replyAsStranger` 分两种受众生成回信(联系人模式注入"匿名"事实让角色不知道作者是谁);`fishBottle` 让 AI 现造陌生人 + 瓶子内容;`promoteStrangerToFriend` 把瓶子上的 `generatedPersona` 升格成正式 character。**所有 prompt 文案是 // TODO(作者填写) 占位**,Claude 不替作者定稿语气。
 - `surveillance.js` —— 监控模块。`generateSnapshot(cameraId)` 拼专用 system prompt(persona + schedule + 最近聊天 + 房间 + angle + 模式事实 + 视角刚变动 hint)→ 严格 JSON schema(`{location, posture, activity, mood, caption, noticed}`)→ 写 `activityLog`,spy mode 且 noticed=true 时 flip `camera.discoveredAt`(铁律 9)。`proposeRooms(characterId, {excludeRoom})` 让 AI 给 3-4 个 ta 同意装/换机位的房间,prompt 里附"已装 N 台公开摄像头(房间:A、B)"上下文,允许 AI 返回 `[]` 表示 ta 拒绝再装。`proposeAngles(characterId, room)` 给 3-4 个合理镜头朝向(转动镜头流程的"AI 推荐"路径)。所有函数 `temperature: 0.4`。
@@ -56,7 +57,7 @@
 
 ---
 
-## 数据模型(`db.js` STORES,DB_VERSION = 9)
+## 数据模型(`db.js` STORES,DB_VERSION = 11)
 
 | store | 主键 | 索引 | 说明 |
 |---|---|---|---|
@@ -69,10 +70,12 @@
 | `chatMessages` | `id` | sessionId, createdAt | role(`user`/`character`/`system`)/ **actions[]** / createdAt |
 | `memories` | `id` | sessionId | 长对话压缩摘要,字段 sessionId / `tier`(1=近期 L1 / 2=远期 L2) / summary / fromMsgId / toMsgId / `archived?` / `archivedAt?` / `archivedIntoMemoryId?`(其实是 chatMessages 字段;memories 自身不带 archived)/ createdAt。**L2 删 L1 时同时清对应 embeddings 行**(否则 vector 表有孤儿) |
 | `apiConfig` | `id` | — | 多条;每条 id / name / apiUrl / apiKey / modelName / temperature。当前活跃由 `settings.activeApiConfigId` 指 |
-| `settings` | `id` | — | 单例 id=`default`。字段:`theme`(对象,见 [core/theme.js](src/core/theme.js))/ `themePresets[]` / `wallpaper`(base64 桌面壁纸)/ `activeApiConfigId` / `activePersonaId`(新建会话用)/ `weatherApi: {urlTemplate, apiKey}` / `memoryEnabled`(默认 true)/ `memoryThreshold`(默认 20,**缓冲条数** — 总结之后保留多少条活跃)/ `memoryBatchSize`(默认 10,**一次总结条数** — 每次触发压几条;触发 = 缓冲 + 一次总结)/ `petEnabled`(默认 true)/ `petX` / `petY`(悬浮球持久化坐标)/ `petLastBubbleAt` / `petDismissed: {triggerKey: ts}`(气泡冷却记录)/ **`tileOrder: [[{id,row,col}, ...], [{id,row,col}, ...]]`**(每页 app 的位置数组,unifiedGridV1 后用 object form;app 也可跨页拖,persistMove 负责从原页 remove)/ **`dockOrder: [appId\|null, ...]`** (4-槽数组,默认 `[null, 'messaging', 'settings', null]`;app 双向拖 dock↔pages 由 persistMove 同步)/ `syncScheduleToChat`(默认 true)/ `syncMonitorToChat`(默认 false,opt-in)/ `devMode`(默认 false)/ `promptOverrides: {humanizer?, behavior?}`(`??` 语义:不存在=源常量、`''`=故意不注入)/ `promptOutputOverrides: {countSpec?, schemasText?}`(同上,改了会影响 JSON 输出契约要小心)/ `embedding: {urlTemplate?, apiKey?, modelName?, enabled?, topK?}`(向量记忆 endpoint + 启用 toggle + top-K)/ **`favoritesMigratedV1` / `unifiedGridV1`**(home 一次性迁移 flag,first-mount 设)。**所有 settings 修改用 `db.updateSettings(fn)` 原子化**,不要再 `get → 改 → set` 三连(setupPet 那种夹 await 的写法会被并发覆盖)。`humanizerPrompt` 字段已废弃,在 `src/core/humanizer.js` 常量里 |
+| `settings` | `id` | — | 单例 id=`default`。字段:`theme`(对象,见 [core/theme.js](src/core/theme.js))/ `themePresets[]` / `wallpaper`(base64 桌面壁纸)/ `activeApiConfigId` / `activePersonaId`(新建会话用)/ `weatherApi: {urlTemplate, apiKey}` / `memoryEnabled`(默认 true)/ `memoryThreshold`(默认 20,**缓冲条数** — 总结之后保留多少条活跃)/ `memoryBatchSize`(默认 10,**一次总结条数** — 每次触发压几条;触发 = 缓冲 + 一次总结)/ `petEnabled`(默认 true)/ `petX` / `petY`(悬浮球持久化坐标)/ `petLastBubbleAt` / `petDismissed: {triggerKey: ts}`(气泡冷却记录)/ **`tileOrder: [[{id,row,col}, ...], [{id,row,col}, ...]]`**(每页 app 的位置数组,unifiedGridV1 后用 object form;app 也可跨页拖,persistMove 负责从原页 remove)/ **`dockOrder: [appId\|null, ...]`** (4-槽数组,默认 `[null, 'messaging', 'settings', null]`;app 双向拖 dock↔pages 由 persistMove 同步)/ `syncScheduleToChat`(默认 true)/ `syncMonitorToChat`(默认 false,opt-in)/ `devMode`(默认 false)/ `promptOverrides: {humanizer?, behavior?}`(`??` 语义:不存在=源常量、`''`=故意不注入)/ `promptOutputOverrides: {countSpec?, schemasText?}`(同上,改了会影响 JSON 输出契约要小心)/ `embedding: {urlTemplate?, apiKey?, modelName?, enabled?, topK?}`(向量记忆 endpoint + 启用 toggle + top-K)/ `memoryStyle`(`'default' \| 'planner' \| 'cabinet' \| 'petal' \| 'film' \| 'cosmic'`,记忆 app 视觉风格,默认 `'planner'`,见 [src/styles/memory-styles.css](src/styles/memory-styles.css))/ **`favoritesMigratedV1` / `unifiedGridV1`**(home 一次性迁移 flag,first-mount 设)。**所有 settings 修改用 `db.updateSettings(fn)` 原子化**,不要再 `get → 改 → set` 三连(setupPet 那种夹 await 的写法会被并发覆盖)。`humanizerPrompt` 字段已废弃,在 `src/core/humanizer.js` 常量里 |
 | `wallet` | `id` | — | 单例 id=`default`,字段 balance。用户发红包/转账扣余额,领 AI 红包/转账加余额。充值在「我 → 钱包」 |
 | `favorites` | `id` | sessionId, savedAt | 收藏的消息条目,字段 sessionId / msgId / actionIdx / savedAt / note。bubble menu「收藏」存入这里,「我 → 收藏」浏览 |
-| `schedule` | `id` | startTs, characterId | 行程条目,字段 who(`user`/`character`)/ characterId(who=character 时)/ startTs / endTs / title / desc / `syncToChat`(默认 true,可关掉单条不注入)/ createdAt。在 [now-6h, now+24h] 窗内被注入 system prompt 的「# 当前行程」段;受 `settings.syncScheduleToChat` 全局开关 + 单条 `syncToChat` 双重门控 |
+| `schedule` | `id` | startTs, characterId | 行程条目,字段 who(`user`/`character`)/ characterId(who=character 时)/ startTs / endTs / title / desc / `syncToChat`(默认 true,可关掉单条不注入)/ createdAt。在 [now-3d, now+3d] 窗内被注入 system prompt 的「# 当前行程」段;受 `settings.syncScheduleToChat` 全局开关 + 单条 `syncToChat` 双重门控 |
+| `checkinTypes` | `id` | — | 打卡类型定义。字段 name / icon(emoji 或文字)/ color / `targetFreq`(`'daily' \| 'weekly:N'`)/ `reminder?`(`'morning' \| 'noon' \| 'evening' \| null` — 通知集成预留)/ createdAt。在 schedule app 顶部 ✓ 按钮 → 管理 modal 里 CRUD。通常 < 20 条,无索引全表扫 |
+| `checkins` | `id` | typeId, dayKey | 每次打卡一行。字段 typeId / dayKey(`YYYY-MM-DD`)/ checkedAt / `note?` / `value?`(预留「次数 / 分钟」)。同 (typeId, dayKey) 业务层 upsert(IDB 不约束)。月历视图按 dayKey index 范围扫,O(month)。删除 type 时级联清相关 checkin 行(`openManageTypesModal` 的 del handler 干这事) |
 | `homeWidgets` | `id` | createdAt | 用户添加的桌面装饰,字段 type(`favorites`/`image`/`note`/`polaroid`/`anniversary`/`music`)/ data(base64 或文本或对象,按 type)/ **row / col / colSpan / rowSpan**(unifiedGridV1 后的位置,inline `grid-column / grid-row` 渲染)/ `transparency?`(0-100,默认 100,渲染为 `--widget-alpha`)/ createdAt。**只在 page 0 显示**(数据模型没 page 字段)。**legacy `size / placement / order` 字段** migration 跑过后已转成 row/col + widgetSpan,但 `widgetSpan()` 里仍有按 type 兜底分支防御老数据 |
 | `cameras` | `id` | characterId | 监控机位,字段 characterId / room / `angle?`(可选,镜头朝向描述) / mode(`open`/`spy`) / `feedToChat`(默认 false,可单台开同步) / createdAt / `discoveredAt`(spy 被察觉时写入,null 表示未被察觉)/ `viewChangedAt?`(换机位或转动镜头时写入,monitor-view 渲染时过滤 createdAt < 这个值的旧 activityLog,数据保留但 UI 隐藏)。feedToChat 开 + `settings.syncMonitorToChat` 全局开 → 该角色最近一条 activityLog 注入 system prompt 的「# 角色当前活动」段(纯第一人称事实陈述,不提镜头 — 铁律 9) |
 | `activityLog` | `id` | cameraId, characterId | 监控快照历史,字段 cameraId / characterId / sessionId? / `payload: {location, posture, activity, mood, caption, noticed, outOfReach?}` / createdAt。每次刷新画面 append 一条,**每台机位只保留最近 50 条**(`ACTIVITY_LOG_KEEP` in surveillance.js),写一条 prune 一次,IDB 不会无限涨 |
@@ -237,13 +240,42 @@
 - ✅ keepsake app 千纸鹤/叠星星(新 store `keepsakes`,**DB_VERSION 9→10**;home page 2 加入口;字段 characterId/type/theme/status('folded'|'opened'|'kept')/content?/nth/total;user 出题 → N 行 folded **不调 API**;拆 → lazy `ai.callAI` 生成 content → opened;留下 = kept 可重读 / 丢掉 = hard delete。`KEEPSAKE_SYS_TEMPLATE` 是作者占位 TODO)
 - ✅ 桌宠记忆助手(聊天页戳桌宠短点 → `openMemoryHelperPanel` 弹面板:本会话 L1/L2 速览 + 常用词 + 常用指令,chip 点击复制剪贴板;其他页保留 ambient 气泡)
 
+*行程 app:单一视图 + 打卡集成(DB_VERSION 10→11)*
+- ✅ 行程 app 单视图(`schedule-list.js`):顶部月历(`.sched-cal-*`,行程 dot + 打卡 dot)+ 下方选中日详情(header「+ 行程」按钮 → 打卡 chip 行 → 24h 纵向 timeline)。点月历任一格 → 下方 timeline + 打卡 chip 切到那天。**早期做过 mode-toggle 双模式(月历+日 / 三日时间轴),后来合并掉**(三日的"跨日比较"在月历 dot 已能看,toggle 反而是额外认知成本)。`.time-entry` 右上角 × 删除,点 block 编辑;`settings.scheduleMode` 字段废弃
+- ✅ 新 store `checkinTypes` + `checkins`,数据形状见数据模型表
+- ✅ 打卡类型管理 modal(行程 app header ✓ 按钮)— 新建/编辑/删除,字段 name/icon(emoji)/color/targetFreq(daily / weekly:N)。删类型级联清相关 checkin
+- ✅ `context.buildCheckinLines()` — 本月 N/M + ≥3 才显 streak + targetFreq 后缀;受 `settings.syncScheduleToChat` 全局门控(跟行程同源,不单设开关)。在 `buildSystemPromptParts` 第 8b' 段插「# 当前打卡(用户)」,跟 8b 「# 当前行程」并列。仅 user,character 没有打卡概念
+- ✅ 死代码清理 — schedule-list.js 删了 `bucketize()` 和 `renderEntry()`,这两个老 bucket-list 时代留下没人调过
+
+*独立文档(docs/)*
+- ✅ `docs/memory-styles-spec.md` — 5 种记忆 app 视觉风格(planner/cabinet/petal/film/cosmic)指令文档,通用 JS + 5 套 CSS scope,等下一阶段实现
+- ✅ `docs/schedule-refactor-spec.md` — 行程 app 双模式落地步骤完整文档(已实施)
+
+*External review triage 修复 batch*
+- ✅ `core/util.js` 收口 `esc / dayKeyOf / parseTolerantJSON`,parseTolerantJSON 用 stack-balanced 扫描替 5 处贪婪正则(ai/schedule-list/surveillance×2/bottle 已迁,旧文件本地 esc 等"碰到再迁")
+- ✅ `buildScheduleLines` 区间重叠判定(原来只看 startTs 漏跨天事件,改成 `ee < winStart || startTs > winEnd` 与三日视图一致)
+- ✅ `data-backup` Float32Array 序列化修(导出 `Array.from(vec)`,导入 `new Float32Array(arr)`,兼容旧 buggy 备份的 `{"0":0.1, ...}` 对象形式)+ 每 store clear+puts 改 `db.txnReplace` 原子事务
+- ✅ `schedule-notify` 队列化(原来 `find()` 同分钟多条到期只弹一条剩下丢窗;现在 `filter` 抓全部排队,banner dismiss 后立刻显下一条)
+- ✅ `timeline.generateMissingDays` 加 `maxDays=30` 默认上限,200 天历史一次只跑近 30 天,返回 `remaining` 让 memory-app 提示"还有 N 天再点继续"
+- ✅ `router` 加 `STACK_CAP=50`,超了从头部砍,防极端跳转栈无限涨
+
+*记忆 app 5 种视觉风格*
+- ✅ [src/styles/memory-styles.css](src/styles/memory-styles.css):5 个 `body[data-mem-style="..."]` scope(planner / cabinet / petal / film / cosmic),通用通过 `.memory-app-page` 限定作用域,不漏到其他 app。`index.html` 已加 link。
+- ✅ memory-app.js:加 `MEMORY_STYLES` 常量(6 项含 default)+ `settings.memoryStyle` 读写 + 右上角 chevron 切换 UI(`.ma-style-btn` / `.ma-style-menu` / `.ma-style-opt`)+ `applyMemoryStyleToBody` 设 / 清 `body.dataset.memStyle`,cleanup 也清。
+- ✅ 仍未做:卡片级 tier 标签 / 时间覆盖范围 / 向量分数 / 标签 chip — 等 Phase 4 向量打标落地数据有了再装。 `docs/memory-styles-spec.md` 里的"每张卡必须显示"那段是目标态。
+
+*Emoji 清理(铁律新增:[不擅自加 emoji](#))*
+- ✅ schedule-list:`dds-label` 去 📅 / ✓,改 uppercase letter-spacing + 左侧 2px accent 边作子标题
+- ✅ checkin-chip:删 `.ci-mark` ✓/○ 字符,完全靠 filled-vs-outlined 状态区分(状态能用 CSS 表达不要 emoji)
+- ✅ checkin-type 默认 icon 由 `'✓'` 改空字符串;空时显示 name 首字 — 用户想用 emoji 仍可自填
+
 ---
 
 ### TODO 待办
 
 **等用户文案 / 决策**:
 - 桌宠 `BEAR_PERSONA` + `AMBIENT_LINES` 7 场景(每个 1 条占位)、`bottle.js` 4 处 TODO、`KEEPSAKE_SYS_TEMPLATE`、`BEHAVIOR_GUIDANCE`(目前只有心声一段,9 个动作的「什么时机用」都没写)
-- 行程 3 天时间轴美化风格(国誉手账本,等 user 给 reference)
+- 行程 3 天时间轴 + 月历美化风格(等 user 给 reference,demo 已 functional)
 - 监控反向注入聊天(user 在想 — 因为不只是当前帧,可能要包括历史画面)
 - 网站地址 / KKphone.com(等 user 买域名,有了我加 CNAME 文件)
 - 红包动画(user 明确不做)
@@ -253,12 +285,14 @@
 - 阶段 2 用户画像 per (角色×人设) — 压缩 prompt 同时吐画像 patch,inject system prompt 顶部
 - 阶段 4 向量打标(转折点/情感/日常)+ `buildVectorRecallLines` boost
 
+**记忆 app 卡片级增强(等 Phase 4 数据)**:
+- 每张卡显示 tier(L1/L2)+ 时间覆盖范围 + 向量分数 + 标签 chip — 需要 Phase 4 向量打标先落地,数据有了再装。占位的 `.mem-card-tags` / `.mem-vector-hits` 区块还没建,等真有数据再加避免空容器视觉噪音
+
 **永远会做的小事**:
 - 位置功能进阶(地图选点)
 
 ### Phase 2(MVP-2)
 - **群聊**:`chatSessions.participantIds[]` 字段、群里「谁该说话/什么时机说」机制(导演 + 演员两层 — 第一层轻量导演选 speakers,第二层每个 speaker 走现有单角色管线)。新建对话 modal 入口已预留(`new-group` 按钮,目前 alert 占位);action schema 已加可选 `from` 字段(单聊省略、群聊角色名)
-- `state` 动作做成可选开关,设置里开启后 prompt 才要求模型输出
 - **环境上下文扩展**(按铁律 12 模板):
   - ✅ **角色当前活动主动注入**:监控 `feedToChat` toggle + 全局 `syncMonitorToChat` → 「# 角色当前活动」段。落地于 `buildActivityLine`,纯第一人称事实陈述。
   - **监控被察觉反向注入聊天**(可选 toggle 进一步):open 模式可以让画面信息直接进角色 prompt(角色本就知道有镜头),spy 模式可以让用户在 chat 看到画面后用「📍 我刚看到你」给 prompt 加观察事实。这是把现有 `# 角色当前活动` 段从「视角:角色自己」扩展到「视角:用户监视过的事实」

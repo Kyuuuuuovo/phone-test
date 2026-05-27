@@ -18,6 +18,17 @@ import * as db from '../../core/db.js';
 import * as timeline from '../../core/timeline.js';
 import { openConfirm } from '../../core/modal.js';
 
+// 5 风格 + 默认。default = 不挂 body[data-mem-style](回退到 base.css 的 .ma-row),
+// 其余 5 个由 src/styles/memory-styles.css 的 scope 接管 .mem-card 样式。
+const MEMORY_STYLES = [
+  { id: 'default', name: '默认',   desc: '简洁清单' },
+  { id: 'planner', name: '手账本', desc: '横线纸 + 纸胶带' },
+  { id: 'cabinet', name: '档案柜', desc: '文件夹 + 标签' },
+  { id: 'petal',   name: '花瓣',   desc: '毛玻璃 + 渐变' },
+  { id: 'film',    name: '胶片',   desc: '拍立得 + 齿孔' },
+  { id: 'cosmic',  name: '星河',   desc: '深色 + 星点' },
+];
+
 export async function mountMemoryApp(container, params, router) {
   let activeTab = 'calendar';
   let calendarCursor = new Date();  // 1st day of currently-viewed month
@@ -28,15 +39,39 @@ export async function mountMemoryApp(container, params, router) {
   // 角色筛选(timeline / milestones / summary tab 用,月历不动) — 空 = 全部。
   // user 先选角色才能进各 tab,也可以一直留"全部"看全局。
   let filterCharId = '';
+  // 视觉风格 — 从 settings.memoryStyle 读,默认 planner(手账本)。每次进 app
+  // 把 body.dataset.memStyle 设上,cleanup 清掉。这样 memory-styles.css 里的
+  // `body[data-mem-style="..."]` scope 只在记忆 app 内生效。
+  const initialSettings = (await db.get('settings', 'default')) || {};
+  let memoryStyle = initialSettings.memoryStyle || 'planner';
+  applyMemoryStyleToBody(memoryStyle);
+  let stylePickerOpen = false;
 
   async function render() {
     const chars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
     const showFilter = activeTab !== 'calendar';
+    const styleCur = MEMORY_STYLES.find(s => s.id === memoryStyle) || MEMORY_STYLES[0];
     container.innerHTML = `
       <div class="page memory-app-page">
         <header class="page-header">
           <button class="back">‹ 返回</button>
           <div class="title">记忆</div>
+          <div class="actions">
+            <button class="ma-style-btn" type="button" title="切换风格" aria-label="切换风格">
+              <span class="ma-style-name">${esc(styleCur.name)}</span>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            ${stylePickerOpen ? `
+              <div class="ma-style-menu" role="menu">
+                ${MEMORY_STYLES.map(s => `
+                  <button class="ma-style-opt${s.id === memoryStyle ? ' active' : ''}" data-style="${esc(s.id)}" type="button">
+                    <span class="ma-style-opt-name">${esc(s.name)}</span>
+                    <span class="ma-style-opt-desc">${esc(s.desc)}</span>
+                  </button>
+                `).join('')}
+              </div>
+            ` : ''}
+          </div>
         </header>
         <div class="page-body">
           <div class="ma-tabs">
@@ -218,7 +253,7 @@ export async function mountMemoryApp(container, params, router) {
     const stat = container.querySelector('.ma-tl-status');
     if (btn)  { btn.disabled = true; btn.textContent = '生成中…'; }
     if (stat) { stat.textContent = tlStatus.text; stat.className = 'ma-tl-status'; }
-    let totalGen = 0, totalErr = 0;
+    let totalGen = 0, totalErr = 0, totalRemaining = 0;
     try {
       const sessions = await db.getAll('chatSessions');
       const chars    = await db.getAll('characters');
@@ -239,13 +274,15 @@ export async function mountMemoryApp(container, params, router) {
           });
           totalGen += res.generated;
           totalErr += res.errors;
+          totalRemaining += res.remaining || 0;
         } catch (e) {
           console.warn('[memory-app] timeline gen failed for', s.id, e);
           totalErr++;
         }
       }
+      const remainingNote = totalRemaining > 0 ? ` · 还有 ${totalRemaining} 天未生成,再点继续` : '';
       tlStatus = (totalGen > 0 || totalErr > 0)
-        ? { text: `共生成 ${totalGen} 条${totalErr ? ` · ${totalErr} 条失败` : ''}`, cls: totalErr ? ' error' : ' success' }
+        ? { text: `共生成 ${totalGen} 条${totalErr ? ` · ${totalErr} 条失败` : ''}${remainingNote}`, cls: totalErr ? ' error' : ' success' }
         : { text: '没有需要生成的(今天不算)', cls: '' };
     } catch (e) {
       tlStatus = { text: `失败:${String(e).slice(0, 200)}`, cls: ' error' };
@@ -334,6 +371,36 @@ export async function mountMemoryApp(container, params, router) {
   // ── Wiring (per-render) ─────────────────────────────────────────────
   function wire() {
     container.querySelector('.back')?.addEventListener('click', () => router.back());
+    // 风格切换 — 点 btn 开/关菜单,点选项写 settings 并立即应用。
+    container.querySelector('.ma-style-btn')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      stylePickerOpen = !stylePickerOpen;
+      await render();
+    });
+    container.querySelectorAll('.ma-style-opt').forEach(opt => {
+      opt.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const next = opt.dataset.style;
+        if (next === memoryStyle) { stylePickerOpen = false; await render(); return; }
+        memoryStyle = next;
+        applyMemoryStyleToBody(memoryStyle);
+        await db.updateSettings(s => { s.memoryStyle = next; return s; });
+        stylePickerOpen = false;
+        await render();
+      });
+    });
+    // 点菜单外面关掉(下一次 render 清掉)。
+    if (stylePickerOpen) {
+      const onDocClick = (e) => {
+        if (!e.target.closest('.actions')) {
+          stylePickerOpen = false;
+          document.removeEventListener('click', onDocClick);
+          render();
+        }
+      };
+      // 延后绑定,避免本次 click 立刻自身触发关闭。
+      setTimeout(() => document.addEventListener('click', onDocClick), 0);
+    }
     container.querySelectorAll('.ma-tab').forEach(t => {
       t.addEventListener('click', async () => {
         if (t.dataset.tab === activeTab) return;
@@ -500,7 +567,19 @@ export async function mountMemoryApp(container, params, router) {
   }
 
   await render();
-  return () => {};
+  // cleanup:离开记忆 app 时清掉 body.dataset.memStyle,免得 memory-styles.css
+  // 的 scope 漏到其他 app(例如桌面也用 .mem-card 的话)。
+  return () => {
+    delete document.body.dataset.memStyle;
+  };
+}
+
+function applyMemoryStyleToBody(style) {
+  if (!style || style === 'default') {
+    delete document.body.dataset.memStyle;
+  } else {
+    document.body.dataset.memStyle = style;
+  }
 }
 
 function dayKeyOf(ts) {

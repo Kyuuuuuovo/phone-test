@@ -1,0 +1,535 @@
+/* 记忆 app 5 种视觉风格 — planner / cabinet / petal / film / cosmic。
+   通过 body[data-mem-style="..."] scope 接管 memory-app-page 内部样式,
+   default(无 attribute)回退到 base.css 的 .ma-row 等。
+   文档:docs/memory-styles-spec.md。
+
+   ────────────────────────────────────────────────────────────────────
+   主题适配规则:
+   - **配色用主题 token**(--bg / --fg / --accent / --surface / --muted /
+     --border / --bg-pinned)。换主题预设时 5 风格全部跟随。
+   - **结构特征保留**(横线纸纹、玻璃模糊、胶片齿孔、星点、径向光晕)— 这些
+     是风格本身的身份,不随主题动。
+   - cosmic 例外:深色渐变是它的核心身份,基底色不取自 --bg。但 accent 系
+     发光仍用 --accent,因此换主题 accent 时星点颜色跟着变。
+   ──────────────────────────────────────────────────────────────────── */
+
+/* ─────────────────────────────────────────────────────────────────────
+   通用:风格切换按钮 + 下拉菜单(.ma-style-btn / .ma-style-menu)
+   ───────────────────────────────────────────────────────────────────── */
+.memory-app-page .actions { display: flex; align-items: center; position: relative; }
+.ma-style-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--fg);
+  cursor: pointer;
+}
+.ma-style-btn:hover { background: var(--bubble-char); }
+.ma-style-btn svg { display: block; opacity: 0.6; }
+.ma-style-name { font-weight: 500; }
+
+.ma-style-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+  z-index: 100;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ma-style-opt {
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--fg);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ma-style-opt:hover { background: var(--bubble-char); }
+.ma-style-opt.active { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.ma-style-opt-name { font-size: 13px; font-weight: 500; }
+.ma-style-opt-desc { font-size: 11px; color: var(--muted); }
+
+/* ═════════════════════════════════════════════════════════════════════
+   风格 1 · 手账本(planner)— 横线纸 + 纸胶带 + 圆点时间轴
+   纸纹用 var(--fg) 透明度叠加,自动适应深浅主题(浅主题黑线 / 深主题白线)
+   ═════════════════════════════════════════════════════════════════════ */
+body[data-mem-style="planner"] .memory-app-page.page {
+  background:
+    repeating-linear-gradient(
+      transparent 0,
+      transparent 27px,
+      color-mix(in srgb, var(--fg) 14%, transparent) 27px,
+      color-mix(in srgb, var(--fg) 14%, transparent) 28px
+    ),
+    var(--bg);
+}
+body[data-mem-style="planner"] .memory-app-page .ma-tabs {
+  border-bottom: 2px dashed color-mix(in srgb, var(--fg) 25%, transparent);
+}
+body[data-mem-style="planner"] .memory-app-page .ma-tab {
+  border: 1px dashed color-mix(in srgb, var(--fg) 25%, transparent);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  margin: 0 2px -1px 2px;
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 12px;
+}
+body[data-mem-style="planner"] .memory-app-page .ma-tab.active {
+  border-style: solid;
+  background: var(--surface);
+  color: var(--fg);
+  font-weight: 600;
+  box-shadow: 0 -2px 0 var(--accent) inset;
+}
+body[data-mem-style="planner"] .memory-app-page .ma-row {
+  background: transparent;
+  border: none;
+  border-left: 3px solid var(--accent);
+  border-radius: 0;
+  padding: 8px 12px 8px 18px;
+  position: relative;
+  margin-left: 6px;
+}
+/* 时间轴圆点 — 跨在左边竖线上,边缘留 --bg 一圈描边把纸纹线遮住 */
+body[data-mem-style="planner"] .memory-app-page .ma-row::before {
+  content: '';
+  position: absolute;
+  left: -5.5px;
+  top: 14px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+body[data-mem-style="planner"] .memory-app-page .ma-row-meta {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+}
+body[data-mem-style="planner"] .memory-app-page .ma-row-body {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--fg);
+}
+body[data-mem-style="planner"] .memory-app-page .ma-cell {
+  background: var(--surface);
+  border: 1px dashed color-mix(in srgb, var(--fg) 20%, transparent);
+  border-radius: 3px;
+  color: var(--fg);
+}
+body[data-mem-style="planner"] .memory-app-page .ma-cell.today {
+  background: var(--bg-pinned);
+  border-color: var(--accent);
+  border-style: solid;
+}
+body[data-mem-style="planner"] .memory-app-page .ma-cell-dots .dot {
+  border-radius: 2px;
+  width: 5px;
+  height: 5px;
+}
+body[data-mem-style="planner"] .memory-app-page .ma-cal-nav .ma-nav-btn {
+  background: var(--surface);
+  border-color: color-mix(in srgb, var(--fg) 30%, transparent);
+  color: var(--fg);
+}
+body[data-mem-style="planner"] .memory-app-page .ma-month-label {
+  font-style: italic;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+/* ═════════════════════════════════════════════════════════════════════
+   风格 2 · 档案柜(cabinet)— 胶囊 tabs + 卡片顶部渐变色条
+   ═════════════════════════════════════════════════════════════════════ */
+body[data-mem-style="cabinet"] .memory-app-page.page {
+  background: var(--bg);
+}
+body[data-mem-style="cabinet"] .memory-app-page .ma-tabs {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  border-radius: 999px;
+  padding: 3px;
+  display: inline-flex;
+  width: max-content;
+  border: none;
+  margin: 0 auto 12px;
+}
+body[data-mem-style="cabinet"] .memory-app-page .ma-tab {
+  border: none;
+  background: none;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--muted);
+}
+body[data-mem-style="cabinet"] .memory-app-page .ma-tab.active {
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--fg) 12%, transparent);
+}
+body[data-mem-style="cabinet"] .memory-app-page .ma-row {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding-top: 12px;
+  position: relative;
+  overflow: hidden;
+}
+body[data-mem-style="cabinet"] .memory-app-page .ma-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--accent),
+    color-mix(in srgb, var(--accent) 60%, var(--surface))
+  );
+}
+body[data-mem-style="cabinet"] .memory-app-page .ma-row-meta {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 600;
+}
+body[data-mem-style="cabinet"] .memory-app-page .ma-row-body {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--fg);
+}
+body[data-mem-style="cabinet"] .memory-app-page .ma-cell {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg);
+}
+body[data-mem-style="cabinet"] .memory-app-page .ma-cell.today {
+  background: var(--bg-pinned);
+  border-color: var(--accent);
+}
+body[data-mem-style="cabinet"] .memory-app-page .ma-cal-nav .ma-nav-btn {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--fg);
+}
+body[data-mem-style="cabinet"] .memory-app-page .ma-session-group summary {
+  background: linear-gradient(90deg, var(--accent) 0, var(--accent) 4px, transparent 4px);
+  padding-left: 12px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+/* ═════════════════════════════════════════════════════════════════════
+   风格 3 · 花瓣(petal)— 双径向光晕 + 毛玻璃
+   光晕用 --accent 派生,换主题色光晕跟着换
+   ═════════════════════════════════════════════════════════════════════ */
+body[data-mem-style="petal"] .memory-app-page.page {
+  background:
+    radial-gradient(
+      ellipse 60% 50% at 18% 12%,
+      color-mix(in srgb, var(--accent) 28%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 70% 60% at 82% 88%,
+      color-mix(in srgb, var(--accent) 22%, transparent),
+      transparent 70%
+    ),
+    var(--bg);
+}
+body[data-mem-style="petal"] .memory-app-page .ma-tabs {
+  border-bottom: none;
+  justify-content: center;
+}
+body[data-mem-style="petal"] .memory-app-page .ma-tab {
+  border: none;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 999px;
+  padding: 6px 14px;
+  margin: 0 3px;
+  color: var(--muted);
+}
+body[data-mem-style="petal"] .memory-app-page .ma-tab.active {
+  background: linear-gradient(
+    135deg,
+    var(--accent),
+    color-mix(in srgb, var(--accent) 50%, white)
+  );
+  color: var(--surface);
+  box-shadow: 0 3px 14px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+body[data-mem-style="petal"] .memory-app-page .ma-row {
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid color-mix(in srgb, var(--surface) 80%, transparent);
+  border-radius: 20px;
+  padding: 14px 18px;
+  position: relative;
+  overflow: hidden;
+}
+body[data-mem-style="petal"] .memory-app-page .ma-row::after {
+  content: '\273F';
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  opacity: 0.18;
+  font-size: 28px;
+  color: var(--accent);
+  pointer-events: none;
+}
+body[data-mem-style="petal"] .memory-app-page .ma-row-meta {
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+body[data-mem-style="petal"] .memory-app-page .ma-row-body {
+  font-size: 14px;
+  line-height: 1.7;
+  text-align: center;
+  color: var(--fg);
+}
+body[data-mem-style="petal"] .memory-app-page .ma-cell {
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  backdrop-filter: blur(4px);
+  border: 1px solid color-mix(in srgb, var(--surface) 80%, transparent);
+  border-radius: 12px;
+  color: var(--fg);
+}
+body[data-mem-style="petal"] .memory-app-page .ma-cell.today {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 40%, transparent),
+    color-mix(in srgb, var(--accent) 25%, transparent)
+  );
+}
+body[data-mem-style="petal"] .memory-app-page .ma-cal-nav .ma-nav-btn {
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+  border: none;
+  color: var(--fg);
+  backdrop-filter: blur(4px);
+}
+body[data-mem-style="petal"] .memory-app-page .ma-legend {
+  justify-content: center;
+}
+
+/* ═════════════════════════════════════════════════════════════════════
+   风格 4 · 胶片(film)— 拍立得 + 顶部齿孔条纹 + 等宽日期
+   齿孔黑白条纹是胶片本身的视觉符号,故保留固定深浅但用 --fg/--surface
+   ═════════════════════════════════════════════════════════════════════ */
+body[data-mem-style="film"] .memory-app-page.page {
+  background: var(--bg);
+}
+body[data-mem-style="film"] .memory-app-page .ma-tabs {
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 35%, transparent);
+  border-radius: 0;
+}
+body[data-mem-style="film"] .memory-app-page .ma-tab {
+  border: none;
+  background: none;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: var(--muted);
+  border-radius: 0;
+  margin-bottom: -1px;
+}
+body[data-mem-style="film"] .memory-app-page .ma-tab.active {
+  border-bottom: 2px solid var(--accent);
+  color: var(--fg);
+  font-weight: 600;
+}
+body[data-mem-style="film"] .memory-app-page .ma-row {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 0;
+  overflow: hidden;
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--fg) 10%, transparent);
+}
+/* 胶片齿孔条纹顶部:用 --fg / --surface 拼,深主题自动反相 */
+body[data-mem-style="film"] .memory-app-page .ma-row::before {
+  content: '';
+  display: block;
+  height: 6px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--fg) 0,
+    var(--fg) 4px,
+    var(--surface) 4px,
+    var(--surface) 8px
+  );
+}
+body[data-mem-style="film"] .memory-app-page .ma-row-meta {
+  font-family: 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
+  font-size: 10px;
+  background: var(--fg);
+  color: var(--surface);
+  padding: 3px 10px;
+  display: inline-block;
+  margin: 10px 12px 6px;
+  letter-spacing: 0.06em;
+}
+body[data-mem-style="film"] .memory-app-page .ma-row-body {
+  padding: 0 14px 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--fg);
+}
+body[data-mem-style="film"] .memory-app-page .ma-cell {
+  background: var(--surface);
+  border: 4px solid var(--surface);
+  border-radius: 2px;
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--fg) 15%, transparent);
+  color: var(--fg);
+}
+body[data-mem-style="film"] .memory-app-page .ma-cell.today {
+  border-color: var(--accent);
+}
+body[data-mem-style="film"] .memory-app-page .ma-cal-nav .ma-nav-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 2px;
+}
+body[data-mem-style="film"] .memory-app-page .ma-month-label {
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.08em;
+  color: var(--fg);
+}
+
+/* ═════════════════════════════════════════════════════════════════════
+   风格 5 · 星河(cosmic)— 深色渐变 + 星点 + 发光
+   ★ 例外:基底深色渐变是 cosmic 的核心身份,**不取 --bg** — 即使 user 用
+     浅主题,cosmic 也是深的(类似"进入这个 app 进入了黑夜")。
+     但所有 accent 系发光(星点、tab 下划线、文字光晕)仍走 --accent,
+     换主题 accent 颜色,星河颜色就变。
+   ═════════════════════════════════════════════════════════════════════ */
+body[data-mem-style="cosmic"] .memory-app-page.page {
+  background:
+    radial-gradient(1px 1px at 18% 22%, color-mix(in srgb, var(--accent) 85%, white), transparent),
+    radial-gradient(1px 1px at 62% 68%, color-mix(in srgb, var(--accent) 65%, white), transparent),
+    radial-gradient(2px 2px at 81% 18%, color-mix(in srgb, var(--accent) 70%, white), transparent),
+    radial-gradient(1px 1px at 38% 88%, color-mix(in srgb, var(--accent) 55%, white), transparent),
+    radial-gradient(1px 1px at 9% 64%, color-mix(in srgb, var(--accent) 50%, white), transparent),
+    radial-gradient(2px 2px at 92% 52%, color-mix(in srgb, var(--accent) 60%, white), transparent),
+    radial-gradient(1px 1px at 48% 38%, color-mix(in srgb, var(--accent) 50%, white), transparent),
+    radial-gradient(1px 1px at 72% 8%, color-mix(in srgb, var(--accent) 50%, white), transparent),
+    linear-gradient(180deg, #1a0e14 0%, #3d2530 100%);
+  color: #f8e0e8;
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-tabs {
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-tab {
+  border: none;
+  background: none;
+  color: color-mix(in srgb, var(--accent) 60%, white);
+  padding: 8px 14px;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-tab.active {
+  color: color-mix(in srgb, var(--accent) 30%, white);
+  border-bottom-color: var(--accent);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-row {
+  background: rgba(60, 30, 50, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 12px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-row:hover {
+  border-color: color-mix(in srgb, var(--accent) 65%, transparent);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-row-meta {
+  color: color-mix(in srgb, var(--accent) 70%, white);
+  font-size: 11px;
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-row-body {
+  color: #f8e0e8;
+  font-size: 13.5px;
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-cell {
+  background: rgba(60, 30, 50, 0.35);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  color: #f8e0e8;
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-cell.today {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-cell.has-event {
+  font-weight: 700;
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-cell-dots .dot {
+  box-shadow: 0 0 6px currentColor;
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-cal-nav .ma-nav-btn {
+  background: rgba(60, 30, 50, 0.4);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  color: #f8e0e8;
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-month-label {
+  color: color-mix(in srgb, var(--accent) 30%, white);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-legend {
+  color: color-mix(in srgb, var(--accent) 70%, white);
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-weekday {
+  color: color-mix(in srgb, var(--accent) 55%, white);
+}
+body[data-mem-style="cosmic"] .memory-app-page .hint,
+body[data-mem-style="cosmic"] .memory-app-page p {
+  color: color-mix(in srgb, var(--accent) 75%, white);
+}
+/* 切换 button 在深底上要够亮 */
+body[data-mem-style="cosmic"] .memory-app-page .ma-style-btn {
+  background: rgba(60, 30, 50, 0.4);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: #f8e0e8;
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-style-menu {
+  background: #2a1820;
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 24px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-style-opt {
+  color: #f8e0e8;
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-style-opt:hover {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-style-opt.active {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-style-opt-desc {
+  color: color-mix(in srgb, var(--accent) 60%, white);
+}

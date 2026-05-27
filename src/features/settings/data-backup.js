@@ -1,4 +1,15 @@
 // Data backup: export all stores as JSON, import a JSON file (replaces existing).
+//
+// Float32Array 处理:embeddings.vector 是 Float32Array,JSON.stringify 直接
+// 序列化会变 `{"0":0.1,"1":0.2,...}` 对象形式 — 导回去再 set 拿到普通对象,
+// 后续 cosineSimilarity 在对象上跑虽然不立刻报错(数字 key 索引能用)但
+// `.length` 是 undefined 导致行为不一致。所以 export 时 vector → Array.from,
+// import 时 → new Float32Array 还原。旧备份(object form)也兼容。
+//
+// 事务原子性:每个 store 的 clear + writes 在同一个 IDB tx 里跑(用 db
+// 暴露的 _db 不太礼貌,所以走 db.STORES 配合标准 api;原子性的"一个 store
+// 内 clear+puts"用 IDBTransaction 直接做)。中途崩了至少不会"一些 store
+// 空了另一些没动",每个 store 是原子的。
 
 import * as db from '../../core/db.js';
 import { openConfirm } from '../../core/modal.js';
@@ -34,7 +45,8 @@ export async function mountDataBackup(container, params, router) {
       status.textContent = '导出中…';
       const data = {};
       for (const name of Object.keys(db.STORES)) {
-        data[name] = await db.getAll(name);
+        const rows = await db.getAll(name);
+        data[name] = rows.map(r => serializeRow(name, r));
       }
       const payload = {
         _meta: { app: 'phone-app', version: 1, exportedAt: Date.now() },
@@ -84,9 +96,9 @@ export async function mountDataBackup(container, params, router) {
         const counts = {};
         for (const name of Object.keys(db.STORES)) {
           if (Array.isArray(data[name])) {
-            await db.clear(name);
-            for (const row of data[name]) await db.set(name, row);
-            counts[name] = data[name].length;
+            const rows = data[name].map(r => deserializeRow(name, r));
+            await db.txnReplace(name, rows);
+            counts[name] = rows.length;
           }
         }
         const summary = Object.entries(counts).map(([k, v]) => `${k}=${v}`).join('  ');
@@ -100,6 +112,7 @@ export async function mountDataBackup(container, params, router) {
     input.click();
   };
 
+
   backBtn.addEventListener('click', onBack);
   exportBtn.addEventListener('click', onExport);
   importBtn.addEventListener('click', onImport);
@@ -109,4 +122,32 @@ export async function mountDataBackup(container, params, router) {
     exportBtn.removeEventListener('click', onExport);
     importBtn.removeEventListener('click', onImport);
   };
+}
+
+// 序列化时 vector 强制转普通数组,JSON 出来是 `[0.1, 0.2, ...]` 数组形式
+// 而不是 `{"0":0.1, ...}` 对象形式。其他 store 当前没 TypedArray 字段,如果
+// 以后有了再加 case。
+function serializeRow(storeName, row) {
+  if (storeName === 'embeddings' && row.vector instanceof Float32Array) {
+    return { ...row, vector: Array.from(row.vector) };
+  }
+  return row;
+}
+
+// 反序列化时把 vector 还原成 Float32Array。兼容三种来源:
+//   - 新格式(导出已修过):vector 是 plain Array,直接 new Float32Array(arr)
+//   - 已经是 Float32Array(罕见,但 IDB structured clone 可能给):直接用
+//   - 旧 buggy 格式 `{"0":0.1, "1":0.2}`:按数字 key 排序后重组
+function deserializeRow(storeName, row) {
+  if (storeName !== 'embeddings') return row;
+  const v = row.vector;
+  if (!v) return row;
+  if (v instanceof Float32Array) return row;
+  if (Array.isArray(v)) return { ...row, vector: new Float32Array(v) };
+  if (typeof v === 'object') {
+    const keys = Object.keys(v).filter(k => /^\d+$/.test(k)).sort((a, b) => Number(a) - Number(b));
+    const arr = keys.map(k => v[k]);
+    return { ...row, vector: new Float32Array(arr) };
+  }
+  return row;
 }

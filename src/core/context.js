@@ -325,6 +325,17 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     kind: 'data',
     editRoute: 'schedule',
   });
+  // 8b'. 当前打卡(用户)— 紧跟行程,二者同源(日级别事件)。仅 user,
+  //  character 没有打卡概念。空 body → prompt-inspector 显示「未注入」、
+  //  最终 prompt 不出现该 section。
+  const checkinLines = await buildCheckinLines();
+  parts.push({
+    key: 'checkins',
+    title: '# 当前打卡(用户)',
+    body: checkinLines,
+    kind: 'data',
+    editRoute: 'schedule',
+  });
   // 8c. 摄像头 — SKIPPED in fictional mode(架空里没有 IoT 摄像头这种现代设定,
   //     除非角色 persona 主动声明)。
   const cameraLines = isFictional ? '' : await buildCameraLines(character.id, persona?.name);
@@ -691,7 +702,11 @@ export async function buildScheduleLines(characterId, sessionPersonaId) {
   const relevant = all
     .filter(e => {
       if (e.syncToChat === false) return false;  // per-entry mute
-      if (e.startTs < winStart || e.startTs > winEnd) return false;
+      // 区间重叠判定:跨天事件(startTs 在窗口左外但 endTs 仍在窗口内)也算
+      // 相关。原来只看 startTs 会丢"4 天前开始今天还没结束"的长事件,
+      // schedule-list.js 三日视图早就是双端判定,这里同步过来。
+      const ee = e.endTs || (e.startTs + 3600000);
+      if (ee < winStart || e.startTs > winEnd) return false;
       // character-bucket: 只注入到对应角色 prompt
       if (e.who === 'character') return e.characterId === characterId;
       // user-bucket: 默认所有角色可见,visibleTo 字段限制(1b 共享逻辑)
@@ -729,6 +744,54 @@ export async function buildScheduleLines(characterId, sessionPersonaId) {
     const desc = e.desc ? ` — ${e.desc}` : '';
     return `- ${who} ${fmtTime(e.startTs)}${status} ${e.title}${desc}`;
   }).join('\n');
+}
+
+// 打卡紧凑摘要 — 用户「每天 / 每周 N 次」习惯的本月汇总 + 连续天数。跟
+// schedule 同源(都是日级别事件),所以共用 settings.syncScheduleToChat 全
+// 局开关:不想让 AI 看到行程的人通常也不想让 AI 看到打卡习惯。types 为空
+// 或整体关掉 → return ''(caller 通过空 body 不渲染该 part)。
+//
+// 输出形如:
+//   - 跑步:本月已打 18/28 天,连续 5 天 · 目标每天
+//   - 喝水:本月已打 27/28 天,连续 12 天 · 目标每天
+//
+// streak 显示规则:≥3 才秀,避免「连续 1 天」这种噪音。targetFreq 显示规
+// 则:已知模式才秀,unknown 不秀(空目标 = 自由打卡)。
+export async function buildCheckinLines() {
+  const settings = (await db.get('settings', 'default')) || {};
+  if (settings.syncScheduleToChat === false) return '';
+  const types = await db.getAll('checkinTypes');
+  if (types.length === 0) return '';
+  const all = await db.getAll('checkins');
+  const now = new Date();
+  const year  = now.getFullYear();
+  const month = now.getMonth();
+  const todayDay = now.getDate();
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const monthPrefix = `${year}-${pad2(month + 1)}-`;
+  const todayKey = `${year}-${pad2(month + 1)}-${pad2(todayDay)}`;
+  const lines = [];
+  for (const t of types) {
+    const thisType = all.filter(c => c.typeId === t.id);
+    const monthCount = thisType.filter(c => c.dayKey.startsWith(monthPrefix) && c.dayKey <= todayKey).length;
+    let streak = 0;
+    const cursor = new Date(now); cursor.setHours(0, 0, 0, 0);
+    while (true) {
+      const dk = `${cursor.getFullYear()}-${pad2(cursor.getMonth() + 1)}-${pad2(cursor.getDate())}`;
+      if (thisType.some(c => c.dayKey === dk)) {
+        streak++;
+        cursor.setDate(cursor.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+    const streakNote = streak >= 3 ? `,连续 ${streak} 天` : '';
+    const freqNote = t.targetFreq && t.targetFreq.startsWith('weekly:')
+      ? ` · 目标每周 ${t.targetFreq.split(':')[1]} 次`
+      : (t.targetFreq === 'daily') ? ' · 目标每天' : '';
+    lines.push(`- ${t.name}:本月已打 ${monthCount}/${todayDay} 天${streakNote}${freqNote}`);
+  }
+  return lines.join('\n');
 }
 
 // Pull the most recent `maxRecent` chat messages, formatted as OpenAI-style

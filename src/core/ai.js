@@ -7,6 +7,7 @@ import * as db from './db.js';
 import * as context from './context.js';
 import { fetchWeather } from './weather.js';
 import { getCityByKey } from './cities.js';
+import { parseTolerantJSON } from './util.js';
 
 const handlers = new Map();   // action type -> async (action, ctx) => void
 
@@ -91,25 +92,13 @@ export async function callAI({ systemPrompt, messages, temperature }) {
   return message.content;
 }
 
-// Extract JSON array from raw model output. Tolerant of ```json fences and surrounding prose.
+// Extract JSON array from raw model output. 容错统一在 util.parseTolerantJSON,
+// 这里只负责报错语义(parseActions 失败 throw,其他地方多数 return null)。
 export function parseActions(rawText) {
   if (typeof rawText !== 'string') throw new Error('ai.parseActions: input not a string');
-  const stripped = rawText.trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```\s*$/i, '')
-    .trim();
-  try {
-    const parsed = JSON.parse(stripped);
-    if (Array.isArray(parsed)) return parsed;
-  } catch (_) { /* fall through to regex extract */ }
-  const match = stripped.match(/\[[\s\S]*\]/);
-  if (match) {
-    try {
-      const parsed = JSON.parse(match[0]);
-      if (Array.isArray(parsed)) return parsed;
-    } catch (_) { /* fall through */ }
-  }
-  throw new Error(`ai.parseActions: no valid JSON array found in: ${stripped.slice(0, 200)}`);
+  const parsed = parseTolerantJSON(rawText, { expect: 'array' });
+  if (parsed) return parsed;
+  throw new Error(`ai.parseActions: no valid JSON array found in: ${rawText.slice(0, 200)}`);
 }
 
 // Dispatch actions to registered side-effect handlers (in order).

@@ -1,55 +1,39 @@
-// Schedule list — shows all schedule entries grouped by relative day
-// (今天 / 明天 / 后续 / 已过). 「+」 in the header opens an editor modal.
+// 行程 app — 单一视图:月历 + 选中日的 24h 纵向时间轴 + 打卡 chip 行。
 //
-// Data: schedule store, fields { id, who: 'user'|'character', characterId?,
-// startTs, endTs?, title, desc, createdAt }. Used by context.js's
-// buildSystemPrompt to inject "# 当前行程" into the AI's view of state.
+// 早期做过 mode-toggle 双模式(月历+日 / 三日时间轴),但跨日比较视野在月
+// 历 dot 已经够用,toggle 反而是额外认知成本。合并后:点月历任一格 →
+// 下方 timeline 切到那天,既能翻看任意月任意日,又能看到时间密度。
+//
+// 数据:schedule(原)+ checkinTypes(打卡类型定义)+ checkins(每次打卡
+// 一行)。schedule 由 context.buildScheduleLines 注入「# 当前行程」段;打卡
+// 由 context.buildCheckinLines 注入「# 当前打卡(用户)」段。
 
 import * as db from '../../core/db.js';
 import * as ai from '../../core/ai.js';
 import { openConfirm, openAlert } from '../../core/modal.js';
+import { esc, dayKeyOf, parseTolerantJSON } from '../../core/util.js';
+
+const HOUR_PX = 28;
 
 export async function mountScheduleList(container, params, router) {
-  // 3 天竖向时间轴(国誉手账本风格,先做基础结构,美化等 user 给 reference
-   // 再调)。每列 = 一天,纵向 0-24h timeline,行程作 absolute 块按时间定位。
-   // HOUR_PX 决定时间轴密度;28px/h → 总高 672px,手机上 scroll 可看完。
-  const HOUR_PX = 28;
+  // 月历游标(本月第一天)+ 当前选中日(初始 = 今天)
+  let calendarCursor = new Date();
+  calendarCursor.setDate(1);
+  calendarCursor.setHours(0, 0, 0, 0);
+  let selectedDayKey = dayKeyOf(Date.now());
+
   async function render() {
-    const entries = await db.getAll('schedule');
-    const chars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
+    const [entries, allChars, types, checkins] = await Promise.all([
+      db.getAll('schedule'),
+      db.getAll('characters'),
+      db.getAll('checkinTypes'),
+      db.getAll('checkins'),
+    ]);
+    const chars = allChars.filter(c => c.id !== '__bear__');
     const charMap = new Map(chars.map(c => [c.id, c]));
-
-    const now = new Date();
-    const today0 = new Date(now); today0.setHours(0, 0, 0, 0);
-    const days = [0, 1, 2].map(offset => {
-      const d = new Date(today0); d.setDate(d.getDate() + offset);
-      return d;
-    });
-
-    // 把 entries 按"跨入这天"分到 3 列。跨天 entry 会在多列出现(每列裁
-    // 切到该天的部分)。没 endTs 默认按 1 小时算。
-    const dayEntries = days.map(d => {
-      const dayStart = d.getTime();
-      const dayEnd = dayStart + 86400000;
-      return entries.filter(e => {
-        const s = e.startTs;
-        const ee = e.endTs || (s + 3600000);
-        return s < dayEnd && ee > dayStart;
-      }).sort((a, b) => a.startTs - b.startTs);
-    });
-
-    function entryRect(e, dayStart, dayEnd) {
-      const s = Math.max(e.startTs, dayStart);
-      const ee = Math.min(e.endTs || (e.startTs + 3600000), dayEnd);
-      const top = ((s - dayStart) / 3600000) * HOUR_PX;
-      const height = Math.max(22, ((ee - s) / 3600000) * HOUR_PX);
-      return { top, height };
-    }
-    function dayLabel(d, idx) {
-      const labels = ['今天', '明天', '后天'];
-      const wd = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
-      return `<div class="day-col-rel">${labels[idx] || ''}</div><div class="day-col-date">${d.getMonth()+1}/${d.getDate()} · 周${wd}</div>`;
-    }
+    // (dayKey, typeId) → checkin row。月历 dot + 当日 chip 共享同一索引。
+    const checkinIdx = new Map();
+    for (const c of checkins) checkinIdx.set(`${c.dayKey}|${c.typeId}`, c);
 
     container.innerHTML = `
       <div class="page schedule-page">
@@ -57,68 +41,385 @@ export async function mountScheduleList(container, params, router) {
           <button class="back">‹ 返回</button>
           <div class="title">行程</div>
           <div class="actions">
+            <button class="manage-types" title="管理打卡类型" aria-label="管理打卡类型">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            </button>
             <button class="ai-gen" title="让 AI 帮角色生成一段日程">✨ AI</button>
             <button class="new-entry" title="新建行程" aria-label="新建行程"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
           </div>
         </header>
-        <div class="page-body schedule-3day-body">
-          <div class="schedule-3day-cols">
-            ${days.map((d, idx) => `
-              <div class="day-col">
-                <div class="day-col-head">${dayLabel(d, idx)}</div>
-                <div class="day-col-timeline" style="height: ${24 * HOUR_PX}px">
-                  ${Array.from({ length: 25 }, (_, h) => `<div class="hour-mark" style="top: ${h * HOUR_PX}px">${h}:00</div>`).join('')}
-                  ${dayEntries[idx].map(e => {
-                    const r = entryRect(e, d.getTime(), d.getTime() + 86400000);
-                    const who = e.who === 'user' ? '我' : (charMap.get(e.characterId)?.name || '?');
-                    return `<div class="time-entry${e.who === 'user' ? ' time-entry-user' : ' time-entry-char'}${e.syncToChat === false ? ' muted' : ''}" data-entry-id="${esc(e.id)}" style="top: ${r.top}px; height: ${r.height}px">
-                      <div class="time-entry-title">${esc(e.title || '(无标题)')}</div>
-                      <div class="time-entry-who">${esc(who)}</div>
-                    </div>`;
-                  }).join('')}
-                </div>
-              </div>
-            `).join('')}
+        <div class="page-body schedule-page-body">
+          <div class="schedule-content">
+            ${renderCalendar(entries, types, checkinIdx)}
+            ${renderDay(selectedDayKey, entries, charMap, types, checkinIdx)}
           </div>
         </div>
       </div>
     `;
-    wire();
+    wire(entries, charMap, types, checkinIdx);
   }
 
-  function wire() {
+  // ── 月历 ────────────────────────────────────────────────────────────
+  function renderCalendar(entries, types, checkinIdx) {
+    const year  = calendarCursor.getFullYear();
+    const month = calendarCursor.getMonth();
+    const monthLabel = `${year} 年 ${month + 1} 月`;
+    const firstOfMonth = new Date(year, month, 1);
+    const lastOfMonth  = new Date(year, month + 1, 0);
+    const daysInMonth  = lastOfMonth.getDate();
+    const startWeekday = firstOfMonth.getDay();
+
+    // 按 dayKey 预聚合两种 dot 来源。
+    const schedDays  = new Set();
+    for (const e of entries) {
+      const dk = dayKeyOf(e.startTs);
+      schedDays.add(dk);
+      if (e.endTs) {
+        // 跨天 entry 把所有跨入的 day 都标上 dot。
+        let cur = new Date(e.startTs); cur.setHours(0, 0, 0, 0);
+        const endDay = new Date(e.endTs); endDay.setHours(0, 0, 0, 0);
+        while (cur.getTime() < endDay.getTime()) {
+          cur.setDate(cur.getDate() + 1);
+          schedDays.add(dayKeyOf(cur.getTime()));
+        }
+      }
+    }
+    // checkin dot:某天至少有一条 checkin。partial / full 区分用比例。
+    const checkinByDay = new Map();  // dayKey → { done: n, total: types.length }
+    for (const key of checkinIdx.keys()) {
+      const [dk] = key.split('|');
+      const rec = checkinByDay.get(dk) || { done: 0, total: types.length };
+      rec.done++;
+      checkinByDay.set(dk, rec);
+    }
+
+    const todayKey = dayKeyOf(Date.now());
+    const cells = [];
+    for (let i = 0; i < startWeekday; i++) {
+      cells.push('<div class="sched-cell empty" aria-hidden="true"></div>');
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dk = `${year}-${pad(month + 1)}-${pad(d)}`;
+      const hasSched   = schedDays.has(dk);
+      const checkin    = checkinByDay.get(dk);
+      const isToday    = dk === todayKey;
+      const isSelected = dk === selectedDayKey;
+      const checkinClass = !checkin ? '' :
+        (types.length > 0 && checkin.done >= types.length) ? ' done' : ' partial';
+      cells.push(`
+        <button class="sched-cell${isToday ? ' today' : ''}${isSelected ? ' selected' : ''}" data-day-key="${dk}" type="button">
+          <span class="sched-cell-day">${d}</span>
+          <span class="sched-cell-dots">
+            ${hasSched ? '<i class="dot sched"></i>' : ''}
+            ${checkin  ? `<i class="dot checkin${checkinClass}"></i>` : ''}
+          </span>
+        </button>
+      `);
+    }
+
+    const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+    return `
+      <div class="sched-cal-nav">
+        <button class="sched-nav-btn prev" type="button">‹</button>
+        <span class="sched-month-label">${monthLabel}</span>
+        <button class="sched-nav-btn next" type="button">›</button>
+      </div>
+      <div class="sched-cal-weekdays">
+        ${weekdays.map(w => `<div class="sched-weekday">${w}</div>`).join('')}
+      </div>
+      <div class="sched-cal-grid">${cells.join('')}</div>
+      <div class="sched-legend">
+        <span><i class="dot sched"></i> 行程</span>
+        <span><i class="dot checkin done"></i> 全打卡</span>
+        <span><i class="dot checkin partial"></i> 部分打卡</span>
+      </div>
+    `;
+  }
+
+  // ── 选中日详情:header + 打卡 chip 行 + 24h 纵向 timeline ───────────
+  function renderDay(dayKey, entries, charMap, types, checkinIdx) {
+    const [y, m, d] = dayKey.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    const wd = ['日', '一', '二', '三', '四', '五', '六'][date.getDay()];
+    const dayStart = date.getTime();
+    const dayEnd   = dayStart + 86400000;
+    const dayEntries = entries
+      .filter(e => {
+        const s = e.startTs;
+        const ee = e.endTs || (s + 3600000);
+        return s < dayEnd && ee > dayStart;
+      })
+      .sort((a, b) => a.startTs - b.startTs);
+
+    const checkinsHtml = types.length === 0
+      ? `<div class="day-detail-empty">还没有打卡类型 · <a class="link link-add-type" href="javascript:void(0)">添加</a></div>`
+      : types.map(t => {
+          const done = checkinIdx.has(`${dayKey}|${t.id}`);
+          const style = t.color ? `--type-color: ${esc(t.color)};` : '';
+          // chip 状态:filled(.done)= 已打,outlined = 未打。视觉只靠背景/
+          // 边框区分,不再额外塞 ✓ / ○ 字符(铁律:能用 CSS 表达的状态不
+          // 用 emoji)。icon 由用户自定,留空时显示名字首字。
+          const iconText = t.icon ? esc(t.icon) : esc((t.name || '?').slice(0, 1));
+          return `
+            <button class="checkin-chip${done ? ' done' : ''}" data-type-id="${esc(t.id)}" data-day-key="${esc(dayKey)}" type="button" style="${style}">
+              <span class="ci-icon">${iconText}</span>
+              <span class="ci-name">${esc(t.name || '(未命名)')}</span>
+            </button>
+          `;
+        }).join('') + `<button class="checkin-chip add" type="button" data-action="add-checkin">+ 添加</button>`;
+
+    // 纵向 timeline:跟原三日视图同款 absolute 块按时间定位,但只渲染一列。
+    // entryRect 跟当时一样,Math.max/min 处理跨天 entry 在这天的可见片段。
+    function entryRect(e) {
+      const s = Math.max(e.startTs, dayStart);
+      const ee = Math.min(e.endTs || (e.startTs + 3600000), dayEnd);
+      const top = ((s - dayStart) / 3600000) * HOUR_PX;
+      const height = Math.max(22, ((ee - s) / 3600000) * HOUR_PX);
+      return { top, height };
+    }
+    const timelineHtml = `
+      <div class="day-timeline" style="height: ${24 * HOUR_PX}px">
+        ${Array.from({ length: 25 }, (_, h) => `<div class="hour-mark" style="top: ${h * HOUR_PX}px">${h}:00</div>`).join('')}
+        ${dayEntries.map(e => {
+          const r = entryRect(e);
+          const who = e.who === 'user' ? '我' : (charMap.get(e.characterId)?.name || '?');
+          return `<div class="time-entry${e.who === 'user' ? ' time-entry-user' : ' time-entry-char'}${e.syncToChat === false ? ' muted' : ''}" data-entry-id="${esc(e.id)}" style="top: ${r.top}px; height: ${r.height}px">
+            <div class="time-entry-title">${esc(e.title || '(无标题)')}</div>
+            <div class="time-entry-who">${esc(who)}</div>
+            <button class="time-entry-del" type="button" title="删除" aria-label="删除">×</button>
+          </div>`;
+        }).join('')}
+      </div>
+    `;
+
+    return `
+      <div class="day-detail-block" data-day-key="${esc(dayKey)}">
+        <div class="day-detail-head">
+          <span class="ddh-date">${m} 月 ${d} 日 · 周${wd}</span>
+          <button class="ddh-new-entry" type="button" data-action="new-entry-on-day">+ 行程</button>
+        </div>
+        <div class="day-detail-section">
+          <div class="dds-label">打卡</div>
+          <div class="day-detail-checkins">${checkinsHtml}</div>
+        </div>
+        <div class="day-detail-section">
+          <div class="dds-label">时间轴</div>
+          ${timelineHtml}
+        </div>
+      </div>
+    `;
+  }
+
+  // ── 事件绑定 ────────────────────────────────────────────────────────
+  function wire(entries, charMap, types, checkinIdx) {
     container.querySelector('.back').addEventListener('click', () => router.back());
     container.querySelector('.new-entry').addEventListener('click', () => openEditor(null));
     container.querySelector('.ai-gen').addEventListener('click', () => openAIGenModal());
-    container.querySelectorAll('[data-entry-id]').forEach(row => {
-      row.querySelector('.entry-del')?.addEventListener('click', async (ev) => {
+    container.querySelector('.manage-types').addEventListener('click', () => openManageTypesModal());
+
+    // 月历翻页 / 选日
+    container.querySelector('.sched-nav-btn.prev')?.addEventListener('click', async () => {
+      calendarCursor = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() - 1, 1);
+      await render();
+    });
+    container.querySelector('.sched-nav-btn.next')?.addEventListener('click', async () => {
+      calendarCursor = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() + 1, 1);
+      await render();
+    });
+    container.querySelectorAll('.sched-cell[data-day-key]').forEach(c => {
+      c.addEventListener('click', async () => {
+        selectedDayKey = c.dataset.dayKey;
+        await render();
+      });
+    });
+
+    // 打卡 chip toggle + 入口
+    container.querySelectorAll('.checkin-chip[data-type-id]').forEach(chip => {
+      chip.addEventListener('click', async () => {
+        await toggleCheckin(chip.dataset.typeId, chip.dataset.dayKey);
+        await render();
+      });
+    });
+    container.querySelector('.checkin-chip.add')?.addEventListener('click', () => openManageTypesModal());
+    container.querySelector('.link-add-type')?.addEventListener('click', () => openManageTypesModal());
+
+    // 选中日的「+ 行程」按钮:默认 09:00 起
+    container.querySelector('.ddh-new-entry')?.addEventListener('click', () => {
+      const [y, m, d] = selectedDayKey.split('-').map(Number);
+      const defaultStart = new Date(y, m - 1, d, 9, 0, 0, 0).getTime();
+      openEditor(null, { defaultStartTs: defaultStart });
+    });
+
+    // 时间块点击编辑 + 右上 × 删除
+    container.querySelectorAll('.time-entry[data-entry-id]').forEach(row => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.time-entry-del')) return;
+        openEditor(row.dataset.entryId);
+      });
+      row.querySelector('.time-entry-del')?.addEventListener('click', async (ev) => {
         ev.stopPropagation();
         if (!await openConfirm(container, {
-          title: '删除行程',
-          message: '删除这条行程?',
-          confirmLabel: '删除',
-          danger: true,
+          title: '删除行程', message: '删除这条行程?',
+          confirmLabel: '删除', danger: true,
         })) return;
         await db.del('schedule', row.dataset.entryId);
         await render();
       });
-      row.addEventListener('click', () => {
-        const id = row.dataset.entryId;
-        openEditor(id);
+    });
+  }
+
+  // ── 打卡 toggle:同 (dayKey, typeId) 存在则删,不存在则建 ────────────
+  async function toggleCheckin(typeId, dayKey) {
+    const sameDay = await db.query('checkins', 'dayKey', dayKey);
+    const existing = sameDay.find(c => c.typeId === typeId);
+    if (existing) {
+      await db.del('checkins', existing.id);
+    } else {
+      await db.set('checkins', {
+        id: db.newId(),
+        typeId,
+        dayKey,
+        checkedAt: Date.now(),
+      });
+    }
+  }
+
+  // ── 管理打卡类型 modal ─────────────────────────────────────────────
+  async function openManageTypesModal() {
+    const types = await db.getAll('checkinTypes');
+    const modal = document.createElement('div');
+    modal.className = 'modal-backdrop';
+    modal.innerHTML = `
+      <div class="modal manage-types-modal">
+        <div class="modal-header">打卡类型</div>
+        <div class="mt-list">
+          ${types.length === 0
+            ? `<p class="hint">还没有打卡类型。点下面「+ 新建」加一个。</p>`
+            : types.map(t => `
+                <div class="mt-row" data-type-id="${esc(t.id)}">
+                  <span class="mt-icon" style="${t.color ? `--type-color: ${esc(t.color)};` : ''}">${esc(t.icon || (t.name || '?').slice(0, 1))}</span>
+                  <div class="mt-info">
+                    <div class="mt-name">${esc(t.name || '(未命名)')}</div>
+                    <div class="mt-freq">${freqLabel(t.targetFreq)}</div>
+                  </div>
+                  <button class="mt-edit" type="button" title="编辑">编辑</button>
+                  <button class="mt-del" type="button" title="删除" aria-label="删除">×</button>
+                </div>
+              `).join('')}
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary close-btn">关闭</button>
+          <button type="button" class="btn new-type-btn">+ 新建类型</button>
+        </div>
+      </div>
+    `;
+    container.appendChild(modal);
+    modal.querySelector('.close-btn').addEventListener('click', () => { modal.remove(); render(); });
+    modal.addEventListener('click', (e) => { if (e.target === modal) { modal.remove(); render(); } });
+    modal.querySelector('.new-type-btn').addEventListener('click', () => {
+      modal.remove();
+      openTypeEditor(null);
+    });
+    modal.querySelectorAll('.mt-edit').forEach(b => {
+      b.addEventListener('click', () => {
+        const id = b.closest('[data-type-id]').dataset.typeId;
+        modal.remove();
+        openTypeEditor(id);
+      });
+    });
+    modal.querySelectorAll('.mt-del').forEach(b => {
+      b.addEventListener('click', async () => {
+        const row = b.closest('[data-type-id]');
+        const id = row.dataset.typeId;
+        if (!await openConfirm(container, {
+          title: '删除类型',
+          message: '删除此打卡类型?该类型相关的所有打卡记录也会被清除。',
+          confirmLabel: '删除', danger: true,
+        })) return;
+        // 级联清打卡记录
+        const related = await db.query('checkins', 'typeId', id);
+        for (const c of related) await db.del('checkins', c.id);
+        await db.del('checkinTypes', id);
+        modal.remove();
+        openManageTypesModal();
       });
     });
   }
 
-  async function openEditor(id) {
+  // ── 单个打卡类型编辑 modal ─────────────────────────────────────────
+  async function openTypeEditor(id) {
+    const existing = id ? await db.get('checkinTypes', id) : null;
+    const t = existing || {
+      name: '', icon: '', color: '#5ec97e',
+      targetFreq: 'daily', reminder: null,
+    };
+    const modal = document.createElement('div');
+    modal.className = 'modal-backdrop';
+    modal.innerHTML = `
+      <div class="modal">
+        <div class="modal-header">${existing ? '编辑类型' : '新建类型'}</div>
+        <form class="type-form" autocomplete="off">
+          <label>
+            <div class="label-text">名字</div>
+            <input name="name" type="text" required value="${esc(t.name)}" placeholder="比如:跑步 / 喝水 / 看书">
+          </label>
+          <label>
+            <div class="label-text">图标(留空就显示名字首字 · 想用 emoji 也行)</div>
+            <input name="icon" type="text" value="${esc(t.icon || '')}" maxlength="4" placeholder="">
+          </label>
+          <label>
+            <div class="label-text">颜色</div>
+            <input name="color" type="color" value="${esc(t.color || '#5ec97e')}">
+          </label>
+          <label>
+            <div class="label-text">目标频率</div>
+            <select name="targetFreq">
+              <option value="daily"${t.targetFreq === 'daily' ? ' selected' : ''}>每天</option>
+              <option value="weekly:2"${t.targetFreq === 'weekly:2' ? ' selected' : ''}>每周 2 次</option>
+              <option value="weekly:3"${t.targetFreq === 'weekly:3' ? ' selected' : ''}>每周 3 次</option>
+              <option value="weekly:5"${t.targetFreq === 'weekly:5' ? ' selected' : ''}>每周 5 次</option>
+            </select>
+          </label>
+          <div class="modal-actions">
+            <button type="button" class="btn secondary cancel-btn">取消</button>
+            <button type="submit" class="btn">${existing ? '保存' : '创建'}</button>
+          </div>
+        </form>
+      </div>
+    `;
+    container.appendChild(modal);
+    modal.querySelector('.cancel-btn').addEventListener('click', () => { modal.remove(); openManageTypesModal(); });
+    modal.addEventListener('click', (e) => { if (e.target === modal) { modal.remove(); openManageTypesModal(); } });
+    modal.querySelector('form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const fd = new FormData(modal.querySelector('form'));
+      const next = {
+        id: id || db.newId(),
+        name: String(fd.get('name') || '').trim() || '(未命名)',
+        icon: String(fd.get('icon') || '').trim(),
+        color: String(fd.get('color') || '#5ec97e'),
+        targetFreq: String(fd.get('targetFreq') || 'daily'),
+        reminder: existing?.reminder || null,
+        createdAt: existing?.createdAt || Date.now(),
+      };
+      await db.set('checkinTypes', next);
+      modal.remove();
+      openManageTypesModal();
+    });
+  }
+
+  // ── 行程条目编辑(沿用旧版逻辑,接收 defaultStartTs 起始时间) ───────
+  async function openEditor(id, opts = {}) {
     const chars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
     const personas = await db.getAll('personas');
     const settings = (await db.get('settings', 'default')) || {};
     const existing = id ? await db.get('schedule', id) : null;
+    const defaultStart = opts.defaultStartTs || (Date.now() + 60 * 60 * 1000);
     const e = existing || {
       who: 'user',
       characterId: chars[0]?.id || null,
       personaId: settings.activePersonaId || '',
-      startTs: Date.now() + 60 * 60 * 1000,
+      startTs: defaultStart,
       endTs: null,
       title: '',
       desc: '',
@@ -223,7 +524,6 @@ export async function mountScheduleList(container, params, router) {
       userVisBlock.hidden = whoSel.value !== 'user';
       userPersonaPick.hidden = whoSel.value !== 'user';
     });
-    // 「仅勾选的」radio 切换才显示角色 checkbox 列表
     modal.querySelectorAll('input[name="visMode"]').forEach(r => {
       r.addEventListener('change', () => {
         const mode = modal.querySelector('input[name="visMode"]:checked')?.value;
@@ -240,8 +540,6 @@ export async function mountScheduleList(container, params, router) {
       const endTs = endRaw ? new Date(endRaw).getTime() : null;
       const who = String(fd.get('who') || 'user');
       const characterId = who === 'character' ? String(fd.get('characterId') || '') : null;
-      // 1b: 用户行程可见性 — 默认所有角色可见,可改"对所有人隐藏"或"仅勾选角色"。
-      // 角色 owned 的行程不需要(角色自己的事,默认就是注入到自己 prompt 里)。
       let visibleTo;
       if (who === 'user') {
         const mode = String(fd.get('visMode') || 'all');
@@ -249,7 +547,6 @@ export async function mountScheduleList(container, params, router) {
         else if (mode === 'none') visibleTo = [];
         else                      visibleTo = fd.getAll('visChar').map(String);
       }
-      // per-persona:user 行程才用 personaId。空 = 所有 persona 共享。
       const userPersonaId = who === 'user' ? String(fd.get('userPersonaId') || '') : '';
       const next = {
         id: id || db.newId(),
@@ -270,6 +567,7 @@ export async function mountScheduleList(container, params, router) {
     });
   }
 
+  // ── AI 生成日程 modal(沿用旧版) ────────────────────────────────────
   async function openAIGenModal() {
     const chars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
     if (chars.length === 0) { await openAlert(container, { title: '没有角色', message: '先去角色管理建一个角色,才能给角色生成日程。' }); return; }
@@ -327,11 +625,6 @@ export async function mountScheduleList(container, params, router) {
       }
       const character = await db.get('characters', charId);
       if (!character) { status.textContent = '角色不存在'; status.className = 'form-status error'; return; }
-
-      // Show "in flight" by mutating the submit button itself — the bottom
-      // form-status used to ALSO carry a "调用 AI…" line, which was visual
-      // noise (the disabled button already says everything). Now status only
-      // surfaces on error / success.
       const submitBtn = modal.querySelector('button[type="submit"]');
       const submitLabelOrig = submitBtn.textContent;
       submitBtn.disabled = true;
@@ -341,7 +634,7 @@ export async function mountScheduleList(container, params, router) {
       const userMsg = `人物名:${character.name || '(未命名)'}\n\n人设:\n${character.persona || '(无)'}\n\n时间区间:${new Date(startTs).toISOString()} 到 ${new Date(endTs).toISOString()}\n\n额外引导:${hint || '(无)'}`;
       try {
         const raw = await ai.callAI({ systemPrompt: sys, messages: [{ role: 'user', content: userMsg }], temperature: 0.7 });
-        const entries = parseScheduleJSON(raw);
+        const entries = parseTolerantJSON(raw, { expect: 'array' });
         if (!Array.isArray(entries) || entries.length === 0) {
           status.textContent = '解析失败:模型返回的不是合法的 JSON 数组'; status.className = 'form-status error';
           submitBtn.disabled = false; submitBtn.textContent = submitLabelOrig;
@@ -376,81 +669,25 @@ export async function mountScheduleList(container, params, router) {
   return () => {};
 }
 
-// Tolerant JSON parse — strips ```json fences and surrounding prose.
-function parseScheduleJSON(raw) {
-  if (typeof raw !== 'string') return null;
-  const stripped = raw.trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```\s*$/i, '')
-    .trim();
-  try {
-    const parsed = JSON.parse(stripped);
-    if (Array.isArray(parsed)) return parsed;
-  } catch (_) {}
-  const match = stripped.match(/\[[\s\S]*\]/);
-  if (match) {
-    try {
-      const parsed = JSON.parse(match[0]);
-      if (Array.isArray(parsed)) return parsed;
-    } catch (_) {}
-  }
-  return null;
-}
-
-function bucketize(entries) {
-  const now = new Date();
-  const today = now.toDateString();
-  const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
-  const buckets = { '今天': [], '明天': [], '后续': [], '已过': [] };
-  const nowMs = now.getTime();
-  for (const e of entries) {
-    const d = new Date(e.startTs);
-    if (e.startTs < nowMs && (e.endTs ? e.endTs < nowMs : true)) {
-      buckets['已过'].push(e);
-    } else if (d.toDateString() === today) {
-      buckets['今天'].push(e);
-    } else if (d.toDateString() === tomorrow.toDateString()) {
-      buckets['明天'].push(e);
-    } else {
-      buckets['后续'].push(e);
-    }
-  }
-  return buckets;
-}
-
-function renderEntry(e, charMap) {
-  const who = e.who === 'user' ? '我' : (charMap.get(e.characterId)?.name || '(未知角色)');
-  const time = formatTimeRange(e.startTs, e.endTs);
-  // syncToChat===false → entry is muted; show a 🔇 indicator inline so the
-  // user can tell at a glance which entries won't reach the prompt.
-  const muted = e.syncToChat === false ? '<span class="entry-muted" title="此条不同步到聊天">🔇</span>' : '';
-  return `
-    <div class="schedule-entry${e.syncToChat === false ? ' muted' : ''}" data-entry-id="${esc(e.id)}">
-      <div class="entry-time">${esc(time)}</div>
-      <div class="entry-body">
-        <div class="entry-title"><span class="entry-who">${esc(who)}</span> ${esc(e.title || '(无标题)')}${muted}</div>
-        ${e.desc ? `<div class="entry-desc">${esc(e.desc)}</div>` : ''}
-      </div>
-      <button class="entry-del" title="删除">×</button>
-    </div>
-  `;
-}
+// ── 杂项工具函数 ──────────────────────────────────────────────────────
 
 function formatTimeRange(start, end) {
   const d = new Date(start);
-  const pad = (n) => String(n).padStart(2, '0');
   const hh = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   if (!end) return hh;
   const e = new Date(end);
-  return `${hh} – ${pad(e.getHours())}:${pad(e.getMinutes())}`;
+  return `${hh}–${pad(e.getHours())}:${pad(e.getMinutes())}`;
 }
 
 function toLocalDT(ts) {
   const d = new Date(ts);
-  const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
+function pad(n) { return String(n).padStart(2, '0'); }
+
+function freqLabel(f) {
+  if (!f || f === 'daily') return '每天';
+  if (f.startsWith('weekly:')) return `每周 ${f.split(':')[1]} 次`;
+  return f;
 }

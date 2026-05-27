@@ -30,6 +30,7 @@
 // placeholder examples only.
 
 import { HUMANIZER_PROMPT } from './humanizer.js';
+import { parseTolerantJSON } from './util.js';
 
 // Delay before a cast bottle gets a reply. Randomized to make it feel
 // unpredictable rather than scheduled. 30min–4h is the design target.
@@ -285,21 +286,7 @@ export async function promoteStrangerToFriend(db, bottle) {
 }
 
 function parsePersonaJSON(raw) {
-  if (typeof raw !== 'string') return null;
-  const stripped = raw.trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```\s*$/i, '')
-    .trim();
-  try {
-    const parsed = JSON.parse(stripped);
-    if (parsed && typeof parsed === 'object' && parsed.name && parsed.persona) return parsed;
-  } catch (_) {}
-  const m = stripped.match(/\{[\s\S]*\}/);
-  if (m) {
-    try {
-      const parsed = JSON.parse(m[0]);
-      if (parsed && typeof parsed === 'object' && parsed.name && parsed.persona) return parsed;
-    } catch (_) {}
-  }
+  const parsed = parseTolerantJSON(raw, { expect: 'object' });
+  if (parsed && parsed.name && parsed.persona) return parsed;
   return null;
 }

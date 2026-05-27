@@ -2,7 +2,7 @@
 // Data model frozen in STORES below — bump DB_VERSION when changing schema.
 
 export const DB_NAME = 'phone-app';
-export const DB_VERSION = 10;
+export const DB_VERSION = 11;
 
 // Object store definitions. Applied during onupgradeneeded.
 // keyPath = primary key field; indexes = secondary lookup paths.
@@ -161,6 +161,26 @@ export const STORES = {
       { name: 'status',      keyPath: 'status'      },
     ],
   },
+  // 打卡类型 — 用户自定义的"每天要打的卡"集合。schedule app 用,跟 schedule
+  // 平级但独立 store(打卡是 boolean 标记,schedule 是时段事件 — 数据形状
+  // 不同)。字段:id / name / icon / color / targetFreq? ('daily'|'weekly:N')
+  // / reminder? ('morning'|'noon'|'evening'|null) / createdAt。通常 < 20 行,
+  // 无索引。
+  checkinTypes: {
+    keyPath: 'id',
+    indexes: [],
+  },
+  // 每次打卡一行,同一 (typeId, dayKey) 业务层 upsert(IDB 不约束)。字段:
+  // id / typeId / dayKey ('YYYY-MM-DD') / checkedAt / note? / value?(预留
+  // 「打了几次 / 多少分钟」这类轻量数据)。按 typeId 和 dayKey 索引,月历视
+  // 图能 O(month) 拉取当月某 type 的所有打卡。
+  checkins: {
+    keyPath: 'id',
+    indexes: [
+      { name: 'typeId', keyPath: 'typeId' },
+      { name: 'dayKey', keyPath: 'dayKey' },
+    ],
+  },
 };
 
 let _db = null;
@@ -281,6 +301,22 @@ export async function updateSettings(fn) {
     getReq.onerror = () => reject(getReq.error);
     tx.oncomplete  = () => resolve();
     tx.onerror     = () => reject(tx.error);
+  });
+}
+
+// 整 store 替换 — clear + 所有 puts 在同一个 readwrite tx 内,要么全成要么
+// 全失败。data-backup 导入用的:之前 `await db.clear() + for await db.set()`
+// 不原子,中途崩了 store 半空,这个一次性保证。
+export async function txnReplace(storeName, rows) {
+  if (!_db) throw new Error('db not initialized — call db.init() first');
+  return new Promise((resolve, reject) => {
+    const tx = _db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    store.clear();
+    for (const row of rows) store.put(row);
+    tx.oncomplete = () => resolve();
+    tx.onerror    = () => reject(tx.error);
+    tx.onabort    = () => reject(tx.error || new Error('tx aborted'));
   });
 }
 

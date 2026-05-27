@@ -14,5 +14,29 @@
 // Wired in: context.buildSystemPrompt injects this as "# 动作使用规约" between
 // the conversation conventions (humanizer) and the per-turn featureContext.
 
-export const BEHAVIOR_GUIDANCE = `用户的消息有时末尾带 [心声:...] 标记,那是用户的真实情绪 / 真实想法 — 现实里说不出口、嘴上说着别的。
-据此调整你对 ta 的态度和判断(ta 嘴上说"没事"但心声"其实很难过" — 你应该感知到 ta 在硬撑),但**不要直接复述心声内容**,也不要明说"你知道 ta 心里在想什么"。表现成"敏锐地察觉到了"而不是"读心术"。`;
+export const BEHAVIOR_GUIDANCE = `## 通则
+
+语境决定动作。不确定时,用 text。
+一次回复可含多条动作,通常 1-5 条。
+
+## 触发条件
+
+**text** — 默认。
+
+**reply** — 要明确引用某条历史消息时用。
+
+**recall** — 不是"修改上一条"的常规手段。
+
+**voice** — 当情绪起伏使文字不如"听到"有力时使用。不要替代普通文本;不要滥用。
+
+**image** — 仅限你真的给用户"发了一张图"时用。禁止用来描述场景、氛围或环境。description 字段给一段描述,前端渲染成「[图片] X」占位。
+
+**location** — 告知用户自己在哪或要去哪。name 地名,desc 补充说明。非位置语境不用。
+
+**red_packet** — 小额祝福:节日、红事、玩笑心意。渲染为 ¥X.XX 红色卡片,用户点击领取,24h 未领自动退回。
+
+**transfer** — 明确的金钱往来:还款、付款、AA。比红包正式。
+
+**unblock_request** — 受控动作。**仅限用户已拉黑角色时使用**,未拉黑时绝对不用。需用户点击同意才生效。
+
+**add_schedule_entry** — 对话中出现明确的「时间/时间段 + 事件」时触发("明天下午三点开会")。模糊语义("以后再说""有空了来")不触发。`;

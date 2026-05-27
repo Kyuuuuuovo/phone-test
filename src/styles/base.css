@@ -2732,46 +2732,13 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
 .schedule-form .char-pick[hidden] { display: none; }
 .schedule-form .user-persona-pick[hidden] { display: none; }
 
-/* 3 天竖向时间轴 — 进入行程 app 看到的主视图。3 列均分容器宽,每列上面
-   一个日期 head,下面 24h 纵向 timeline。行程作 absolute 块按时间定位。
-   page-body overflow: auto 让 timeline 整体可滚。
-   美化(色彩 / 阴影 / 间距)等用户给 reference 再细调。 */
-.schedule-3day-body {
-  padding: 12px 8px;
-}
-.schedule-3day-cols {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-}
-.day-col {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.day-col-head {
-  text-align: center;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 6px;
-  position: sticky;
-  top: 0;
-  background: var(--bg);
-  z-index: 2;
-}
-.day-col-head .day-col-rel {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fg);
-}
-.day-col-head .day-col-date {
-  font-size: 10px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-.day-col-timeline {
+/* 选中日 24h 纵向时间轴 — 行程作 absolute 块按时间定位。原三日视图的列
+   样式合并:.day-timeline 现在是单列、占满 day-detail 宽度。.hour-mark 跟
+   .time-entry 保持原样,这两个元素无论单列还是多列都通用。 */
+.day-timeline {
   position: relative;
   border-left: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  margin-top: 8px;
 }
 .hour-mark {
   position: absolute;
@@ -2827,7 +2794,7 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
   text-overflow: ellipsis;
 }
 
-.schedule-page .actions { display: flex; gap: 4px; }
+.schedule-page .actions { display: flex; gap: 4px; align-items: center; }
 .schedule-page .actions .ai-gen {
   background: var(--accent);
   color: #fff;
@@ -2838,6 +2805,277 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
   cursor: pointer;
 }
 .schedule-page .actions .ai-gen:hover { filter: brightness(1.05); }
+.schedule-page .actions .manage-types {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 4px 6px;
+  display: inline-flex;
+  align-items: center;
+}
+.schedule-page .actions .manage-types svg { display: block; }
+
+.schedule-page-body { padding: 12px 8px; }
+
+/* 月历 — 跟 memory-app 的 ma-cal 同套布局但独立 class 名,后续两边可以各
+   自演化(memory-app 的月历可能加 hover preview,行程的月历可能加颜色编
+   码热度图)。 */
+.sched-cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.sched-cal-nav .sched-nav-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--fg);
+}
+.sched-cal-nav .sched-nav-btn:hover { background: var(--bubble-char); }
+.sched-month-label { font-size: 14px; font-weight: 600; }
+.sched-cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 4px;
+}
+.sched-weekday {
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 4px 0;
+}
+.sched-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.sched-cell {
+  aspect-ratio: 1;
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  font: inherit;
+  color: var(--fg);
+  padding: 0;
+}
+.sched-cell:hover { background: var(--bubble-char); }
+.sched-cell.empty { background: transparent; border-color: transparent; cursor: default; }
+.sched-cell.today {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  border-color: var(--accent);
+}
+.sched-cell.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.sched-cell-day { font-size: 13px; }
+.sched-cell-dots {
+  display: flex;
+  gap: 2px;
+  margin-top: 2px;
+  min-height: 6px;
+}
+.sched-cell-dots .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.sched-cell-dots .dot.sched { background: var(--accent); }
+.sched-cell-dots .dot.checkin.done { background: #5ec97e; }
+.sched-cell-dots .dot.checkin.partial { background: #e2b94a; }
+.sched-legend {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.sched-legend .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.sched-legend .dot.sched { background: var(--accent); }
+.sched-legend .dot.checkin.done { background: #5ec97e; }
+.sched-legend .dot.checkin.partial { background: #e2b94a; }
+
+/* 日详情区(month-day 模式月历下方)— 展开当天的行程和打卡。一开始就显示
+   当天数据,翻月 / 点 cell 切换 selectedDayKey。 */
+.day-detail-block {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.day-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.ddh-date { font-size: 14px; font-weight: 600; }
+.ddh-new-entry {
+  background: none;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ddh-new-entry:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.day-detail-section { margin-bottom: 14px; }
+.dds-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding-left: 8px;
+  border-left: 2px solid var(--accent);
+}
+.day-detail-empty {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 8px 4px;
+  font-style: italic;
+}
+.day-detail-empty .link {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+/* 打卡 chip — 日详情区域显示的可点击切换 chip。done 状态用 type 自定义颜
+   色(var(--type-color)),未打就显示 outline + 灰底。 */
+.day-detail-checkins {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.checkin-chip {
+  --type-color: #5ec97e;
+  background: none;
+  border: 1.5px solid var(--type-color);
+  color: var(--fg);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s;
+}
+.checkin-chip:hover { background: color-mix(in srgb, var(--type-color) 12%, transparent); }
+.checkin-chip.done {
+  background: var(--type-color);
+  color: #fff;
+  border-color: var(--type-color);
+}
+.checkin-chip.add {
+  border-style: dashed;
+  border-color: var(--muted);
+  color: var(--muted);
+}
+.checkin-chip .ci-icon {
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 16px;
+  text-align: center;
+}
+
+/* 时间块删除按钮 — 右上角 12px ×,正常半透明,hover 高亮红。
+   位置 absolute 不影响 time-entry 内部 flex 布局。 */
+.time-entry-del {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 3px;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+.time-entry:hover .time-entry-del { opacity: 1; }
+.time-entry-del:hover { color: var(--danger); }
+
+/* 打卡类型管理 modal — 列表 + 编辑 + 删除按钮。每行一种类型,左边圆 icon,
+   右边删除 × + 编辑文字按钮。 */
+.manage-types-modal .mt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.mt-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border-radius: 8px;
+}
+.mt-icon {
+  --type-color: #5ec97e;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--type-color);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.mt-info { flex: 1; min-width: 0; }
+.mt-name { font-size: 13px; font-weight: 500; }
+.mt-freq { font-size: 11px; color: var(--muted); }
+.mt-edit {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.mt-edit:hover { background: var(--bubble-char); }
+.mt-del {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 0 6px;
+  line-height: 1;
+}
+.mt-del:hover { color: var(--danger); }
 
 /* Favorites list */
 .favorite-list { display: flex; flex-direction: column; gap: 8px; }

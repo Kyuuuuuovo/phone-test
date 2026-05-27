@@ -47,10 +47,17 @@ export function dayKeyOf(ts) {
 const todayKey = () => dayKeyOf(Date.now());
 
 // Find days that have messages but no timeline row yet, then generate one
-// summary per missing day. Skips today. Returns { generated, skipped, errors }.
-export async function generateMissingDays(sessionId, { onProgress } = {}) {
+// summary per missing day. Skips today. Returns { generated, skipped, errors,
+// remaining } — remaining 是被 maxDays cap 截掉的天数,UI 可据此提示用户「还
+// 有 N 天,再点一次继续生成」。
+//
+// maxDays(默认 30)防一次点扫描就 fire 200 个 API 请求 — 新用户开记忆 app
+// 点扫描,session 有 200 天历史就 200 次 callAI 串行,可能跑 5-10 分钟还烧
+// 钱。改成分批,一次最多 maxDays 天。已生成的有 timeline 行不再重做,下次
+// 点会接着干。
+export async function generateMissingDays(sessionId, { onProgress, maxDays = 30 } = {}) {
   const allMsgs = await db.query('chatMessages', 'sessionId', sessionId);
-  if (allMsgs.length === 0) return { generated: 0, skipped: 0, errors: 0 };
+  if (allMsgs.length === 0) return { generated: 0, skipped: 0, errors: 0, remaining: 0 };
 
   const byDay = new Map();
   for (const m of allMsgs) {
@@ -66,9 +73,12 @@ export async function generateMissingDays(sessionId, { onProgress } = {}) {
   const existingKeys = new Set(existing.map(t => t.dayKey));
 
   const t = todayKey();
-  const todoKeys = [...byDay.keys()]
+  const allTodoKeys = [...byDay.keys()]
     .filter(k => k !== t && !existingKeys.has(k))
     .sort();
+  // 取最近 maxDays 天优先生成(用户更可能关心近期的)。
+  const todoKeys = allTodoKeys.slice(-maxDays);
+  const remaining = allTodoKeys.length - todoKeys.length;
 
   let generated = 0, errors = 0;
   for (const dayKey of todoKeys) {
@@ -97,7 +107,7 @@ export async function generateMissingDays(sessionId, { onProgress } = {}) {
       errors++;
     }
   }
-  return { generated, skipped: todoKeys.length - generated - errors, errors };
+  return { generated, skipped: todoKeys.length - generated - errors, errors, remaining };
 }
 
 // Merge multiple timeline entries into one combined row. Originals are

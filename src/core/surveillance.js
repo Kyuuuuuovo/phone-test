@@ -30,6 +30,7 @@ import * as db from './db.js';
 import * as ai from './ai.js';
 import * as context from './context.js';
 import { buildScheduleLines } from './context.js';
+import { parseTolerantJSON } from './util.js';
 
 // Per-camera activityLog cap. Each refresh appends one row; without
 // pruning a daily-checked camera grows to thousands over a year. Keep
@@ -151,44 +152,13 @@ function nowLine() {
 }
 
 function parseSnapshotJSON(raw) {
-  if (typeof raw !== 'string') return null;
-  const stripped = raw.trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```\s*$/i, '')
-    .trim();
-  try {
-    const parsed = JSON.parse(stripped);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
-  } catch (_) {}
-  // Fallback: greedy first object literal
-  const m = stripped.match(/\{[\s\S]*\}/);
-  if (m) {
-    try {
-      const parsed = JSON.parse(m[0]);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
-    } catch (_) {}
-  }
-  return null;
+  return parseTolerantJSON(raw, { expect: 'object' });
 }
 
 function parseRoomsJSON(raw) {
-  if (typeof raw !== 'string') return null;
-  const stripped = raw.trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```\s*$/i, '')
-    .trim();
-  try {
-    const parsed = JSON.parse(stripped);
-    if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
-  } catch (_) {}
-  const m = stripped.match(/\[[\s\S]*\]/);
-  if (m) {
-    try {
-      const parsed = JSON.parse(m[0]);
-      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
-    } catch (_) {}
-  }
-  return null;
+  const arr = parseTolerantJSON(raw, { expect: 'array' });
+  if (!arr) return null;
+  return arr.map(String).filter(Boolean);
 }
 
 // Pull a fresh camera frame. Persists one activityLog row + flips

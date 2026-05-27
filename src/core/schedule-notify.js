@@ -24,6 +24,7 @@
 // might be looking elsewhere when it fires.
 
 import * as db from './db.js';
+import { esc } from './util.js';
 
 const POLL_MS    = 60_000;       // foreground tick
 const WINDOW_MS  = 60_000;       // fire window: ±60s of startTs
@@ -33,6 +34,9 @@ const KEEP_IDS   = 50;           // cap on settings.scheduleNotifiedIds
 let intervalId = null;
 let routerRef = null;
 let bannerEl = null;
+// 同一分钟内多条到期 → 队列。banner 一条 dismiss 后立刻显下一条,不靠下
+// 一个 tick 兜底(下个 tick 时这些 entry 早超出 WINDOW_MS 了)。
+let bannerQueue = [];
 
 export function start(router) {
   routerRef = router;
@@ -43,40 +47,49 @@ export function start(router) {
 
 export function stop() {
   if (intervalId) { clearInterval(intervalId); intervalId = null; }
+  bannerQueue = [];
   dismissBanner();
 }
 
 async function tick() {
-  // Always tick — even when hidden,我们可以走系统通知联动手机锁屏(只要 user
-  // 在设置开了「弹系统通知」且授权了 Notification.permission)。banner 只在
-  // tab 可见时弹(隐藏时弹 banner 没意义),OS notification 是 hidden 时的
-  // 路径。
-  if (bannerEl) return;  // 一次只弹一条 banner
   const settings = (await db.get('settings', 'default')) || {};
   const notified = new Set(settings.scheduleNotifiedIds || []);
   const all = await db.getAll('schedule');
   const now = Date.now();
-  // user-bucket only — character schedules are for the model, not the user
-  const due = all.find(e =>
+  // user-bucket only — character schedules are for the model, not the user。
+  // 改 find → filter:同一分钟可能多条到期(用户连排两条 10:00 的会议),
+  // 原来只触发一条,其余 60s 后早超出 WINDOW_MS 永远不再弹。现在全部抓
+  // 出来排队按顺序显示。
+  const due = all.filter(e =>
        e.who === 'user'
     && Math.abs(e.startTs - now) <= WINDOW_MS
     && now - e.startTs <= STALE_MS
     && !notified.has(e.id));
-  if (!due) return;
-  // Mark notified BEFORE the banner shows. If banner code throws, we'd
-  // rather lose the alert than fire forever in a loop.
-  notified.add(due.id);
+  if (due.length === 0) return;
+  // 按 startTs 升序,用户先看到更早的。
+  due.sort((a, b) => a.startTs - b.startTs);
+  // Mark notified BEFORE 展示。如果 banner 代码崩了,宁可丢这次提示也不
+  // 想每个 tick 重复弹(那是更糟的 UX)。一次性把整批写进 notified。
+  for (const e of due) notified.add(e.id);
   await db.updateSettings(s => {
     s.scheduleNotifiedIds = [...notified].slice(-KEEP_IDS);
   });
   if (document.hidden) {
-    // tab 不在前台 → 系统通知联动(锁屏弹出、桌面 toast 等)。前提:user
-    // 在设置打开过「弹系统通知」+ 浏览器授权。permission denied 时静默
-    // 跳过(用户已经明确说"不要")。
-    fireOsNotification(due, settings);
-  } else {
-    showBanner(due);
+    // hidden 不能 banner,逐条系统通知。OS 通知有自己的堆叠机制(tag 不同
+    // 互不挤),不需要队列。
+    for (const e of due) fireOsNotification(e, settings);
+    return;
   }
+  // 入队 + 如果当前没在显示,立即取第一条。
+  for (const e of due) bannerQueue.push(e);
+  if (!bannerEl) showNextBanner();
+}
+
+// 从队列取下一条 banner。dismissBanner 在动画结束后调,tick 在首次入队时调。
+function showNextBanner() {
+  const entry = bannerQueue.shift();
+  if (!entry) return;
+  showBanner(entry);
 }
 
 // 系统级 Notification — 跟 in-app banner 互补:可见时显 banner,隐藏时显
@@ -142,16 +155,17 @@ function dismissBanner() {
   const b = bannerEl;
   bannerEl = null;
   b.classList.remove('show');
-  // Remove after the CSS transition finishes (250ms in base.css).
-  setTimeout(() => { if (b.parentNode) b.parentNode.removeChild(b); }, 260);
+  // Remove after the CSS transition finishes (250ms in base.css)。slide-out
+  // 完成后立刻起下一条 banner — 让"一次 tick N 条到期"逐条流过去,而不是
+  // 每个 dismiss 之后等下个 60s tick(早过窗了)。
+  setTimeout(() => {
+    if (b.parentNode) b.parentNode.removeChild(b);
+    if (bannerQueue.length > 0) showNextBanner();
+  }, 260);
 }
 
 function formatTime(ts) {
   const d = new Date(ts);
   const pad = (n) => String(n).padStart(2, '0');
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }
