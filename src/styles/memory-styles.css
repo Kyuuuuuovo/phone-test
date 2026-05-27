@@ -65,6 +65,185 @@
 .ma-style-opt-name { font-size: 13px; font-weight: 500; }
 .ma-style-opt-desc { font-size: 11px; color: var(--muted); }
 
+/* ─────────────────────────────────────────────────────────────────────
+   通用:卡片 chip 区(tier / 时间范围 / tag / score)
+   5 风格共用结构,各 scope 用 ::before / 颜色细调辨识。
+   ───────────────────────────────────────────────────────────────────── */
+.memory-app-page .mem-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.memory-app-page .mem-chips > span {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.memory-app-page .mem-tier {
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
+  color: var(--fg);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.memory-app-page .mem-tier-l2 {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: color-mix(in srgb, var(--accent) 80%, var(--fg));
+}
+.memory-app-page .mem-timerange {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.memory-app-page .mem-tag {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: color-mix(in srgb, var(--accent) 80%, var(--fg));
+}
+/* 6 类 tag 各自微调底色 — 用 hue rotate 简单区分,不要做 6 个手工 palette */
+.memory-app-page .mem-tag-转折 { background: rgba(220, 130, 90, 0.18); color: #b46638; }
+.memory-app-page .mem-tag-亲密 { background: rgba(220, 130, 160, 0.18); color: #b35880; }
+.memory-app-page .mem-tag-冲突 { background: rgba(190, 100, 100, 0.18); color: #a64949; }
+.memory-app-page .mem-tag-发现 { background: rgba(110, 150, 200, 0.18); color: #4a78a8; }
+.memory-app-page .mem-tag-约定 { background: rgba(140, 180, 120, 0.18); color: #5e8a47; }
+.memory-app-page .mem-tag-日常 { background: rgba(150, 150, 150, 0.18); color: #6b6b6b; }
+.memory-app-page .mem-score {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: color-mix(in srgb, var(--accent) 90%, black);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   通用:横向 chip 角色选择器(planner / petal / film / cosmic 共用)
+   ───────────────────────────────────────────────────────────────────── */
+.memory-app-page .mem-char-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 6px 4px 8px;
+  margin: 0 0 8px 0;
+  scrollbar-width: thin;
+}
+.memory-app-page .mem-char-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--fg);
+}
+.memory-app-page .mem-char-chip:hover { background: var(--bubble-char); }
+.memory-app-page .mem-char-chip.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.memory-app-page .mem-chip-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--muted);
+  color: var(--surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+}
+.memory-app-page .mem-chip-avatar img {
+  width: 100%; height: 100%; object-fit: cover;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   通用:cabinet 纵向文件夹列表(cabinet 风格独占 — 其他 4 个走 chip)
+   ───────────────────────────────────────────────────────────────────── */
+.memory-app-page .mem-folder-list {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.memory-app-page .mem-folder {
+  display: flex;
+  align-items: center;
+  background: var(--surface);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 12px;
+  cursor: pointer;
+  color: var(--fg);
+  text-align: left;
+  position: relative;
+}
+.memory-app-page .mem-folder:hover { background: var(--bubble-char); }
+.memory-app-page .mem-folder.active {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  font-weight: 600;
+}
+.memory-app-page .mem-folder-bar {
+  width: 4px;
+  height: 24px;
+  margin-right: 12px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.memory-app-page .mem-folder-name { flex: 1; font-size: 13px; }
+.memory-app-page .mem-folder-arrow { opacity: 0.45; font-size: 18px; line-height: 1; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   通用:语义检索命中区(summary tab 顶部,embedding 启用才显)
+   ───────────────────────────────────────────────────────────────────── */
+.memory-app-page .mem-vector-hits {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+.memory-app-page .mem-vh-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.memory-app-page .mem-vh-label {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-right: 4px;
+}
+.memory-app-page .mem-vh-input {
+  flex: 1;
+  font-size: 13px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--fg);
+}
+.memory-app-page .mem-vh-search {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.memory-app-page .mem-vh-empty {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+.memory-app-page .mem-vh-list .ma-row.vh-row {
+  background: var(--surface);
+}
+
 /* ═════════════════════════════════════════════════════════════════════
    风格 1 · 手账本(planner)— 横线纸 + 纸胶带 + 圆点时间轴
    纸纹用 var(--fg) 透明度叠加,自动适应深浅主题(浅主题黑线 / 深主题白线)
@@ -533,3 +712,181 @@ body[data-mem-style="cosmic"] .memory-app-page .ma-style-opt.active {
 body[data-mem-style="cosmic"] .memory-app-page .ma-style-opt-desc {
   color: color-mix(in srgb, var(--accent) 60%, white);
 }
+
+/* ═════════════════════════════════════════════════════════════════════
+   per-style 辨识元素增强 — 每个风格让它"看一眼就知道是哪个"。这里
+   只写差异化的东西,共享部分(chip / folder / vector hits)在上面 通用 段。
+   ═════════════════════════════════════════════════════════════════════ */
+
+/* planner — chip 当胶带:微旋转 + 虚线边 + 渐变奶油底色 */
+body[data-mem-style="planner"] .memory-app-page .mem-chips > span {
+  background: linear-gradient(135deg, rgba(255, 220, 150, 0.55), rgba(255, 200, 130, 0.35));
+  border-top: 1px dashed color-mix(in srgb, var(--fg) 35%, transparent);
+  border-bottom: 1px dashed color-mix(in srgb, var(--fg) 35%, transparent);
+  border-radius: 2px;
+  transform: rotate(-1.2deg);
+  color: var(--fg);
+  padding: 2px 8px;
+}
+body[data-mem-style="planner"] .memory-app-page .mem-tag,
+body[data-mem-style="planner"] .memory-app-page .mem-tier,
+body[data-mem-style="planner"] .memory-app-page .mem-timerange,
+body[data-mem-style="planner"] .memory-app-page .mem-score {
+  background: linear-gradient(135deg, rgba(255, 220, 150, 0.55), rgba(255, 200, 130, 0.35));
+}
+body[data-mem-style="planner"] .memory-app-page .mem-char-chip {
+  border-style: dashed;
+}
+
+/* cabinet — tier / tag 全部改 file-label:方角 + 大写 + 实色背景 + 白字 */
+body[data-mem-style="cabinet"] .memory-app-page .mem-chips > span {
+  border-radius: 2px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
+  font-size: 9px;
+  padding: 3px 8px;
+}
+body[data-mem-style="cabinet"] .memory-app-page .mem-tier {
+  background: var(--accent);
+  color: var(--surface);
+}
+
+/* petal — chips 改毛玻璃 pill,session-group summary 加分隔线感 */
+body[data-mem-style="petal"] .memory-app-page .mem-chips > span {
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  backdrop-filter: blur(4px);
+  border: 1px solid color-mix(in srgb, var(--surface) 80%, transparent);
+}
+body[data-mem-style="petal"] .memory-app-page .ma-session-group summary {
+  text-align: center;
+  position: relative;
+  padding: 10px 0;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 4px;
+  list-style: none;
+}
+body[data-mem-style="petal"] .memory-app-page .ma-session-group summary::before,
+body[data-mem-style="petal"] .memory-app-page .ma-session-group summary::after {
+  content: '';
+  display: inline-block;
+  width: 60px;
+  height: 1px;
+  vertical-align: middle;
+  margin: 0 12px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 40%, transparent), transparent);
+}
+body[data-mem-style="petal"] .memory-app-page .mem-char-chip {
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid color-mix(in srgb, var(--surface) 80%, transparent);
+}
+
+/* film — meta 独立行(monospace 暗底 label),chips 显在齿孔下方第一行
+   原 ma-row-meta 已 monospace + 反色,这里加 chip 的胶片风:小、方角、灰底 */
+body[data-mem-style="film"] .memory-app-page .ma-row .mem-chips {
+  padding: 10px 12px 0;
+  margin-bottom: 0;
+}
+body[data-mem-style="film"] .memory-app-page .mem-chips > span {
+  border-radius: 0;
+  border: 1px solid color-mix(in srgb, var(--fg) 30%, transparent);
+  background: color-mix(in srgb, var(--surface) 90%, var(--fg));
+  font-family: 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
+  font-size: 9px;
+  padding: 2px 6px;
+  letter-spacing: 0.06em;
+}
+body[data-mem-style="film"] .memory-app-page .mem-tier {
+  background: var(--fg);
+  color: var(--surface);
+  border: none;
+}
+
+/* cosmic — 每条 row 前加 6px 发光圆点(用 ::before;原来 planner 也用了
+   ::before 圆点,这里覆盖给 cosmic 自己一个发光强的版本) */
+body[data-mem-style="cosmic"] .memory-app-page .ma-row::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 16px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 80%, transparent);
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-row {
+  position: relative;
+  margin-left: 14px;
+}
+body[data-mem-style="cosmic"] .memory-app-page .mem-chips > span {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: color-mix(in srgb, var(--accent) 30%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-session-group summary {
+  position: relative;
+  color: color-mix(in srgb, var(--accent) 30%, white);
+  padding: 8px 0;
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-session-group summary::after {
+  content: '';
+  display: block;
+  margin-top: 4px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 60%, transparent), transparent);
+}
+body[data-mem-style="cosmic"] .memory-app-page .mem-char-chip {
+  background: rgba(60, 30, 50, 0.45);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: #f8e0e8;
+}
+body[data-mem-style="cosmic"] .memory-app-page .mem-folder {
+  background: rgba(60, 30, 50, 0.4);
+  border-bottom-color: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+body[data-mem-style="cosmic"] .memory-app-page .mem-folder.active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+body[data-mem-style="cosmic"] .memory-app-page .mem-vector-hits {
+  background: rgba(60, 30, 50, 0.35);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+body[data-mem-style="cosmic"] .memory-app-page .mem-vh-input {
+  background: rgba(40, 20, 35, 0.5);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: #f8e0e8;
+}
+
+/* ═════════════════════════════════════════════════════════════════════
+   per-style 字号 / 行高 / padding 去冗余 — 5 风格的 .ma-row-body 微调
+   差异 < 1px,用户基本不感知,但维护面积大。统一删了走 base.css 默认值。
+   只留真正影响视觉气质的(film 用 inline padding 是因为齿孔布局必需)。
+   ═════════════════════════════════════════════════════════════════════ */
+/* 删:planner .ma-row-body font-size 14 line-height 1.7 — 走默认 */
+body[data-mem-style="planner"] .memory-app-page .ma-row-body {
+  font-size: unset;
+  line-height: unset;
+}
+/* 删:petal .ma-row-body font-size 14 line-height 1.7 — 走默认 */
+body[data-mem-style="petal"] .memory-app-page .ma-row-body {
+  font-size: unset;
+  line-height: unset;
+}
+/* film 保留 inline padding(齿孔 + meta label 布局必需),但删 font-size 13 */
+body[data-mem-style="film"] .memory-app-page .ma-row-body {
+  font-size: unset;
+  line-height: unset;
+}
+/* cosmic .ma-row-body font-size 13.5 — 走默认 */
+body[data-mem-style="cosmic"] .memory-app-page .ma-row-body {
+  font-size: unset;
+}
+/* cabinet 同理 */
+body[data-mem-style="cabinet"] .memory-app-page .ma-row-body {
+  font-size: unset;
+  line-height: unset;
+}
+

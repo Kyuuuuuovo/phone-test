@@ -146,6 +146,40 @@ const PINK_PALETTE = {
 // One-click presets — the editor renders a row of chips at the top that copies
 // the preset's values into the draft. Users can still tweak after applying.
 export const THEME_PRESETS = [
+  // 「素白」放最前 — 灰白通透玻璃,鼓励 user 自配浅色壁纸,呈现"白瓷玻璃
+  // 浮在风景上"的感觉。bubbleChar 用 rgba 留 alpha(同雾屿系列的 caveat,
+  // 色 picker 读 rgba 退化成 hex)。
+  {
+    id: 'misty-white',
+    label: '素白',
+    theme: {
+      notch: false,
+      bg:           '#F4F4F2',
+      fg:           '#3A3A38',           // 中灰,不是纯黑 — 整体柔
+      surface:      '#FFFFFF',
+      accent:       '#6B6B68',           // 石墨灰,不抢色
+      muted:        '#9A9A95',
+      border:       '#E0DFDB',
+      bubbleUser:   '#3A3A38',           // 用户气泡用 fg 色,深灰
+      bubbleUserFg: '#F4F4F2',
+      bubbleChar:   'rgba(255,255,255,0.5)',  // 半透明白,壁纸透出来
+      bubbleCharFg: '#3A3A38',
+      outsideBg:    '#D8D8D4',
+      bgPinned:     '#EFEEEB',
+      fontFamily:   'rounded',
+      fontSize:     15,
+      radius:       22,                  // 圆润,跟柔光感配
+      effects: {
+        glass:          'liquid',
+        glassIntensity: 90,              // 强玻璃,反射 + 模糊明显
+        gradient:       false,
+        gradientTo:     '#EFEEEB',
+        texture:        'none',
+        transparency:   0,
+        surfaceAlpha:   75,              // page 大幅透出 — 壁纸是这套的灵魂
+      },
+    },
+  },
   {
     id: 'default',
     label: '默认 iOS 蓝',

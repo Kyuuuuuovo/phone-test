@@ -16,6 +16,7 @@
 
 import * as db from '../../core/db.js';
 import * as timeline from '../../core/timeline.js';
+import * as embedding from '../../core/embedding.js';
 import { openConfirm } from '../../core/modal.js';
 
 // 5 风格 + 默认。default = 不挂 body[data-mem-style](回退到 base.css 的 .ma-row),
@@ -46,6 +47,11 @@ export async function mountMemoryApp(container, params, router) {
   let memoryStyle = initialSettings.memoryStyle || 'planner';
   applyMemoryStyleToBody(memoryStyle);
   let stylePickerOpen = false;
+  // Vector hits 区(summary tab 顶部)— 配置了 embedding 才显示。query 用
+  // 输入框,user 输入后跑跨会话 cosine 召回。状态走 closure,re-render 保持。
+  let vectorQuery = '';
+  let vectorHits = null;     // null = 未搜过;[] = 搜过没结果;[...] = 有命中
+  let vectorBusy = false;
 
   async function render() {
     const chars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
@@ -80,17 +86,7 @@ export async function mountMemoryApp(container, params, router) {
             <button class="ma-tab${activeTab === 'milestones' ? ' active' : ''}" data-tab="milestones">纪念日</button>
             <button class="ma-tab${activeTab === 'summary'    ? ' active' : ''}" data-tab="summary">总结</button>
           </div>
-          ${showFilter ? `
-            <div class="ma-char-filter">
-              <label>
-                <span class="ma-filter-label">角色</span>
-                <select class="ma-filter-select">
-                  <option value=""${!filterCharId ? ' selected' : ''}>全部</option>
-                  ${chars.map(c => `<option value="${esc(c.id)}"${c.id === filterCharId ? ' selected' : ''}>${esc(c.name || '(未命名)')}</option>`).join('')}
-                </select>
-              </label>
-            </div>
-          ` : ''}
+          ${showFilter ? renderCharFilter(chars) : ''}
           <div class="ma-tab-body">
             ${activeTab === 'calendar'   ? await renderCalendar()
             : activeTab === 'timeline'   ? await renderTimeline()
@@ -101,6 +97,105 @@ export async function mountMemoryApp(container, params, router) {
       </div>
     `;
     wire();
+  }
+
+  // ── 角色选择器(两种形态) ───────────────────────────────────────────
+  // cabinet 风格:纵向文件夹列表(左色条 + 名字 + 计数 + 右箭头)— 替代 select
+  // 其他 4 风格:横向头像 chip(圆头 + 名字 + 选中态色边)
+  // 一律保留"全部"选项作为第 0 个。
+  function renderCharFilter(chars) {
+    if (memoryStyle === 'cabinet') {
+      const all = `
+        <button class="mem-folder${!filterCharId ? ' active' : ''}" data-char-id="" type="button">
+          <span class="mem-folder-bar" style="background:#9A9A95"></span>
+          <span class="mem-folder-name">全部</span>
+          <span class="mem-folder-arrow">›</span>
+        </button>
+      `;
+      const rows = chars.map(c => {
+        const color = stableColor(c.id);
+        return `
+          <button class="mem-folder${c.id === filterCharId ? ' active' : ''}" data-char-id="${esc(c.id)}" type="button">
+            <span class="mem-folder-bar" style="background:${color}"></span>
+            <span class="mem-folder-name">${esc(c.name || '(未命名)')}</span>
+            <span class="mem-folder-arrow">›</span>
+          </button>
+        `;
+      }).join('');
+      return `<div class="mem-folder-list">${all}${rows}</div>`;
+    }
+    // 默认 / planner / petal / film / cosmic — 横向 chip
+    const chip = (id, name, avatar) => {
+      const color = stableColor(id || 'all');
+      const active = (id || '') === filterCharId ? ' active' : '';
+      const initial = (name || '?').slice(0, 1);
+      const avatarHtml = avatar
+        ? `<span class="mem-chip-avatar"><img src="${esc(avatar)}" alt=""></span>`
+        : `<span class="mem-chip-avatar" style="background:${color}">${esc(initial)}</span>`;
+      return `<button class="mem-char-chip${active}" data-char-id="${esc(id || '')}" type="button">${avatarHtml}<span class="mem-chip-name">${esc(name)}</span></button>`;
+    };
+    return `
+      <div class="mem-char-chips">
+        ${chip('', '全部', null)}
+        ${chars.map(c => chip(c.id, c.name || '(未命名)', c.avatar)).join('')}
+      </div>
+    `;
+  }
+
+  // 一份卡片 builder,5 风格共用结构、各 scope 改外观。
+  // 入参:meta=string[](会用 · join)、body=主文本、tier=1/2(可选)、
+  //   timeRange='5月22日'/'5月22日–5月23日'(可选)、tag='转折'等(可选)、
+  //   score=0..1(可选,vector hits 用)、extras=尾部 HTML、dataAttrs=自定义属性。
+  function buildMemCard({ meta = [], body, tier, timeRange, tag, score, extras = '', dataAttrs = '', cardClass = '' }) {
+    const tierChip = tier
+      ? `<span class="mem-tier mem-tier-${tier === 2 ? 'l2' : 'l1'}">${tier === 2 ? 'L2' : 'L1'}</span>`
+      : '';
+    const timeChip   = timeRange ? `<span class="mem-timerange">${esc(timeRange)}</span>` : '';
+    const tagChip    = tag       ? `<span class="mem-tag mem-tag-${esc(tag)}">${esc(tag)}</span>` : '';
+    const scoreChip  = (score != null) ? `<span class="mem-score">${Math.round(score * 100)}%</span>` : '';
+    const chips = [tierChip, timeChip, tagChip, scoreChip].filter(Boolean).join('');
+    return `
+      <div class="ma-row${cardClass ? ' ' + cardClass : ''}"${dataAttrs ? ' ' + dataAttrs : ''}>
+        ${chips ? `<div class="mem-chips">${chips}</div>` : ''}
+        ${meta.length > 0 ? `<div class="ma-row-meta">${meta.map(esc).join(' · ')}</div>` : ''}
+        <div class="ma-row-body">${esc(body || '(空)')}</div>
+        ${extras}
+      </div>
+    `;
+  }
+
+  // 启发式 tag 分类 — 在向量打标 Phase 4 数据落地前的占位方案。命中关键词
+  // 优先级:转折 > 亲密 / 冲突(情感互斥)> 发现 > 约定 > 日常(兜底)。
+  function heuristicTag(text) {
+    const t = String(text || '');
+    if (/第一次|表白|分手|和好|决定|改变|转变/.test(t))                       return '转折';
+    if (/吵架|生气|冷战|不满|失望|矛盾|争执/.test(t))                         return '冲突';
+    if (/喜欢|爱|温柔|拥抱|想念|心动|甜|亲密|陪/.test(t))                     return '亲密';
+    if (/知道|了解|原来|学到|发现|聊到|讲到|说起/.test(t))                    return '发现';
+    if (/约|计划|周末|下次|明天|去|要做|安排|准备/.test(t))                   return '约定';
+    return '日常';
+  }
+
+  // 时间覆盖范围 — m.fromMsgId / m.toMsgId 查 chatMessages cache,渲成
+  // `5月22日` 或 `5月22日–5月23日`。msgIdx 是 caller 预建的 id→msg map。
+  function timeRangeOf(m, msgIdx) {
+    const from = m.fromMsgId ? msgIdx.get(m.fromMsgId) : null;
+    const to   = m.toMsgId   ? msgIdx.get(m.toMsgId)   : null;
+    if (!from || !to) return null;
+    const fromDate = new Date(from.createdAt);
+    const toDate   = new Date(to.createdAt);
+    const fmt = (d) => `${d.getMonth() + 1}月${d.getDate()}日`;
+    const sameDay = fromDate.toDateString() === toDate.toDateString();
+    return sameDay ? fmt(fromDate) : `${fmt(fromDate)}–${fmt(toDate)}`;
+  }
+
+  // 角色 id → 稳定颜色(用于 folder 色条 / chip 头像兜底背景)。简单 hash 取
+  // HSL 色相,避免对每个 c 都从 character.color 字段读(那字段不存在)。
+  function stableColor(id) {
+    let h = 0;
+    const s = String(id || '');
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xfffff;
+    return `hsl(${h % 360}, 38%, 56%)`;
   }
 
   // ── Calendar tab ────────────────────────────────────────────────────
@@ -229,13 +324,15 @@ export async function mountMemoryApp(container, params, router) {
                 }).join('')}
               </details>`
             : '';
-          return `
-            <div class="ma-row${t.mergedFrom ? ' merged-row' : ''}">
-              <div class="ma-row-meta">${esc(t.dayKey || '')} · ${esc(labelFor(t.sessionId))}${t.mergedFrom ? ` · 合并(${t.mergedFrom.length})` : ''}</div>
-              <div class="ma-row-body">${esc(t.summary || '(空)')}</div>
-              ${mergedDetail}
-            </div>
-          `;
+          const meta = [t.dayKey || '', labelFor(t.sessionId)];
+          if (t.mergedFrom) meta.push(`合并(${t.mergedFrom.length})`);
+          return buildMemCard({
+            meta,
+            body: t.summary,
+            tag: heuristicTag(t.summary),
+            extras: mergedDetail,
+            cardClass: t.mergedFrom ? 'merged-row' : '',
+          });
         }).join('')}
       </div>
     `;
@@ -309,24 +406,33 @@ export async function mountMemoryApp(container, params, router) {
         <p class="hint">还没有纪念日。点上方按钮添加。可以设「每年重复」让生日 / 周年自动在月历里高亮。</p>
       ` : `
         <div class="ma-list">
-          ${all.map(m => `
-            <div class="ma-row ms-row" data-ms-id="${esc(m.id)}">
-              <div class="ma-row-meta">
-                ${esc(m.dayKey || '')}${m.recurring ? ' · 每年' : ''}${m.characterId ? ` · ${esc(charLabel(m.characterId))}` : ''}
-              </div>
-              <div class="ma-row-body">
-                <b>${esc(m.title || '(无标题)')}</b>${m.desc ? ` — ${esc(m.desc)}` : ''}
-              </div>
-              <button class="ma-row-del" type="button" title="删除">×</button>
-            </div>
-          `).join('')}
+          ${all.map(m => {
+            const meta = [m.dayKey || ''];
+            if (m.recurring) meta.push('每年');
+            if (m.characterId) meta.push(charLabel(m.characterId));
+            const body = m.title || '(无标题)';
+            const extras = `<button class="ma-row-del" type="button" title="删除">×</button>${m.desc ? `<div class="ma-row-desc">${esc(m.desc)}</div>` : ''}`;
+            return buildMemCard({
+              meta,
+              body,
+              cardClass: 'ms-row',
+              dataAttrs: `data-ms-id="${esc(m.id)}"`,
+              extras,
+            });
+          }).join('')}
         </div>
       `}
     `;
   }
 
   // ── Summary tab (cross-session memories) ────────────────────────────
+  // 多了 3 件事(per critique):
+  //   1. 顶部 .mem-vector-hits 区(配了 embedding 才显)— 输入框 + 跨会话召回
+  //   2. 每张卡片显示 tier(L1/L2)/ 时间覆盖范围 / 启发式 tag
+  //   3. ma-row 走 buildMemCard,跟 timeline / milestones 共用结构
   async function renderSummary() {
+    const settings = (await db.get('settings', 'default')) || {};
+    const embEnabled = settings.embedding?.enabled === true;
     let allMems = await db.getAll('memories');
     const sessions = await db.getAll('chatSessions');
     const chars    = await db.getAll('characters');
@@ -334,8 +440,45 @@ export async function mountMemoryApp(container, params, router) {
       const sidByChar = new Set(sessions.filter(s => s.characterId === filterCharId).map(s => s.id));
       allMems = allMems.filter(m => sidByChar.has(m.sessionId));
     }
+    // chatMessages 一次性 cache,为 timeRangeOf 服务(避免 N+1)。
+    const allMsgs = await db.getAll('chatMessages');
+    const msgIdx = new Map(allMsgs.map(m => [m.id, m]));
+
+    // vector hits 区块 — embedding 没开就 hint,开了就显输入框 + 命中卡片
+    const vectorBlock = embEnabled ? `
+      <div class="mem-vector-hits">
+        <div class="mem-vh-head">
+          <span class="mem-vh-label">语义检索命中</span>
+          <input type="text" class="mem-vh-input" placeholder="想找跟什么相关的记忆?" value="${esc(vectorQuery)}" ${vectorBusy ? 'disabled' : ''}>
+          <button type="button" class="mem-vh-search btn" ${vectorBusy ? 'disabled' : ''}>${vectorBusy ? '搜索中…' : '搜索'}</button>
+        </div>
+        ${vectorHits === null ? `
+          <div class="mem-vh-empty">输入关键词或想表达的情境,Enter 或点搜索。</div>
+        ` : vectorHits.length === 0 ? `
+          <div class="mem-vh-empty">没有命中(阈值 0.35,试试换个表达?)</div>
+        ` : `
+          <div class="ma-list mem-vh-list">
+            ${vectorHits.map(h => {
+              const s = sessions.find(x => x.id === h.memory.sessionId);
+              const c = s ? chars.find(x => x.id === s.characterId) : null;
+              const meta = [formatDate(h.memory.createdAt), c?.name || s?.title || '(未知会话)'];
+              return buildMemCard({
+                meta,
+                body: h.memory.summary,
+                tier: h.memory.tier,
+                timeRange: timeRangeOf(h.memory, msgIdx),
+                tag: heuristicTag(h.memory.summary),
+                score: h.score,
+                cardClass: 'vh-row',
+              });
+            }).join('')}
+          </div>
+        `}
+      </div>
+    ` : '';
+
     if (allMems.length === 0) {
-      return `<p class="hint">还没有总结。在某个会话里聊到超过 threshold(设置 → 记忆总结)后会自动生成。</p>`;
+      return vectorBlock + `<p class="hint">还没有总结。在某个会话里聊到超过 threshold(设置 → 记忆总结)后会自动生成。</p>`;
     }
     allMems.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
     const bySession = new Map();
@@ -343,11 +486,10 @@ export async function mountMemoryApp(container, params, router) {
       if (!bySession.has(m.sessionId)) bySession.set(m.sessionId, []);
       bySession.get(m.sessionId).push(m);
     }
-    // Sort groups by most-recent memory's createdAt desc.
     const groups = [...bySession.entries()]
       .map(([sid, mems]) => ({ sid, mems, latest: mems[0]?.createdAt || 0 }))
       .sort((a, b) => b.latest - a.latest);
-    return `
+    return vectorBlock + `
       <div class="ma-list">
         ${groups.map(g => {
           const s = sessions.find(x => x.id === g.sid);
@@ -355,17 +497,58 @@ export async function mountMemoryApp(container, params, router) {
           return `
             <details class="ma-session-group" open>
               <summary>${esc(c?.name || s?.title || '(未知会话)')} · ${g.mems.length} 条</summary>
-              ${g.mems.map(m => `
-                <div class="ma-row">
-                  <div class="ma-row-meta">${esc(formatDate(m.createdAt))}${m.tier === 2 ? ' · 远期' : ''}</div>
-                  <div class="ma-row-body">${esc(m.summary || '(空)')}</div>
-                </div>
-              `).join('')}
+              ${g.mems.map(m => buildMemCard({
+                meta: [formatDate(m.createdAt)],
+                body: m.summary,
+                tier: m.tier,
+                timeRange: timeRangeOf(m, msgIdx),
+                tag: heuristicTag(m.summary),
+              })).join('')}
             </details>
           `;
         }).join('')}
       </div>
     `;
+  }
+
+  // 跨会话向量召回 — embedding.topKMemoriesForQuery 只针对单 session,这里
+  // 自己写一版扫所有 memory-source embeddings。MIN_SIMILARITY 0.35 跟原版一致。
+  async function runVectorSearch() {
+    if (vectorBusy) return;
+    const q = vectorQuery.trim();
+    if (!q) return;
+    vectorBusy = true;
+    await render();
+    try {
+      const qvec = await embedding.embedText(q);
+      if (!qvec) { vectorHits = []; return; }
+      const allEmbs = await db.getAll('embeddings');
+      const memEmbs = allEmbs.filter(e => e.sourceType === 'memory');
+      const scored = [];
+      for (const e of memEmbs) {
+        if (!e.vector || e.dim !== qvec.length) continue;
+        scored.push({ embedding: e, score: embedding.cosineSimilarity(qvec, e.vector) });
+      }
+      scored.sort((a, b) => b.score - a.score);
+      const top = scored.filter(s => s.score >= 0.35).slice(0, 8);
+      const hits = [];
+      for (const s of top) {
+        const m = await db.get('memories', s.embedding.sourceId);
+        if (!m) continue;
+        if (filterCharId) {
+          const sess = await db.get('chatSessions', m.sessionId);
+          if (sess?.characterId !== filterCharId) continue;
+        }
+        hits.push({ memory: m, score: s.score });
+      }
+      vectorHits = hits;
+    } catch (e) {
+      console.warn('[memory-app] vector search failed', e);
+      vectorHits = [];
+    } finally {
+      vectorBusy = false;
+      await render();
+    }
   }
 
   // ── Wiring (per-render) ─────────────────────────────────────────────
@@ -408,11 +591,26 @@ export async function mountMemoryApp(container, params, router) {
         await render();
       });
     });
-    // 角色 filter change → re-render 当前 tab(filterCharId 是 closure)
-    container.querySelector('.ma-filter-select')?.addEventListener('change', async (e) => {
-      filterCharId = e.target.value || '';
-      await render();
+    // 角色 filter — 两种形态共用 data-char-id 属性。chip / folder 任一点击都
+    // 更新 filterCharId 并 re-render(filterCharId 是 closure)。
+    container.querySelectorAll('[data-char-id]').forEach(el => {
+      el.addEventListener('click', async () => {
+        filterCharId = el.dataset.charId || '';
+        await render();
+      });
     });
+    // Vector hits 搜索 — Enter 或按钮触发,blur 时同步输入值。
+    const vhInput = container.querySelector('.mem-vh-input');
+    if (vhInput) {
+      vhInput.addEventListener('input', (e) => { vectorQuery = e.target.value; });
+      vhInput.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          await runVectorSearch();
+        }
+      });
+    }
+    container.querySelector('.mem-vh-search')?.addEventListener('click', () => runVectorSearch());
 
     container.querySelector('.ma-nav-btn.prev')?.addEventListener('click', async () => {
       calendarCursor = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() - 1, 1);
