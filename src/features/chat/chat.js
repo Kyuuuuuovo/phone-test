@@ -5,7 +5,7 @@ import * as db from '../../core/db.js';
 import * as ai from '../../core/ai.js';
 import * as context from '../../core/context.js';
 import * as notify from '../../core/notify.js';
-import { openConfirm, openAlert } from '../../core/modal.js';
+import { openConfirm, openAlert, openModal } from '../../core/modal.js';
 
 const SVG = {
   plus:  `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>`,
@@ -574,6 +574,88 @@ export async function mountChat(container, params, router) {
     touchStartXY = null;
   };
 
+  // M4: regenerate helper extracted so 长按 (open hint modal) 和 短按
+  // (直接重新生成)都能复用。hint 为空就走默认流程,有 hint 就 inject 到
+  // # 本次重新生成的要求 段(context.js #11b)。整套 toDelete / confirm /
+  // requestReply / refresh 跟原 inline 实现一致。
+  async function doRegenerate(msgId, hint) {
+    const target = await db.get('chatMessages', msgId);
+    if (!target) return;
+    const all = await db.query('chatMessages', 'sessionId', sessionId);
+    all.sort((a, b) => a.createdAt - b.createdAt);
+    const targetIdx = all.findIndex(m => m.id === msgId);
+    const toDelete = [];
+    if (target.role === 'character') toDelete.push(target);
+    for (let i = targetIdx + 1; i < all.length; i++) {
+      if (all[i].role === 'character') toDelete.push(all[i]);
+    }
+    const promptText = toDelete.length === 0
+      ? '让 AI 基于当前对话再生成一条新回复,确定吗?'
+      : `重新生成会删除这条之后的 ${toDelete.length} 条 AI 回复,然后让 AI 重新回复。确定吗?`;
+    if (!await openConfirm(container, {
+      title: hint ? '重新生成(带要求)' : '重新生成',
+      message: promptText,
+      confirmLabel: '重新生成',
+      danger: toDelete.length > 0,
+    })) return;
+    for (const m of toDelete) await db.del('chatMessages', m.id);
+    await refresh();
+    aiBtn.disabled = true;
+    sendBtn.disabled = true;
+    aiBtn.classList.add('loading');
+    try {
+      const result = await ai.requestReply(sessionId, hint ? { regenHint: hint } : undefined);
+      await markReadUpToLatestUserMsg();
+      await refresh();
+      await streamingReveal(result?.messageId);
+    } catch (e) {
+      await openAlert(container, { title: '重新生成失败', message: String(e).slice(0, 300), danger: true });
+    } finally {
+      aiBtn.disabled = false;
+      sendBtn.disabled = false;
+      aiBtn.classList.remove('loading');
+    }
+  }
+
+  // 长按 regenerate 检测 — 600ms 触发就开 hint modal、短按走 onBubbleMenuAction
+  // 默认路径。timer 600ms 后 fire,flag set 让 click handler 跳过自己的处理。
+  let regenLongPressTimer = null;
+  let regenLongPressFired = false;
+  const onMenuPointerDown = (e) => {
+    const btn = e.target.closest('[data-action="regenerate"]');
+    if (!btn) return;
+    regenLongPressFired = false;
+    const msgIdLocal = activeBubbleMsgId;
+    regenLongPressTimer = setTimeout(async () => {
+      regenLongPressFired = true;
+      regenLongPressTimer = null;
+      closeBubbleMenu();
+      if (!msgIdLocal) return;
+      const v = await openModal(container, {
+        title: '重新生成 — 这次的要求',
+        fields: [{
+          name: 'hint',
+          label: '想让 AI 这次怎么回(留空就默认重新来一次)',
+          kind: 'textarea',
+          defaultValue: '',
+          required: false,
+        }],
+        submitLabel: '生成',
+      });
+      if (v === null) return;
+      await doRegenerate(msgIdLocal, (v.hint || '').trim());
+    }, 600);
+  };
+  const onMenuPointerUp = () => {
+    if (regenLongPressTimer) {
+      clearTimeout(regenLongPressTimer);
+      regenLongPressTimer = null;
+    }
+  };
+  bubbleMenu.addEventListener('pointerdown', onMenuPointerDown);
+  bubbleMenu.addEventListener('pointerup', onMenuPointerUp);
+  bubbleMenu.addEventListener('pointercancel', onMenuPointerUp);
+
   const onBubbleMenuAction = async (e) => {
     const btn = e.target.closest('[data-action]');
     if (!btn || !activeBubbleMsgId) return;
@@ -584,11 +666,18 @@ export async function mountChat(container, params, router) {
     if (btn.dataset.action === 'quote') {
       setReplyTo(msgId);
     } else if (btn.dataset.action === 'copy') {
-      const text = previewMap.get(msgId) || '';
+      // M2: 复制按 action 粒度,不是整条消息。previewMap 是整 msg 的所有
+      // action 拼起来的预览,user 看 bubble menu 想复制的是 ta 点的那个
+      // 气泡的文字,不是整组。读取实际 action 拿 content / description /
+      // name 等 "main text"。
+      const msg = await db.get('chatMessages', msgId);
+      const a = msg?.actions?.[actionIdx];
+      const text = a
+        ? String(a.content || a.description || a.name || a.message || '')
+        : '';
       try {
         await navigator.clipboard.writeText(text);
       } catch (_) {
-        // fallback: select-copy via a temp textarea
         const ta = document.createElement('textarea');
         ta.value = text;
         document.body.appendChild(ta);
@@ -646,49 +735,11 @@ export async function mountChat(container, params, router) {
       await refresh();
 
     } else if (btn.dataset.action === 'regenerate') {
-      // Regenerate from this point: works on both user and character msgs.
-      // - On a user msg: delete every AI reply that came after, then ask the
-      //   AI to reply again (now seeing history up to this user msg).
-      // - On a character msg: also delete this msg itself, then regenerate
-      //   (so the result replaces it).
-      // We don't touch user messages other than the target — the user wrote
-      // them and probably wants them preserved.
-      const target = await db.get('chatMessages', msgId);
-      if (!target) return;
-      const all = await db.query('chatMessages', 'sessionId', sessionId);
-      all.sort((a, b) => a.createdAt - b.createdAt);
-      const targetIdx = all.findIndex(m => m.id === msgId);
-      const toDelete = [];
-      if (target.role === 'character') toDelete.push(target);
-      for (let i = targetIdx + 1; i < all.length; i++) {
-        if (all[i].role === 'character') toDelete.push(all[i]);
-      }
-      const promptText = toDelete.length === 0
-        ? '让 AI 基于当前对话再生成一条新回复,确定吗?'
-        : `重新生成会删除这条之后的 ${toDelete.length} 条 AI 回复,然后让 AI 重新回复。确定吗?`;
-      if (!await openConfirm(container, {
-        title: '重新生成',
-        message: promptText,
-        confirmLabel: '重新生成',
-        danger: toDelete.length > 0,
-      })) return;
-      for (const m of toDelete) await db.del('chatMessages', m.id);
-      await refresh();
-      aiBtn.disabled = true;
-      sendBtn.disabled = true;
-      aiBtn.classList.add('loading');
-      try {
-        const result = await ai.requestReply(sessionId);
-        await markReadUpToLatestUserMsg();
-        await refresh();
-        await streamingReveal(result?.messageId);
-      } catch (e) {
-        await openAlert(container, { title: '重新生成失败', message: String(e).slice(0, 300), danger: true });
-      } finally {
-        aiBtn.disabled = false;
-        sendBtn.disabled = false;
-        aiBtn.classList.remove('loading');
-      }
+      // M4: 短按 = 直接重新生成;长按 = 长按 handler 已经处理(开 hint modal
+      // 然后调 doRegenerate with hint),这里跳过避免双跑。flag 在 600ms
+      // timer 里 set,onBubbleMenuAction 处理时检 + reset。
+      if (regenLongPressFired) { regenLongPressFired = false; return; }
+      await doRegenerate(msgId, '');
 
     } else if (btn.dataset.action === 'resummarize') {
       // Wipes overlapping memories + unarchives msgs at-or-after this msg's
@@ -722,21 +773,46 @@ export async function mountChat(container, params, router) {
         await openAlert(container, { title: '重新总结失败', message: String(e).slice(0, 300), danger: true });
       }
     } else if (btn.dataset.action === 'delete') {
+      // M2: 删除按 action 粒度。msg.actions 可能有 1-5 条(AI 一轮回复多
+      // 气泡 / 用户连发),user 点 bubble menu 删的是这一个气泡,不是整条。
+      // splice 掉该 action,数组空了再删 row。favorites 引用同步清理:只
+      // 清指向被删 action 的 fav;别的 fav 的 actionIdx > 删点的要 -1
+      // (因为数组前移),小于的不动。
+      const msg = await db.get('chatMessages', msgId);
+      if (!msg) { await refresh(); return; }
+      const actions = Array.isArray(msg.actions) ? [...msg.actions] : [];
+      const isLastBubble = actions.length <= 1;
+      const confirmMsg = isLastBubble
+        ? '删除这一条消息?(整条只剩这一个气泡,会一并删掉整条)'
+        : `删除这一个气泡?(本条消息还有其他气泡,只删这一个)`;
       if (!await openConfirm(container, {
-        title: '删除消息',
-        message: '删除这一条消息?(只删本条,前后消息保留)',
+        title: '删除',
+        message: confirmMsg,
         confirmLabel: '删除',
         danger: true,
       })) return;
-      // Manual delete bypasses the archive flow that maybeCompressMemory uses,
-      // so we have to clean up favorites by hand — otherwise the favorites
-      // page shows "(已删除的消息)" for any starred bubble on this row.
       const favs = await db.query('favorites', 'sessionId', sessionId);
-      for (const f of favs.filter(f => f.msgId === msgId)) {
-        await db.del('favorites', f.id);
+      const favsForMsg = favs.filter(f => f.msgId === msgId);
+      if (isLastBubble) {
+        // 同步清 favorites + 删 row + 取消可能正在引用本 row 的 reply
+        for (const f of favsForMsg) await db.del('favorites', f.id);
+        await db.del('chatMessages', msgId);
+        if (replyingTo === msgId) clearReply();
+      } else {
+        actions.splice(actionIdx, 1);
+        msg.actions = actions;
+        await db.set('chatMessages', msg);
+        // Fix-up favorites:被删的 actionIdx 直接干掉,后面的 -1
+        for (const f of favsForMsg) {
+          const fi = Number(f.actionIdx ?? 0);
+          if (fi === actionIdx) {
+            await db.del('favorites', f.id);
+          } else if (fi > actionIdx) {
+            f.actionIdx = fi - 1;
+            await db.set('favorites', f);
+          }
+        }
       }
-      await db.del('chatMessages', msgId);
-      if (replyingTo === msgId) clearReply();
       await refresh();
     }
   };
@@ -805,6 +881,10 @@ export async function mountChat(container, params, router) {
     moreBtn.removeEventListener('click', onMoreToggle);
     if (inspectorBtn) inspectorBtn.removeEventListener('click', onInspector);
     bubbleMenu.removeEventListener('click', onBubbleMenuAction);
+    bubbleMenu.removeEventListener('pointerdown', onMenuPointerDown);
+    bubbleMenu.removeEventListener('pointerup', onMenuPointerUp);
+    bubbleMenu.removeEventListener('pointercancel', onMenuPointerUp);
+    if (regenLongPressTimer) { clearTimeout(regenLongPressTimer); regenLongPressTimer = null; }
     replyCancel.removeEventListener('click', onReplyCancel);
     input.removeEventListener('keydown', onKey);
     input.removeEventListener('input', autosize);
@@ -871,6 +951,8 @@ function renderMessageRow(msg, ctx) {
   const who = side === 'user' ? ctx.persona : ctx.character;
   const avatar = ctx.showAvatars ? renderRowAvatar(who, side) : '';
   const showRead = ctx.showReceipts && side === 'user' && msg.createdAt <= ctx.readUpTo;
+  // 已读 标 — 用户气泡的左侧(挂在 msg-row 上,跟 msg-actions 同级 flex 兄弟,
+  // user row 是 row-reverse 所以 DOM 末尾的 readMark 视觉上在 actions 左边)。
   const readMark = showRead ? `<div class="read-mark">已读</div>` : '';
   // Archived messages (compressed into a memory summary) are dimmed so the
   // user can see "this part has been summarized; the AI now reads the
@@ -879,7 +961,7 @@ function renderMessageRow(msg, ctx) {
   const clsList = ['msg-row', side];
   if (!ctx.showAvatars) clsList.push('no-avatar');
   if (msg.archived) clsList.push('archived');
-  return `<div class="${clsList.join(' ')}">${avatar}<div class="msg-actions">${bubbles}${readMark}</div></div>`;
+  return `<div class="${clsList.join(' ')}">${avatar}<div class="msg-actions">${bubbles}</div>${readMark}</div>`;
 }
 
 function renderRowAvatar(who, side) {

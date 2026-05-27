@@ -83,19 +83,26 @@ function renderAvatar(c) {
 // uppercase letter directly; for CJK we find the position L such that
 // L <= char < (L+1) in pinyin collation. Falls back to '#' for symbols /
 // digits / chars the collator can't place.
-const LETTERS_AZ = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+// Why Chinese sentinels and not Latin A-Z —— Intl.Collator('zh-Hans-CN') 把所有
+// CJK 字符排在 Latin Z 之后,所以 `compare(ch, 'A') >= 0 && compare(ch, 'B') < 0`
+// 对任何中文都 false → 全部 fallback 到 '#',user 看起来"拼音排序不工作"
+// (实际 sort 是对的,只是 group 全挤进一桶)。改成用每个拼音字母 group
+// 的最早中文字符做哨兵(阿/巴/擦/答/...),compare 在 CJK 域内就正常了。
+// 跳过 I/U/V — 标准汉语拼音里没有以这三个字母起头的辅音。
+const PINYIN_SENTINELS = '阿巴擦答厄发噶哈击喀啦妈拿哦怕七然撒他挖西压杂';
+const PINYIN_LETTERS   = 'ABCDEFGHJKLMNOPQRSTWXYZ';
 function firstLetter(name, collator) {
   const ch = String(name).trim().slice(0, 1);
   if (!ch) return '#';
   if (/[a-zA-Z]/.test(ch)) return ch.toUpperCase();
   // For digits/symbols
   if (!/[一-鿿㐀-䶿]/.test(ch)) return '#';
-  // CJK: probe each letter slot
-  for (let i = 0; i < 26; i++) {
-    const lo = LETTERS_AZ[i];
-    const hi = i === 25 ? '＀' : LETTERS_AZ[i + 1];  // sentinel beyond Z
+  // CJK: probe against pinyin-letter sentinels
+  for (let i = 0; i < PINYIN_SENTINELS.length; i++) {
+    const lo = PINYIN_SENTINELS[i];
+    const hi = i === PINYIN_SENTINELS.length - 1 ? '￿' : PINYIN_SENTINELS[i + 1];
     if (collator.compare(ch, lo) >= 0 && collator.compare(ch, hi) < 0) {
-      return lo;
+      return PINYIN_LETTERS[i];
     }
   }
   return '#';

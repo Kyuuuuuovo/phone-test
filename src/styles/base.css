@@ -38,7 +38,11 @@
    不应该让 body 也跟着滚)。
    兜底 phone-frame 用 flex:1 撑满 #app main-axis。 */
 html, body { margin: 0; padding: 0; height: 100vh; min-height: 100vh; }
-body { overflow: hidden; }
+/* overflow: hidden 两向都封 + overscroll-behavior: none 防 iOS Safari rubber
+   band 拖出空白。body 不需要任何 scroll;内部要 scroll 的容器
+   (.home-pages / .page-body)自己有 overflow 设置。 */
+html { overflow: hidden; overscroll-behavior: none; }
+body { overflow: hidden; overscroll-behavior: none; }
 @supports (height: 100dvh) {
   html, body { height: 100dvh; min-height: 100dvh; }
 }
@@ -2355,11 +2359,17 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
   margin: 4px 0;
 }
 
-/* Read receipt mark */
+/* Read receipt mark — 挂在 .msg-row 的 flex 兄弟位置(.msg-actions 旁边)。
+   .msg-row.user 是 row-reverse,所以 DOM 末尾的 .read-mark 视觉上落在 actions
+   左侧(气泡的左边),align-self: flex-end 让标贴齐气泡底边。
+   之前是塞 .msg-actions 里 column flex 末尾 → 在气泡下方,user 想挪到左侧。 */
 .read-mark {
   color: var(--muted);
   font-size: 11px;
-  padding: 2px 4px 0;
+  padding: 0 6px;
+  align-self: flex-end;
+  white-space: nowrap;
+  margin-bottom: 4px;
 }
 
 .bubble {
@@ -3630,6 +3640,28 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
 }
 
 /* ── Prompt inspector page (devMode) ─────────────────────────────────── */
+.prompt-inspector-page .pi-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.prompt-inspector-page .pi-tab {
+  flex: 1;
+  padding: 12px 4px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.prompt-inspector-page .pi-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.prompt-inspector-page .pi-panel { padding: 0; }
 .prompt-inspector-page .pi-section { margin-bottom: 20px; }
 .prompt-inspector-page .pi-section-title {
   display: flex;
@@ -3642,18 +3674,6 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
-.prompt-inspector-page .pi-dump-toggle {
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 3px 8px;
-  font-size: 11px;
-  color: var(--muted);
-  cursor: pointer;
-  text-transform: none;
-  letter-spacing: 0;
-}
-.prompt-inspector-page .pi-dump-toggle:hover { background: var(--bubble-char); color: var(--fg); }
 .prompt-inspector-page .pi-dump-pre {
   white-space: pre-wrap;
   word-break: break-word;

@@ -24,27 +24,30 @@ export async function mountPromptInspector(container, params, router) {
     return () => {};
   }
 
+  // Tabbed layout — 整页之前是「API + 分段 + dump 折叠」一长串往下滚,在
+  // 手机上找特定段很烦。改成 3 个 tab 顶上切换:API / 分段 / 完整。每个 tab
+  // 独立 panel,active 才显示。dump 不再用「显示/隐藏」按钮,直接进自己的
+  // tab。tab 切换不卸载 panel,数据已经预先 render 好(state 保留)。
   container.innerHTML = `
     <div class="page prompt-inspector-page">
       <header class="page-header">
         <button class="back">‹ 返回</button>
         <div class="title">提示词调试</div>
       </header>
+      <nav class="pi-tabs">
+        <button class="pi-tab active" data-tab="api">API</button>
+        <button class="pi-tab" data-tab="parts">分段</button>
+        <button class="pi-tab" data-tab="dump">完整</button>
+      </nav>
       <div class="page-body">
-        <section class="pi-section">
-          <h3 class="pi-section-title">当前 API</h3>
+        <section class="pi-panel" data-panel="api">
           <div class="pi-api-list"></div>
         </section>
-
-        <section class="pi-section">
-          <h3 class="pi-section-title">
-            注入顺序
-            <button class="pi-dump-toggle" type="button">显示完整 dump</button>
-          </h3>
-          <div class="pi-dump" hidden>
-            <pre class="pi-dump-pre"></pre>
-          </div>
+        <section class="pi-panel" data-panel="parts" hidden>
           <div class="pi-parts"></div>
+        </section>
+        <section class="pi-panel" data-panel="dump" hidden>
+          <pre class="pi-dump-pre"></pre>
         </section>
       </div>
     </div>
@@ -52,9 +55,8 @@ export async function mountPromptInspector(container, params, router) {
 
   const apiList = container.querySelector('.pi-api-list');
   const partsBox = container.querySelector('.pi-parts');
-  const dumpBox = container.querySelector('.pi-dump');
   const dumpPre = container.querySelector('.pi-dump-pre');
-  const dumpToggle = container.querySelector('.pi-dump-toggle');
+  const tabsNav = container.querySelector('.pi-tabs');
 
   // Bind 返回 before any awaits so it works during the initial load (which
   // can be slow when vector recall fires an embedding API call as part of
@@ -175,16 +177,20 @@ export async function mountPromptInspector(container, params, router) {
     }
   });
 
-  // Dump toggle
-  dumpToggle.addEventListener('click', () => {
-    const showing = !dumpBox.hidden;
-    dumpBox.hidden = showing;
-    dumpToggle.textContent = showing ? '显示完整 dump' : '隐藏 dump';
-    partsBox.hidden = !showing ? true : false;
-  });
+  // Tab switching — single source of truth = data-tab attribute. Panels
+  // hidden by attribute; we never reload data on tab switch (already loaded).
+  const onTabClick = (e) => {
+    const tab = e.target.closest('[data-tab]');
+    if (!tab) return;
+    const want = tab.dataset.tab;
+    tabsNav.querySelectorAll('.pi-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === want));
+    container.querySelectorAll('.pi-panel').forEach(p => { p.hidden = p.dataset.panel !== want; });
+  };
+  tabsNav.addEventListener('click', onTabClick);
 
   return () => {
     container.querySelector('.back')?.removeEventListener('click', onBack);
+    tabsNav?.removeEventListener('click', onTabClick);
   };
 }
 

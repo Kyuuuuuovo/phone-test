@@ -97,7 +97,7 @@ export const ACTION_SCHEMAS_TEXT = `# 动作定义表
 //                editable via editRoute, not via the inspector itself
 //   'override' — author-locked source constants with optional settings override
 //                (humanizer, behavior, OUTPUT_COUNT_SPEC, ACTION_SCHEMAS_TEXT)
-export async function buildSystemPromptParts(sessionId, { featureContext } = {}) {
+export async function buildSystemPromptParts(sessionId, { featureContext, regenHint } = {}) {
   const session = await db.get('chatSessions', sessionId);
   if (!session) throw new Error(`buildSystemPromptParts: session ${sessionId} not found`);
 
@@ -308,6 +308,16 @@ export async function buildSystemPromptParts(sessionId, { featureContext } = {})
     key: 'feature',
     title: '# 用户本轮使用的功能定义',
     body: fc,
+    kind: 'computed',
+  });
+  // 11b. 本次重新生成的要求(per-call regenHint — 长按 regenerate 弹的 modal)
+  //      只此一次,不进 chat history、不存 memory。用户的"这次给我换个角度"
+  //      "这次短一点"之类的临时指示。空字符串就不注入。
+  const rh = (regenHint ?? '').trim();
+  parts.push({
+    key: 'regen-hint',
+    title: '# 本次重新生成的要求(只此一次,后续不影响)',
+    body: rh,
     kind: 'computed',
   });
   // 12. 输出数量约束 — title is null because countSpec already contains its
@@ -546,7 +556,32 @@ export async function buildMessageHistory(sessionId, maxRecent = 40) {
   const active = all.filter(m => !m.archived);
   active.sort((a, b) => a.createdAt - b.createdAt);
   const recent = active.slice(-maxRecent);
-  return collapseAdjacentSameRole(recent.map(toApiMessage));
+  // B#8: reply 动作渲染时要把引用原文塞进去 — 之前只写 content,模型完全不知
+  // 道用户引用的是哪条。pre-build msgId→原文 lookup,reply case 拼成
+  // 「[引用「原文」]\n回复内容」。注意:不截断,user 明确说不要前 N 字
+  // (如果引用太长以后再加 truncate)。
+  const ctx = makeRenderContext(all);
+  return collapseAdjacentSameRole(recent.map(m => toApiMessage(m, ctx)));
+}
+
+// Build a render-context with resolveQuote so renderActionsAsText can inline
+// the original message text for `reply` actions. `all` should include archived
+// rows too — a reply to an old message that's already been compressed into
+// memory still needs its quote resolved when rendered before compression.
+function makeRenderContext(allMessages) {
+  const byId = new Map(allMessages.map(m => [m.id, m]));
+  return {
+    resolveQuote(msgId) {
+      const m = byId.get(msgId);
+      if (!m) return '';
+      // pick the first action's "main text" — content for text/reply/voice,
+      // description for image, name for location, etc. Returns full text
+      // intentionally — caller can truncate.
+      const a = m.actions?.[0];
+      if (!a) return '';
+      return String(a.content || a.description || a.name || `[${a.type}]`);
+    },
+  };
 }
 
 // Merge consecutive messages with the same role into one, joined by a
@@ -591,7 +626,7 @@ function humanGap(ms) {
   return `${Math.round(hours / 24)} 天`;
 }
 
-function toApiMessage(msg) {
+function toApiMessage(msg, ctx) {
   // _ts is internal — collapseAdjacentSameRole uses it for gap-detection,
   // then strips before sending to the API.
   if (msg.role === 'character') {
@@ -600,16 +635,23 @@ function toApiMessage(msg) {
   }
   return {
     role: msg.role === 'system' ? 'system' : 'user',
-    content: renderActionsAsText(msg.actions ?? []),
+    content: renderActionsAsText(msg.actions ?? [], ctx),
     _ts: msg.createdAt,
   };
 }
 
-function renderActionsAsText(actions) {
+function renderActionsAsText(actions, ctx) {
   return actions.map(a => {
     switch (a.type) {
       case 'text':   return a.content || '';
-      case 'reply':  return a.content || '';  // model sees the quoted msg earlier in history
+      case 'reply': {
+        // B#8: 拿被引用的原话拼进 prompt,模型才能看到上下文。如果 ctx 没传
+        // (compatibility / direct caller),退回到只输出 reply 内容。
+        const quote = ctx?.resolveQuote ? ctx.resolveQuote(a.quoteMsgId) : '';
+        return quote
+          ? `[引用「${quote}」]\n${a.content || ''}`
+          : (a.content || '');
+      }
       case 'image':  return `[图片: ${a.description || a.src || ''}]`;
       case 'voice':  return `[语音: ${a.content || ''}]`;
       case 'recall': return `[撤回了一条消息]`;
@@ -676,9 +718,12 @@ export async function maybeCompressMemory(sessionId) {
   const overflow = all.slice(0, all.length - threshold);
   if (overflow.length < batchSize) return null;
 
+  // Pass quote-resolver into renderActionsAsText so reply 引用原文 inlined
+  // in the dump too (B#8).
+  const ctx = makeRenderContext(all);
   const dump = overflow.map(m => {
     const speaker = m.role === 'user' ? '用户' : (m.role === 'character' ? '角色' : 'system');
-    return `${speaker}: ${renderActionsAsText(m.actions ?? [])}`;
+    return `${speaker}: ${renderActionsAsText(m.actions ?? [], ctx)}`;
   }).join('\n');
 
   const session = await db.get('chatSessions', sessionId);
