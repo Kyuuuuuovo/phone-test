@@ -2,6 +2,7 @@
 // Each entry is its own card with title/content/order/enabled fields that autosave on change.
 
 import * as db from '../../core/db.js';
+import * as embedding from '../../core/embedding.js';
 import { openConfirm } from '../../core/modal.js';
 
 export async function mountWorldbookDetail(container, params, router) {
@@ -71,9 +72,20 @@ export async function mountWorldbookDetail(container, params, router) {
       entriesList.innerHTML = `<p class="hint">还没有条目,点上方「+ 新建条目」开始。</p>`;
       return;
     }
+    // 拿这些 entry 的 embedding 状态(向量模式时给 user 看是否已 embed)
+    const allEmbs = await db.getAll('embeddings');
+    const embedByEntryId = new Map();
+    for (const emb of allEmbs) {
+      if (emb.sourceType === 'worldbook-entry') embedByEntryId.set(emb.sourceId, emb);
+    }
     entriesList.innerHTML = entries.map(e => {
       const pos = (e.position === 'before' || e.position === 'after') ? e.position : 'inline';
       const keywordsCsv = Array.isArray(e.keywords) ? e.keywords.join(', ') : '';
+      const mode = e.activationMode === 'keywords' || e.activationMode === 'vector' ? e.activationMode : 'always';
+      const hasEmbedding = embedByEntryId.has(e.id);
+      const embedHint = mode === 'vector'
+        ? (hasEmbedding ? '<span class="embed-status ok">已向量化 ✓</span>' : '<span class="embed-status pending">保存后自动向量化</span>')
+        : '';
       return `
       <div class="entry-card" data-entry-id="${esc(e.id)}">
         <div class="entry-card-row">
@@ -90,7 +102,15 @@ export async function mountWorldbookDetail(container, params, router) {
           <button type="button" class="btn danger entry-delete">删除</button>
         </div>
         <textarea class="entry-content" rows="4" placeholder="条目内容,会被原样注入到 system prompt 的「世界观/背景设定」段">${esc(e.content)}</textarea>
-        <input class="entry-keywords" placeholder="关键词触发(逗号分隔,留空 = 永远注入;填了 = 只在最近 10 条消息出现其中一个才注入)" value="${esc(keywordsCsv)}">
+        <div class="entry-activation-row">
+          <select class="entry-activation-mode">
+            <option value="always"${mode === 'always' ? ' selected' : ''}>永远注入</option>
+            <option value="keywords"${mode === 'keywords' ? ' selected' : ''}>关键词触发</option>
+            <option value="vector"${mode === 'vector' ? ' selected' : ''}>向量相似度触发</option>
+          </select>
+          ${embedHint}
+        </div>
+        <input class="entry-keywords" placeholder="关键词(逗号分隔,最近 10 条消息出现其中一个才注入)" value="${esc(keywordsCsv)}"${mode === 'keywords' ? '' : ' hidden'}>
       </div>
     `;
     }).join('');
@@ -112,18 +132,39 @@ export async function mountWorldbookDetail(container, params, router) {
     const entryId = card.dataset.entryId;
     const e = await db.get('worldbookEntries', entryId);
     if (!e) return;
+    const oldContent = e.content || '';
+    const oldMode = e.activationMode === 'keywords' || e.activationMode === 'vector' ? e.activationMode : 'always';
     e.title    = card.querySelector('.entry-title').value.trim();
     e.content  = card.querySelector('.entry-content').value;
     e.enabled  = card.querySelector('.entry-enabled input').checked;
     e.position = card.querySelector('.entry-position').value || 'inline';
-    // 关键词触发:UI 是逗号分隔字符串,DB 存 string[]。空 → undefined(向后
-    // 兼容,等同永远注入)。每个 keyword trim + 过滤空字符串,避免「,, A」
-    // 这种输入产生 ["", "", "A"] 然后空 keyword 匹配所有消息。
+    // 激活模式三选一独占。always = 永远注入(默认,删字段保持向后兼容);
+    // keywords = 字面匹配;vector = 语义检索。
+    const modeRaw = card.querySelector('.entry-activation-mode')?.value || 'always';
+    const mode = ['always', 'keywords', 'vector'].includes(modeRaw) ? modeRaw : 'always';
+    if (mode === 'always') delete e.activationMode;
+    else e.activationMode = mode;
+    // 关键词只在 keywords 模式时存
     const kwRaw = card.querySelector('.entry-keywords')?.value || '';
     const kwList = kwRaw.split(/[,,]/).map(s => s.trim()).filter(Boolean);
-    if (kwList.length > 0) e.keywords = kwList;
+    if (mode === 'keywords' && kwList.length > 0) e.keywords = kwList;
     else delete e.keywords;
     await db.set('worldbookEntries', e);
+    // 向量化处理:
+    //   - 从其他模式 → vector:embed
+    //   - vector + content 变了:旧 embedding 过时,del 后重 embed
+    //   - vector → 其他模式:del embedding
+    //   - 其他 → 其他:不动
+    const wasVector = oldMode === 'vector';
+    const isVector  = mode === 'vector';
+    const contentChanged = oldContent !== e.content;
+    if (wasVector && !isVector) {
+      await embedding.deleteWorldbookEmbedding(entryId);
+    } else if (isVector && (!wasVector || contentChanged)) {
+      // 切到 vector 或 content 改了 → del 旧的(如有)+ 重 embed
+      if (contentChanged) await embedding.deleteWorldbookEmbedding(entryId);
+      embedding.embedWorldbookEntry(e).catch(err => console.warn('[worldbook] embed failed:', err));
+    }
   }
 
   const onBack = () => router.back();
@@ -144,7 +185,10 @@ export async function mountWorldbookDetail(container, params, router) {
       confirmLabel: '删除',
       danger: true,
     })) return;
-    for (const e of entries)  await db.del('worldbookEntries', e.id);
+    for (const e of entries) {
+      await embedding.deleteWorldbookEmbedding(e.id);
+      await db.del('worldbookEntries', e.id);
+    }
     for (const b of bindings) await db.del('characterWorldbooks', b.id);
     await db.del('worldbooks', id);
     router.back();
@@ -167,10 +211,14 @@ export async function mountWorldbookDetail(container, params, router) {
   const onEntriesChange = async (e) => {
     const card = e.target.closest('.entry-card');
     if (!card) return;
-    if (e.target.matches('.entry-title, .entry-content, .entry-position, .entry-keywords') ||
+    if (e.target.matches('.entry-title, .entry-content, .entry-position, .entry-keywords, .entry-activation-mode') ||
         e.target.matches('.entry-enabled input')) {
       try {
         await saveEntryFromCard(card);
+        // mode 改了 → re-render 让 keyword input show/hide + embed status 更新
+        if (e.target.matches('.entry-activation-mode')) {
+          await renderEntries();
+        }
       } catch (err) {
         setStatus(`条目保存失败:${String(err).slice(0, 200)}`, 'error');
       }
@@ -188,6 +236,8 @@ export async function mountWorldbookDetail(container, params, router) {
         danger: true,
       })) return;
       await db.del('worldbookEntries', entryId);
+      // 顺手清掉这条 entry 的 embedding(如果有)— 避免 orphan
+      await embedding.deleteWorldbookEmbedding(entryId);
       await renderEntries();
     }
   };

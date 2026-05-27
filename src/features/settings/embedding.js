@@ -61,6 +61,10 @@ export async function mountEmbeddingSettings(container, params, router) {
             <div class="label-text">每轮注入条数(top-K,1-20)</div>
             <input name="topK" type="number" min="1" max="20" step="1" value="${esc(cfg.topK ?? 5)}">
           </label>
+          <label>
+            <div class="label-text">世界书 entries 向量触发的相似度阈值(0.0-1.0,低于此分数不注入)</div>
+            <input name="worldbookThreshold" type="number" min="0" max="1" step="0.05" value="${esc(cfg.worldbookThreshold ?? 0.35)}">
+          </label>
           <div class="form-actions">
             <button type="button" class="btn secondary test-btn">测试连接</button>
             <button type="submit" class="btn">保存</button>
@@ -108,12 +112,14 @@ export async function mountEmbeddingSettings(container, params, router) {
     e.preventDefault();
     const fd = new FormData(form);
     const fresh = (await db.get('settings', 'default')) || { id: 'default' };
+    const thRaw = Number(fd.get('worldbookThreshold'));
     fresh.embedding = {
       ...(fresh.embedding || {}),
       urlTemplate: String(fd.get('urlTemplate') || '').trim(),
       apiKey:      String(fd.get('apiKey')      || '').trim(),
       modelName:   String(fd.get('modelName')   || '').trim(),
       topK:        Math.max(1, Math.min(20, Number(fd.get('topK')) || 5)),
+      worldbookThreshold: Number.isFinite(thRaw) ? Math.max(0, Math.min(1, thRaw)) : 0.35,
     };
     await db.set('settings', fresh);
     status.textContent = '已保存';

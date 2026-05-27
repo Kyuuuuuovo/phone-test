@@ -258,6 +258,18 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     kind: 'data',
     editRoute: 'settings-embedding',
   });
+  // 6c. 相关世界设定 — vector mode 的 worldbook entries,按语义跟最近对话
+  //     检索。跟 6b 同套机制不同 source:6b 是 memories,6c 是 worldbook
+  //     entries(activationMode='vector')。分开注入让模型清楚区分"对话记忆"
+  //     和"世界设定"。
+  const wbVectorRecall = await buildWorldbookVectorLines(character.id, sessionId);
+  parts.push({
+    key: 'wb-vector-recall',
+    title: '# 相关世界设定(按语义检索)',
+    body: wbVectorRecall,
+    kind: 'data',
+    editRoute: 'worldbook-list',
+  });
   // 7. 远期 + 近期记忆
   // 1a: 时间感知 on (默认) 时,每条 memory 前缀【M月D日–M月D日】给模型时
   // 间锚点。session.timeAwareness === 'off' 时退回 m.summary 裸文本。
@@ -425,6 +437,7 @@ const PART_GROUPS = {
   'user-status':   'state',
   'wb-after':      'worldview',
   'vector-recall': 'memory',
+  'wb-vector-recall': 'worldview',
   'mem-l2':        'memory',
   'mem-l1':        'memory',
   'current-time':  'state',
@@ -486,6 +499,42 @@ export async function buildSystemPrompt(sessionId, opts) {
     .filter(p => (p.body ?? '').trim() !== '')
     .map(p => p.title ? `${p.title}\n\n${p.body}` : p.body)
     .join('\n\n---\n\n');
+}
+
+// Vector retrieval for worldbook entries — 跟 buildVectorRecallLines 同套
+// query 拼装(最近 5 条对话),但检索范围是这 character 挂载的 worldbook
+// 里 activationMode='vector' 的 entries。命中后注入「# 相关世界设定」段。
+async function buildWorldbookVectorLines(characterId, sessionId) {
+  const settings = (await db.get('settings', 'default')) || {};
+  if (settings.embedding?.enabled !== true) return '';
+  const QUERY_TURN_COUNT = 5;
+  const allMsgs = (await db.query('chatMessages', 'sessionId', sessionId))
+    .filter(m => !m.archived && m.role !== 'system');
+  if (allMsgs.length === 0) return '';
+  allMsgs.sort((a, b) => a.createdAt - b.createdAt);
+  const recent = allMsgs.slice(-QUERY_TURN_COUNT);
+  const query = recent
+    .map(m => {
+      const who = m.role === 'user' ? '用户' : '角色';
+      const text = (m.actions || []).map(a => a.content || a.description || '').filter(Boolean).join(' ');
+      return text ? `${who}:${text}` : '';
+    })
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+  if (!query) return '';
+  let hits = [];
+  try {
+    hits = await embedding.topKWorldbookEntriesForQuery(characterId, query);
+  } catch (e) {
+    console.warn('[context] worldbook vector recall failed (non-fatal):', e);
+    return '';
+  }
+  if (hits.length === 0) return '';
+  return hits.map(({ entry, score }) => {
+    const pct = Math.round(Math.max(0, score) * 100);
+    return `(相关度 ${pct}%)${entry.content}`;
+  }).join('\n\n');
 }
 
 // Vector retrieval — embed the last few turns as a query, cosine top-K

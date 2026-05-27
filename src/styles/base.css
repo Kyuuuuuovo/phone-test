@@ -4531,6 +4531,33 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
 .entry-card-row .entry-delete { padding: 6px 10px; font-size: 12px; flex: 0 0 auto; }
 .entry-card .entry-content { min-height: 60px; font-size: 13px; }
 
+/* 激活模式 row — select + 状态 badge(向量化的话显示已 embed / 待 embed) */
+.entry-card .entry-activation-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.entry-card .entry-activation-mode {
+  flex: 0 0 auto;
+  font-size: 13px;
+  padding: 4px 8px;
+}
+.entry-card .embed-status {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.entry-card .embed-status.ok {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+.entry-card .embed-status.pending {
+  background: color-mix(in srgb, var(--muted) 14%, transparent);
+  color: var(--muted);
+}
+.entry-card .entry-keywords[hidden] { display: none; }
+
 /* Character picker rows inside the "new chat" modal */
 .character-pick-list {
   display: flex;

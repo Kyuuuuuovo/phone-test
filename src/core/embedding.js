@@ -169,6 +169,93 @@ export async function topKMemoriesForQuery(sessionId, queryText, k) {
   return out;
 }
 
+// Embed a worldbook entry. 类似 embedMemory 但 sourceType='worldbook-entry',
+// sessionId=null(世界书不绑 session,绑 character via characterWorldbooks)。
+// Idempotent — 已存就 skip。
+export async function embedWorldbookEntry(entry) {
+  if (!entry?.id || !(entry?.content || '').trim()) return null;
+  const existing = await db.query('embeddings', 'sourceId', entry.id);
+  if (existing.length > 0) return existing[0].id;
+  let vec;
+  try {
+    vec = await embedText(entry.content);
+  } catch (e) {
+    console.warn('[embedding] embedWorldbookEntry failed (non-fatal):', e);
+    return null;
+  }
+  if (!vec) return null;
+  const settings = (await db.get('settings', 'default')) || {};
+  const id = db.newId();
+  await db.set('embeddings', {
+    id,
+    sourceType: 'worldbook-entry',
+    sourceId:   entry.id,
+    sessionId:  null,
+    vector:     vec,
+    dim:        vec.length,
+    modelName:  settings.embedding?.modelName || '',
+    createdAt:  Date.now(),
+  });
+  return id;
+}
+
+// Delete embedding for a worldbook entry — called when user changes the
+// entry's activationMode away from 'vector' or edits its content (the old
+// vector is now stale).
+export async function deleteWorldbookEmbedding(entryId) {
+  const existing = await db.query('embeddings', 'sourceId', entryId);
+  for (const e of existing) await db.del('embeddings', e.id);
+}
+
+// Top-K vector-mode worldbook entries for this character + query string.
+// Loads all entries from character's bound worldbooks, filters to
+// activationMode='vector' + enabled, cosine top-K with threshold.
+// threshold comes from settings.embedding.worldbookThreshold (default 0.35).
+export async function topKWorldbookEntriesForQuery(characterId, queryText, k) {
+  const settings = (await db.get('settings', 'default')) || {};
+  const cfg = settings.embedding || {};
+  if (cfg.enabled !== true) return [];
+  const topK = Number.isFinite(k) ? k : (Number.isFinite(cfg.topK) ? cfg.topK : 5);
+  const threshold = Number.isFinite(cfg.worldbookThreshold) ? cfg.worldbookThreshold : MIN_SIMILARITY;
+  let qvec;
+  try {
+    qvec = await embedText(queryText);
+  } catch (e) {
+    console.warn('[embedding] worldbook query embed failed (non-fatal):', e);
+    return [];
+  }
+  if (!qvec) return [];
+
+  // 收集该 character 挂载的所有 worldbook 的 vector-mode entries
+  const bindings = await db.query('characterWorldbooks', 'characterId', characterId);
+  const wbIds = [...new Set(bindings.map(b => b.worldbookId))];
+  const allEntries = [];
+  for (const wbId of wbIds) {
+    const entries = await db.query('worldbookEntries', 'worldbookId', wbId);
+    for (const e of entries) {
+      if (e.enabled !== false && e.activationMode === 'vector') allEntries.push(e);
+    }
+  }
+  if (allEntries.length === 0) return [];
+
+  // 拿这些 entries 的 embeddings(getAll + filter — 数量不大,几十到几百)
+  const allEmbs = await db.getAll('embeddings');
+  const entryMap = new Map(allEntries.map(e => [e.id, e]));
+  const wbEmbs = allEmbs.filter(e => e.sourceType === 'worldbook-entry' && entryMap.has(e.sourceId));
+  if (wbEmbs.length === 0) return [];
+
+  const scored = [];
+  for (const e of wbEmbs) {
+    if (!e.vector || e.dim !== qvec.length) continue;
+    const score = cosineSimilarity(qvec, e.vector);
+    const entry = entryMap.get(e.sourceId);
+    if (!entry) continue;
+    scored.push({ entry, score });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.filter(s => s.score >= threshold).slice(0, topK);
+}
+
 // Delay between embedding requests during backfill — keeps the run from
 // hammering rate limits when a fresh-enabled user has hundreds of old
 // memories to catch up on. 150ms = ~6 req/s, well under most provider caps.
