@@ -1165,6 +1165,104 @@ body[data-fx-glass="metal"] .widget.widget-polaroid::after {
   font-size: 12px;
 }
 
+/* 最近聊天大 widget(默认 4×3)— 标题 + 最多 3 行会话,每行头像 + 名 +
+   预览 + 时间。点行进对应 chat。空态居中提示。 */
+.widget.widget-recent-chat {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+.widget.widget-recent-chat .rc-head {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  flex: 0 0 auto;
+}
+.widget.widget-recent-chat .rc-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+.widget.widget-recent-chat .rc-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s;
+  min-width: 0;
+}
+.widget.widget-recent-chat .rc-row:hover {
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+.widget.widget-recent-chat .rc-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--surface);
+}
+.widget.widget-recent-chat .rc-avatar-letter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+.widget.widget-recent-chat .rc-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.widget.widget-recent-chat .rc-row-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.widget.widget-recent-chat .rc-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.widget.widget-recent-chat .rc-time {
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.widget.widget-recent-chat .rc-preview {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+.widget.widget-recent-chat.empty .rc-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 /* A2: 游戏机 widget — 纯装饰。SVG 居中填充 widget 卡片;比例 5:7 接近原版
    Game Boy。padding 0 让卡片整张被屏占满,卡片本身的 bg(--widget-bg)在
    SVG 后面透出来一圈边,看着像放在桌面上的实体。 */

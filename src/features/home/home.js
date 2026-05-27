@@ -114,6 +114,7 @@ function widgetSpan(w) {
   if (w.type === 'gameboy')     return { colSpan: 2, rowSpan: 2 };
   if (w.type === 'mp3')         return { colSpan: 2, rowSpan: 2 };
   if (w.type === 'schedule')    return { colSpan: 4, rowSpan: 2 };
+  if (w.type === 'recent-chat') return { colSpan: 4, rowSpan: 3 };
   if (w.type === 'anniversary') return { colSpan: 2, rowSpan: 1 };
   if (w.type === 'favorites') {
     return w.size === 'small' ? { colSpan: 2, rowSpan: 1 } : { colSpan: 4, rowSpan: 1 };
@@ -234,7 +235,95 @@ async function renderWidget(w, gs) {
   if (w.type === 'gameboy')     return renderGameboyWidget(w, gs);
   if (w.type === 'mp3')         return renderMp3Widget(w, gs);
   if (w.type === 'schedule')    return await renderScheduleWidget(w, gs);
+  if (w.type === 'recent-chat') return await renderRecentChatWidget(w, gs);
   return '';
+}
+
+// 最近聊天大 widget(默认 4×3)— 显示最近 3 个会话:头像 + 角色名 + 最后
+// 一条消息预览 + 相对时间。点单行 → 进对应 chat;点空白区域 → 进微信主页。
+// 数据源:chatSessions 按 lastMessageAt 排序,排除 bear / 拉黑角色 / 不存在
+// 角色的 orphan session。
+async function renderRecentChatWidget(w, gs) {
+  const sessions = (await db.getAll('chatSessions'))
+    .filter(s => s.characterId && s.characterId !== '__bear__')
+    .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0));
+  const rows = [];
+  for (const s of sessions) {
+    if (rows.length >= 3) break;
+    const c = await db.get('characters', s.characterId);
+    if (!c || c.blocked) continue;
+    const msgs = await db.query('chatMessages', 'sessionId', s.id);
+    const active = msgs.filter(m => !m.archived).sort((a, b) => a.createdAt - b.createdAt);
+    const last = active[active.length - 1] || null;
+    rows.push({ session: s, character: c, lastMsg: last });
+  }
+
+  const editBtn = `<button class="widget-edit" title="编辑" aria-label="编辑"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0 0 13.92 2h-3.84a.49.49 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.73 8.47a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 0 0 7.2z"/></svg></button>`;
+  const delBtn = `<button class="widget-del" title="删除" aria-label="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button>`;
+
+  if (rows.length === 0) {
+    return `
+      <div class="widget widget-recent-chat user-widget empty" style="${gs}" data-widget-id="${escHtml(w.id)}" data-target="messaging">
+        <div class="rc-head">最近聊天</div>
+        <div class="rc-empty">还没在聊 — 先去角色管理加一个</div>
+        ${editBtn}${delBtn}
+      </div>
+    `;
+  }
+
+  const today = new Date();
+  const fmtTime = (ts) => {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const sameDay = d.toDateString() === today.toDateString();
+    if (sameDay) return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) return '昨天';
+    const sameYear = d.getFullYear() === today.getFullYear();
+    return sameYear ? `${d.getMonth()+1}/${d.getDate()}` : `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+  };
+  const previewLast = (m) => {
+    if (!m) return '(暂无消息)';
+    const a = (m.actions ?? [])[0];
+    if (!a) return '';
+    switch (a.type) {
+      case 'text':   return a.content || '';
+      case 'reply':  return a.content || '';
+      case 'image':  return '[图片]';
+      case 'voice':  return '[语音]';
+      case 'recall': return '[已撤回]';
+      case 'red_packet': return `[红包] ¥${Number(a.amount || 0).toFixed(2)}`;
+      case 'transfer':   return `[转账] ¥${Number(a.amount || 0).toFixed(2)}`;
+      case 'location':   return `[位置] ${a.name || ''}`;
+      default: return `[${a.type}]`;
+    }
+  };
+  const avatarHtml = (c) => {
+    if (c?.avatar) return `<img class="rc-avatar" src="${escAttr(c.avatar)}" alt="">`;
+    const initial = (c?.name ?? '?').slice(0, 1);
+    return `<div class="rc-avatar rc-avatar-letter">${escHtml(initial)}</div>`;
+  };
+
+  const rowsHtml = rows.map(r => `
+    <div class="rc-row" data-session-id="${escHtml(r.session.id)}">
+      ${avatarHtml(r.character)}
+      <div class="rc-text">
+        <div class="rc-row-top">
+          <span class="rc-name">${escHtml(r.character.name || '(未命名)')}</span>
+          <span class="rc-time">${escHtml(fmtTime(r.session.lastMessageAt || r.lastMsg?.createdAt))}</span>
+        </div>
+        <div class="rc-preview">${escHtml(previewLast(r.lastMsg))}</div>
+      </div>
+    </div>
+  `).join('');
+
+  return `
+    <div class="widget widget-recent-chat user-widget" style="${gs}" data-widget-id="${escHtml(w.id)}">
+      <div class="rc-head">最近聊天</div>
+      <div class="rc-list">${rowsHtml}</div>
+      ${editBtn}${delBtn}
+    </div>
+  `;
 }
 
 // MP3 widget(装饰类,无功能)— iPod 致敬。viewBox 5:7 让小屏 + click wheel
@@ -726,6 +815,7 @@ async function openAddWidgetModal(container, router) {
         <button type="button" class="widget-type-btn" data-type="gameboy">游戏机</button>
         <button type="button" class="widget-type-btn" data-type="mp3">MP3</button>
         <button type="button" class="widget-type-btn" data-type="schedule">行程</button>
+        <button type="button" class="widget-type-btn" data-type="recent-chat">最近聊天</button>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn secondary cancel-btn">取消</button>
@@ -792,6 +882,18 @@ async function openAddWidgetModal(container, router) {
         if (!opts) return;
         await saveNewWidget({
           type: 'schedule',
+          ...opts.span,
+          transparency: opts.transparency,
+          tilt: opts.tilt,
+          bgColor: opts.bgColor,
+          radius: opts.radius,
+        }, router);
+      } else if (type === 'recent-chat') {
+        modal.remove();
+        const opts = await askSizeAndTransparency(container, '4x3');
+        if (!opts) return;
+        await saveNewWidget({
+          type: 'recent-chat',
           ...opts.span,
           transparency: opts.transparency,
           tilt: opts.tilt,
@@ -1872,12 +1974,12 @@ function askSizeAndTransparency(container, defaultPreset, existing) {
 // to the same editor function used for new-widget creation (each one accepts
 // an optional `existing` parameter and pre-fills its fields).
 async function openEditWidgetModal(container, router, widget) {
-  // favorites / gameboy / mp3 / schedule widget 没有可编辑 content(favorites
-  // 数据是 store 的活的引用;gameboy / mp3 是纯装饰;schedule 读全局行程
-  // store),所以只给 size + transparency。其他 widget 类型都有专属编辑器:
+  // favorites / gameboy / mp3 / schedule / recent-chat widget 没有可编辑
+  // content(它们都从 store 读"活"的数据 / 是纯装饰),所以只给 size +
+  // transparency 等外观参数。其他 widget 类型都有专属编辑器:
   //  - image / polaroid: 换图 / 换照片
   //  - note / anniversary / music: 内容编辑
-  if (widget.type === 'favorites' || widget.type === 'gameboy' || widget.type === 'mp3' || widget.type === 'schedule') {
+  if (widget.type === 'favorites' || widget.type === 'gameboy' || widget.type === 'mp3' || widget.type === 'schedule' || widget.type === 'recent-chat') {
     const opts = await askSizeAndTransparency(container, null, widget);
     if (!opts) return;
     await updateWidget(widget.id, {
@@ -2787,6 +2889,17 @@ export async function mountHome(container, params, router) {
       }
       return;
     }
+    // 最近聊天 widget — 点单行进对应 chat。必须早于下面通用 [data-target]
+    // 处理(widget 父级 data-target 是 messaging,会跳错地方)。editing 模
+    // 式不响应 — 编辑模式所有 widget 内部点击 swallow。
+    const rcRow = e.target.closest('.rc-row[data-session-id]');
+    if (rcRow && !editMode) {
+      e.stopPropagation();
+      const sid = rcRow.dataset.sessionId;
+      if (sid) await router.navigate('chat', { sessionId: sid });
+      return;
+    }
+
     const polaroid = e.target.closest('.polaroid-photo');
     if (polaroid && !editMode) {
       e.stopPropagation();
