@@ -1709,18 +1709,53 @@ body[data-fx-glass="metal"] .widget.widget-music::after { display: none; }
 .page.home.editing .app-icon .icon-edit { opacity: 1; }
 /* dock 也用同一个 ⚙(dock 的 app-icon 在 .dock-grid 里,跟 page 一样规则) */
 
-/* D1: icon picker modal — 预设 emoji grid + 上传区。emoji 用大字号方便点选。 */
+/* D1: icon picker modal — 预设 emoji grid + 文字 + 本地图片 + 图床 URL 四
+   种 override 方式。一个 section 一种,展开式布局(不用 tab,直接看到全部
+   选项一目了然)。 */
 .icon-picker {
   padding: 0 4px;
+  max-height: 60vh;
+  overflow-y: auto;
 }
 .icon-picker-section {
   margin: 12px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
 }
+.icon-picker-section:last-child { border-bottom: none; }
 .icon-picker-section .label-text {
   font-size: 12px;
   color: var(--muted);
   margin-bottom: 8px;
 }
+/* 当前 override 预览块 — 一个 50x50 的 cell 显示现在选的图标(emoji/文字/
+   图片任意一种,fallback 显示"默认"标签)。给 user 一眼看清楚当前状态。 */
+.icon-picker-current {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 28px;
+  line-height: 1;
+  overflow: hidden;
+}
+.icon-current-tag {
+  font-size: 11px;
+  color: var(--muted);
+}
+.icon-current-tag.default {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+.icon-current-emoji { font-size: 32px; line-height: 1; }
+.icon-current-text { font-size: 14px; font-weight: 600; color: var(--fg); }
+.icon-current-img { width: 100%; height: 100%; object-fit: cover; }
+
 .icon-picker-emoji-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
@@ -1741,19 +1776,72 @@ body[data-fx-glass="metal"] .widget.widget-music::after { display: none; }
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
-.icon-picker-upload-row {
+/* 文字 / URL 输入行 — input + 右侧 应用按钮。input 撑满,按钮 固定窄。 */
+.icon-picker-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.icon-picker-input-row input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 14px;
+}
+.icon-picker-input-row .btn { flex-shrink: 0; padding: 8px 14px; }
+
+/* settings → app 图标 列表页样式 — 每行 name + 当前 override 预览 + ›
+   chevron。preview 缩小一档(40x40)放右侧。 */
+.app-icons-list .app-icon-row {
   display: flex;
   align-items: center;
   gap: 12px;
+  text-align: left;
 }
-.icon-picker-current {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-md);
-  overflow: hidden;
+.app-icon-row-name {
+  flex: 1;
+  color: var(--fg);
+  font-size: 15px;
+}
+.app-icon-row-preview {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
 }
-.icon-picker-current img { width: 100%; height: 100%; object-fit: cover; }
+.app-icon-row-preview .icon-current-emoji { font-size: 22px; }
+.app-icon-row-preview .icon-current-text { font-size: 11px; }
+.app-icon-row-preview .icon-current-img { width: 100%; height: 100%; }
+.app-icon-row-preview .icon-current-tag { font-size: 9px; padding: 2px 6px; }
+
+/* home app-icon 的 text override —— 跟 emoji 一样大字号,放在 .icon
+   方块中央。letter-spacing 略缩配 2-3 个中文字。 */
+.app-icon .icon .icon-text {
+  font-size: clamp(14px, 30%, 22px);
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: -0.02em;
+  text-align: center;
+  line-height: 1.15;
+  padding: 4px;
+}
+
+/* 设置页通用提示文字 — 设置列表上面的一段说明文字。 */
+.settings-hint {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 8px 16px 12px;
+  line-height: 1.5;
+}
 /* iOS-style "squircle" tile —— 圆角正方形,占 cell 大头(min(85% 宽, 1fr 高
    - label 空间)),label 在下方小字。aspect-ratio: 1 让 tile 始终正方形,
    width clamp 防止 tile 在大/小 cell 里失控。border-radius: 22% 接近 iOS

@@ -15,6 +15,7 @@
 
 import * as db from '../../core/db.js';
 import { openConfirm, openAlert } from '../../core/modal.js';
+import { openIconPicker } from '../settings/app-icons.js';
 
 let preserveEditModeOnMount = false;
 
@@ -79,6 +80,20 @@ const DOCK_CATALOG = [
   { id: 'settings',  label: '设置', icon: SVG.gear },
 ];
 const DOCK_DEFAULT = [null, 'messaging', 'settings', null];
+
+// 给 settings → app 图标 列表页用的扁平 registry(去重)。包含所有 app:
+// 各 page 的 default app + DOCK_CATALOG。同一 id 重复只取第一个。
+export const APP_REGISTRY = (() => {
+  const seen = new Set();
+  const list = [];
+  for (const page of PAGES) for (const t of page) {
+    if (!seen.has(t.id)) { seen.add(t.id); list.push(t); }
+  }
+  for (const t of DOCK_CATALOG) {
+    if (!seen.has(t.id)) { seen.add(t.id); list.push(t); }
+  }
+  return list;
+})();
 
 const COLS = 4;  // home grid has 4 columns (dock also 4)
 const DOCK_SLOTS = 4;
@@ -652,14 +667,18 @@ function tileHtml(t, row, col, iconOverride) {
   // the dock uses positioned cells). When provided, place via inline grid
   // coords as 1×1.
   //
-  // D1: iconOverride 是 settings.appIconOverrides[appId],可以是:
-  //   - { kind: 'emoji', value: '🐱' }
-  //   - { kind: 'image', value: 'data:image/...' }
-  // 找不到时退回 t.icon(默认 SVG)。
+  // D1: iconOverride 是 settings.appIconOverrides[appId],4 种 kind:
+  //   - emoji:  { kind: 'emoji', value: '🐱' }
+  //   - text:   { kind: 'text',  value: '角色' }(≤4 字)
+  //   - image:  { kind: 'image', value: 'data:image/...' }(本地上传 base64)
+  //   - url:    { kind: 'url',   value: 'https://...' }(图床外链)
+  // image / url 渲染都用 <img>,只是 value 来源不同。找不到时 fallback 默认 SVG。
   let iconHtml = t.icon;
   if (iconOverride?.kind === 'emoji') {
     iconHtml = `<span class="icon-emoji">${escHtml(iconOverride.value || '')}</span>`;
-  } else if (iconOverride?.kind === 'image' && iconOverride.value) {
+  } else if (iconOverride?.kind === 'text') {
+    iconHtml = `<span class="icon-text">${escHtml(iconOverride.value || '')}</span>`;
+  } else if ((iconOverride?.kind === 'image' || iconOverride?.kind === 'url') && iconOverride.value) {
     iconHtml = `<img class="icon-img" src="${escAttr(iconOverride.value)}" alt="">`;
   }
   const style = (Number.isFinite(row) && Number.isFinite(col))
@@ -1849,71 +1868,6 @@ function askSizeAndTransparency(container, defaultPreset, existing) {
   });
 }
 
-// D1: app 图标更换 picker。用户长按进 edit 模式 → app icon 上角出现 ⚙
-// → 弹这个 modal。两种 override 方式:
-//   1) 预设 emoji(12 个常用的,点一下就替换)
-//   2) 上传自己的图片(file picker → base64 → settings.appIconOverrides[appId])
-// 「恢复默认」清掉 override,app 回到 PAGES/DOCK_CATALOG 里的 SVG。
-// emoji 选 12 个手机 app 常见图标语义,user 不太可能 16 个全用到。
-const ICON_EMOJI_PRESETS = ['📞', '📷', '📌', '🎵', '💌', '☕', '📖', '🐱', '🌸', '🎮', '🎨', '📚'];
-
-async function openIconPicker(container, router, appId, onChanged) {
-  const settings = (await db.get('settings', 'default')) || {};
-  const current = settings.appIconOverrides?.[appId] || null;
-  const modal = document.createElement('div');
-  modal.className = 'modal-backdrop';
-  modal.innerHTML = `
-    <div class="modal">
-      <div class="modal-header">改图标</div>
-      <div class="icon-picker">
-        <div class="icon-picker-section">
-          <div class="label-text">预设 emoji</div>
-          <div class="icon-picker-emoji-grid">
-            ${ICON_EMOJI_PRESETS.map(e => `
-              <button type="button" class="icon-picker-emoji${current?.kind === 'emoji' && current.value === e ? ' active' : ''}" data-emoji="${escAttr(e)}">${escHtml(e)}</button>
-            `).join('')}
-          </div>
-        </div>
-        <div class="icon-picker-section">
-          <div class="label-text">上传图片(建议 < 1 MB,正方形最佳)</div>
-          <div class="icon-picker-upload-row">
-            <button type="button" class="btn secondary upload-icon">从相册选一张</button>
-            ${current?.kind === 'image' ? `<div class="icon-picker-current"><img src="${escAttr(current.value)}" alt=""></div>` : ''}
-          </div>
-        </div>
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="btn secondary cancel-btn">取消</button>
-        <button type="button" class="btn secondary reset-btn"${current ? '' : ' disabled'}>恢复默认</button>
-      </div>
-    </div>
-  `;
-  container.appendChild(modal);
-  const close = () => modal.remove();
-  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
-  modal.querySelector('.cancel-btn').addEventListener('click', close);
-
-  async function applyOverride(override) {
-    await db.updateSettings(s => {
-      if (!s.appIconOverrides || typeof s.appIconOverrides !== 'object') s.appIconOverrides = {};
-      if (override === null) delete s.appIconOverrides[appId];
-      else s.appIconOverrides[appId] = override;
-    });
-    close();
-    onChanged?.();
-  }
-
-  modal.querySelector('.reset-btn').addEventListener('click', () => applyOverride(null));
-  modal.querySelectorAll('.icon-picker-emoji').forEach(btn => {
-    btn.addEventListener('click', () => applyOverride({ kind: 'emoji', value: btn.dataset.emoji }));
-  });
-  modal.querySelector('.upload-icon').addEventListener('click', async () => {
-    const data = await pickImageFile(1);
-    if (!data) return;
-    await applyOverride({ kind: 'image', value: data });
-  });
-}
-
 // Open the appropriate editor for an existing widget. Routes by widget.type
 // to the same editor function used for new-widget creation (each one accepts
 // an optional `existing` parameter and pre-fills its fields).
@@ -2805,7 +2759,7 @@ export async function mountHome(container, params, router) {
       const appId = tileEl?.dataset.target;
       if (appId) {
         preserveEditModeOnMount = editMode;
-        await openIconPicker(container, router, appId, async () => {
+        await openIconPicker(container, appId, async () => {
           await router.navigate('home');
         });
       }
