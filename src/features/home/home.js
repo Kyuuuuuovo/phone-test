@@ -1193,27 +1193,42 @@ function renderNoteEditor(modal, container, router, existing) {
   });
 }
 
-// A5: 统一「照片」editor — 1-3 张照片用同一个入口。提交时按张数挑 type:
-//   1 张 → type: 'image',data 是 base64 字符串(走 renderImageWidget)
-//   2-3 张 → type: 'polaroid',data 是 { photos, stackOrder }(走 polaroid)
-// 现有 image / polaroid 数据保持不变,编辑现有 widget 还走原 editor(image
-// 编辑还是 image editor),只有 add flow 经过这个统一入口。
+// A5: 统一「照片」editor — image (无边框平铺) 跟 polaroid (白边堆叠) 是两
+// 种装饰形式,user 自己用 select 选,**不再按张数自动判断**(之前 1 张固
+// 定 image、2-3 张固定 polaroid,导致 user 想"1 张拍立得"或"多张平铺"做
+// 不到)。
+//   - image 模式:槽位上限 1 张,data 是 base64 字符串(→ renderImageWidget)
+//   - polaroid 模式:1-3 张,data 是 { photos, stackOrder }(→ polaroid)
+// 切到 image 模式时,如果 pendingPhotos 已经多张,保留第一张(剩下要再传
+// 一遍麻烦,告诉 user 切回 polaroid 还能用)。
 function renderPhotoEditor(modal, container, router) {
   let pendingPhotos = [];
+  let displayMode = 'polaroid';  // 默认拍立得 — 是这个入口的主要形式
 
   function render() {
-    const slots = Array.from({ length: 3 }, (_, i) => pendingPhotos[i] || null);
-    const filled = pendingPhotos.filter(Boolean).length;
-    const previewLabel = filled === 0
-      ? '至少加 1 张'
-      : filled === 1 ? '1 张 — 会显示为普通图片'
-      : `${filled} 张 — 会显示为拍立得堆叠`;
+    const maxSlots = displayMode === 'image' ? 1 : 3;
+    // 切换模式时已超过新上限的 photo 自动截掉(image 模式只留第一张)
+    if (pendingPhotos.length > maxSlots) {
+      pendingPhotos = pendingPhotos.slice(0, maxSlots);
+    }
+    const slots = Array.from({ length: maxSlots }, (_, i) => pendingPhotos[i] || null);
+    const hintText = displayMode === 'image'
+      ? '照片 · 无边框直接平铺(只 1 张)'
+      : '拍立得 · 白色边框堆叠(1-3 张)';
     modal.innerHTML = `
       <div class="modal">
         <div class="modal-header">添加照片</div>
         <form class="photo-form">
           <label>
-            <div class="label-text">选 1-3 张照片(<span class="photo-mode-hint">${escHtml(previewLabel)}</span>)</div>
+            <div class="label-text">展示形式</div>
+            <select name="displayMode">
+              <option value="polaroid"${displayMode === 'polaroid' ? ' selected' : ''}>拍立得(白色边框,可堆叠)</option>
+              <option value="image"${displayMode === 'image' ? ' selected' : ''}>照片(无边框,直接平铺)</option>
+            </select>
+            <div class="muted-hint">${escHtml(hintText)}</div>
+          </label>
+          <label>
+            <div class="label-text">${displayMode === 'image' ? '选 1 张照片' : '选 1-3 张照片'}</div>
             <div class="polaroid-edit-slots">
               ${slots.map((p, i) => `
                 <div class="polaroid-edit-slot${p ? '' : ' empty'}" data-slot-idx="${i}">
@@ -1243,6 +1258,10 @@ function renderPhotoEditor(modal, container, router) {
     wireTiltReadout(modal);
     wireBgColorReadout(modal);
     modal.querySelector('.cancel-btn').addEventListener('click', () => modal.remove());
+    modal.querySelector('select[name="displayMode"]').addEventListener('change', (e) => {
+      displayMode = e.target.value === 'image' ? 'image' : 'polaroid';
+      render();
+    });
     modal.querySelectorAll('.polaroid-edit-slot-btns button').forEach(btn => {
       btn.addEventListener('click', async () => {
         const idx = Number(btn.dataset.slotIdx);
@@ -1253,7 +1272,7 @@ function renderPhotoEditor(modal, container, router) {
           const data = await pickImageFile();
           if (!data) return;
           if (btn.classList.contains('swap')) pendingPhotos[idx] = data;
-          else pendingPhotos.push(data);
+          else if (pendingPhotos.length < maxSlots) pendingPhotos.push(data);
           render();
         }
       });
@@ -1271,7 +1290,7 @@ function renderPhotoEditor(modal, container, router) {
       const tilt = parseTilt(fd);
       const { bgColor, radius } = parseBgColorAndRadius(fd);
       modal.remove();
-      if (photos.length === 1) {
+      if (displayMode === 'image') {
         await saveNewWidget({
           type: 'image', data: photos[0],
           ...span, transparency, tilt, bgColor, radius,
@@ -2220,28 +2239,10 @@ export async function mountHome(container, params, router) {
     if (anyChanged) userWidgets = await db.getAll('homeWidgets');
   }
 
-  // B3: 动态页数 — tileOrder 可以比 PAGES.length 长(用户加了新页)或带尾部
-  // 空页。mount 时:
-  //   1) effectivePageCount = max(PAGES.length, tileOrder.length)
-  //   2) prune 尾部连续空的 extension pages(超过 PAGES.length 的部分),
-  //      没内容就回收,不留空页占翻页位
-  let effectivePageCount = Math.max(PAGES.length, Array.isArray(settings?.tileOrder) ? settings.tileOrder.length : 0);
-  {
-    let pruned = effectivePageCount;
-    while (pruned > PAGES.length) {
-      const last = settings?.tileOrder?.[pruned - 1];
-      const hasContent = Array.isArray(last) && last.length > 0;
-      if (hasContent) break;
-      pruned--;
-    }
-    if (pruned !== effectivePageCount) {
-      await db.updateSettings(s => {
-        if (Array.isArray(s.tileOrder)) s.tileOrder.length = pruned;
-      });
-      settings = await db.get('settings', 'default');
-      effectivePageCount = pruned;
-    }
-  }
+  // B3: 动态页数 — tileOrder 可以比 PAGES.length 长(用户加了新页)。空页
+  // 保留(user 主动新建,prune 太激进会让"+ 新页"看着没反应 —— 刚 push 的
+  // 空页立刻被砍掉)。删页 UI 以后再加。
+  const effectivePageCount = Math.max(PAGES.length, Array.isArray(settings?.tileOrder) ? settings.tileOrder.length : 0);
   const showPager = effectivePageCount > 1;
 
   const tileOrder = Array.isArray(settings?.tileOrder) ? settings.tileOrder : [];
@@ -2759,17 +2760,23 @@ export async function mountHome(container, params, router) {
       return;
     }
     // B3: + 新页 按钮 — 在 settings.tileOrder 末尾 push 空数组,re-render 多
-    // 一页。空页在下次 mount 时若没拖入内容会被尾部 prune 回收(见
-    // effectivePageCount 计算),所以"白建一页又没用"不会留垃圾。
+    // 一页。bug 修:
+    //   - 之前 mountHome 会 prune 尾部空页,刚 push 的空页立刻被砍 → user
+    //     看着"没反应"。取消 prune 后空页留住,等 user 拖东西进去。
+    //   - _restoreScrollToPage 之前设在 router.navigate 之后,re-mount 已
+    //     经读完 null。提到 navigate 之前。
+    //   - 新页的 index 是当前 effectivePageCount(因为 push 之前末尾是
+    //     effectivePageCount-1)。
     if (e.target.closest('.page-add')) {
       preserveEditModeOnMount = true;
+      const newPageIdx = effectivePageCount;
+      _restoreScrollToPage = newPageIdx;
       await db.updateSettings(s => {
         if (!Array.isArray(s.tileOrder)) s.tileOrder = [];
-        s.tileOrder.push([]);
+        // 扩展到 newPageIdx + 1 长度,中间稀疏位补 [](避免 sparse hole)
+        while (s.tileOrder.length <= newPageIdx) s.tileOrder.push([]);
       });
       await router.navigate('home');
-      // 重 mount 后 scroll 到新页让 user 看见
-      _restoreScrollToPage = effectivePageCount;
       return;
     }
     // ⚙ 编辑按钮 —— 无论 edit mode 与否都响应。之前放在 editMode 块内,导致:
@@ -2873,11 +2880,13 @@ export async function mountHome(container, params, router) {
   }
 
   return () => {
-    // 离开 home 时把 preserveEditModeOnMount 清零 —— 这个 flag 是给「add /
-    // edit / delete widget 后再次 mount」用的(让 user 留在 edit mode 继续
-    // 改),但如果 user 取消 add modal 离开 home 进了别的 app,这个 flag
-    // 还残留着 true,下次回到 home 就会莫名其妙自动进入 edit mode。
-    preserveEditModeOnMount = false;
+    // preserveEditModeOnMount 不在这里清 —— 之前清了导致 navigate('home')
+    // 链(handler set true → router.navigate → teardown 同步清 → mountHome
+    // 读到 false → 没进 edit)永远丢 flag,user 报「+ 新页」/「加 widget」
+    // 后退出了 edit mode。改成 mountHome 头部 read-and-clear,见检查块。
+    // 副作用:user cancel modal 后离开 home 进别 app,flag 残留;下次回
+    // home 会自动进 edit mode。这其实是 "上次在 edit 回来还在 edit",可
+    // 接受。
     stopAllMusicTimers();
     clearPressTimer();
     cancelDrag();
