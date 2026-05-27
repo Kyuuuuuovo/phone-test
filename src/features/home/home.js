@@ -2196,7 +2196,29 @@ export async function mountHome(container, params, router) {
   // B3: 动态页数 — tileOrder 可以比 PAGES.length 长(用户加了新页)。空页
   // 保留(user 主动新建,prune 太激进会让"+ 新页"看着没反应 —— 刚 push 的
   // 空页立刻被砍掉)。删页 UI 以后再加。
-  const effectivePageCount = Math.max(PAGES.length, Array.isArray(settings?.tileOrder) ? settings.tileOrder.length : 0);
+  let effectivePageCount = Math.max(PAGES.length, Array.isArray(settings?.tileOrder) ? settings.tileOrder.length : 0);
+  // 空页自动回收:**非 editing 模式 mount 时**才 prune 尾部空页(超过
+  // PAGES.length 的部分)。editing 模式不动 — user 可能刚 push 一页正在
+  // 拖东西,prune 会让"+ 新页"看着没反应。预测当前 mount 会不会进 editing
+  // 用 preserveEditModeOnMount(read but not clear,mount 末尾的 read-and-
+  // clear 还要照常 consume 这个 flag)。
+  const willEnterEdit = preserveEditModeOnMount === true;
+  if (!willEnterEdit && effectivePageCount > PAGES.length) {
+    let pruned = effectivePageCount;
+    while (pruned > PAGES.length) {
+      const last = settings?.tileOrder?.[pruned - 1];
+      const isEmpty = Array.isArray(last) && last.length === 0;
+      if (!isEmpty) break;
+      pruned--;
+    }
+    if (pruned !== effectivePageCount) {
+      await db.updateSettings(s => {
+        if (Array.isArray(s.tileOrder)) s.tileOrder.length = pruned;
+      });
+      settings = await db.get('settings', 'default');
+      effectivePageCount = pruned;
+    }
+  }
   const showPager = effectivePageCount > 1;
 
   const tileOrder = Array.isArray(settings?.tileOrder) ? settings.tileOrder : [];
