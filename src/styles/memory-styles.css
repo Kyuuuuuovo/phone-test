@@ -16,7 +16,10 @@
 /* ─────────────────────────────────────────────────────────────────────
    通用:风格切换按钮 + 下拉菜单(.ma-style-btn / .ma-style-menu)
    ───────────────────────────────────────────────────────────────────── */
-.memory-app-page .actions { display: flex; align-items: center; position: relative; }
+/* z-index: 50 创造独立 stacking context — 下拉菜单的 z-index: 100 才能浮在
+   .page-body 之上。否则 .actions 跟 .page-body 都是 auto stacking,文档顺序
+   .page-body 在后绘制覆盖 → 下拉被 tab 行盖住。 */
+.memory-app-page .actions { display: flex; align-items: center; position: relative; z-index: 50; }
 .ma-style-btn {
   display: inline-flex;
   align-items: center;
@@ -398,8 +401,6 @@ body[data-mem-style="planner"] .memory-app-page .ma-row-meta {
   font-style: italic;
 }
 body[data-mem-style="planner"] .memory-app-page .ma-row-body {
-  font-size: 14px;
-  line-height: 1.7;
   color: var(--fg);
 }
 body[data-mem-style="planner"] .memory-app-page .ma-cell {
@@ -491,8 +492,6 @@ body[data-mem-style="cabinet"] .memory-app-page .ma-row-meta {
   font-weight: 600;
 }
 body[data-mem-style="cabinet"] .memory-app-page .ma-row-body {
-  font-size: 13.5px;
-  line-height: 1.55;
   color: var(--fg);
 }
 body[data-mem-style="cabinet"] .memory-app-page .ma-cell {
@@ -588,8 +587,6 @@ body[data-mem-style="petal"] .memory-app-page .ma-row-meta {
   text-align: center;
 }
 body[data-mem-style="petal"] .memory-app-page .ma-row-body {
-  font-size: 14px;
-  line-height: 1.7;
   text-align: center;
   color: var(--fg);
 }
@@ -691,8 +688,6 @@ body[data-mem-style="film"] .memory-app-page .ma-row-meta-row .ma-row-del:hover 
 }
 body[data-mem-style="film"] .memory-app-page .ma-row-body {
   padding: 0 12px 12px;
-  font-size: 13px;
-  line-height: 1.6;
   color: var(--fg);
 }
 /* T33/T34: film 子元素统一 inline padding 12px — 跟 chips / meta margin / body
@@ -794,7 +789,6 @@ body[data-mem-style="cosmic"] .memory-app-page .ma-row-meta {
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-row-body {
   color: #e6dfc8;
-  font-size: 13.5px;
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-row-title {
   color: #f0e9d4;
@@ -995,10 +989,15 @@ body[data-mem-style="petal"] .memory-app-page .mem-char-chip.active .mem-chip-av
 }
 
 /* film — meta 独立行(monospace 暗底 label),chips 显在齿孔下方第一行
-   原 ma-row-meta 已 monospace + 反色,这里加 chip 的胶片风:小、方角、灰底 */
+   原 ma-row-meta 已 monospace + 反色,这里加 chip 的胶片风:小、方角、灰底
+   margin-left: -7 让整个 chips 容器左移 7 — chip 内文字 = chips.left - 7 +
+   chip border 1 + chip padding 6 = .ma-row-header 内 padding-left 12 - 7 + 7
+   = 12 = title text-left。chip frame 凸出 row content area 5px(.ma-row 自身
+   padding 0,实际不突破 row 边)。 */
 body[data-mem-style="film"] .memory-app-page .ma-row .mem-chips {
-  padding: 10px 12px 0;
+  padding-top: 10px;
   margin-bottom: 0;
+  margin-left: -7px;
 }
 body[data-mem-style="film"] .memory-app-page .mem-chips > span {
   border-radius: 0;
@@ -1055,22 +1054,57 @@ body[data-mem-style="film"] .memory-app-page .mem-char-chip.active .mem-chip-ava
   border-color: var(--accent);
 }
 
-/* cosmic — 每条 row 前加 6px 发光圆点(用 ::before;原来 planner 也用了
-   ::before 圆点,这里覆盖给 cosmic 自己一个发光强的版本) */
+/* cosmic 月相日记 — 每张卡左侧一个月相圆球,phase 按 fromTs 的 day-of-month
+   4 档变化(memory-app.js 的 moonPhaseOf 函数;1=新月、2=弦月偏右、
+   3=满月、4=弦月偏左)。不是真天文月相,是"日期诗意"映射 — 月初新月、
+   月中满月、月末另一种弦月,循环让用户翻看记忆时左侧月相像月历转动。
+   实现:::before = 月球本体(米白圆 + 发光),::after = 同位阴影遮罩
+   (深紫,transform translateX 移动遮挡产生 phase)。 */
+body[data-mem-style="cosmic"] .memory-app-page .ma-row {
+  position: relative;
+  margin-left: 0;
+  padding-left: 56px;  /* 月相 36 + 左缝 8 + 右缝 12 */
+}
 body[data-mem-style="cosmic"] .memory-app-page .ma-row::before {
   content: '';
   position: absolute;
-  left: -10px;
+  left: 8px;
   top: 16px;
-  width: 6px;
-  height: 6px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 80%, transparent);
+  background: #ede6d0;
+  box-shadow:
+    0 0 16px rgba(237,230,208,0.32),
+    inset -2px -2px 6px rgba(0,0,0,0.12);  /* 微立体球感 */
 }
-body[data-mem-style="cosmic"] .memory-app-page .ma-row {
-  position: relative;
-  margin-left: 14px;
+body[data-mem-style="cosmic"] .memory-app-page .ma-row::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #0d0a1e, #1a0e3a);
+  /* 默认满月 — 阴影完全移出月球右侧;phase 数据缺失也走这态 */
+  transform: translateX(100%);
+}
+/* phase 1 (day 1-7 新月)   — 阴影完全覆盖月球 */
+body[data-mem-style="cosmic"] .memory-app-page .ma-row[data-moon-phase="1"]::after {
+  transform: translateX(0);
+}
+/* phase 2 (day 8-14 弦月)  — 阴影右移 50%,左半月暗、右半月亮 */
+body[data-mem-style="cosmic"] .memory-app-page .ma-row[data-moon-phase="2"]::after {
+  transform: translateX(50%);
+}
+/* phase 3 (day 15-21 满月) — 阴影完全在外 */
+body[data-mem-style="cosmic"] .memory-app-page .ma-row[data-moon-phase="3"]::after {
+  transform: translateX(100%);
+}
+/* phase 4 (day 22-31 弦月) — 阴影左移 50%,右半月暗、左半月亮 */
+body[data-mem-style="cosmic"] .memory-app-page .ma-row[data-moon-phase="4"]::after {
+  transform: translateX(-50%);
 }
 body[data-mem-style="cosmic"] .memory-app-page .mem-chips > span {
   background: rgba(255, 255, 255, 0.06);
@@ -1144,36 +1178,6 @@ body[data-mem-style="cosmic"] .memory-app-page .mem-vh-input:focus {
 }
 body[data-mem-style="cosmic"] .memory-app-page .mem-vh-label {
   color: #8c80a8;
-}
-
-/* ═════════════════════════════════════════════════════════════════════
-   per-style 字号 / 行高 / padding 去冗余 — 5 风格的 .ma-row-body 微调
-   差异 < 1px,用户基本不感知,但维护面积大。统一删了走 base.css 默认值。
-   只留真正影响视觉气质的(film 用 inline padding 是因为齿孔布局必需)。
-   ═════════════════════════════════════════════════════════════════════ */
-/* 删:planner .ma-row-body font-size 14 line-height 1.7 — 走默认 */
-body[data-mem-style="planner"] .memory-app-page .ma-row-body {
-  font-size: unset;
-  line-height: unset;
-}
-/* 删:petal .ma-row-body font-size 14 line-height 1.7 — 走默认 */
-body[data-mem-style="petal"] .memory-app-page .ma-row-body {
-  font-size: unset;
-  line-height: unset;
-}
-/* film 保留 inline padding(齿孔 + meta label 布局必需),但删 font-size 13 */
-body[data-mem-style="film"] .memory-app-page .ma-row-body {
-  font-size: unset;
-  line-height: unset;
-}
-/* cosmic .ma-row-body font-size 13.5 — 走默认 */
-body[data-mem-style="cosmic"] .memory-app-page .ma-row-body {
-  font-size: unset;
-}
-/* cabinet 同理 */
-body[data-mem-style="cabinet"] .memory-app-page .ma-row-body {
-  font-size: unset;
-  line-height: unset;
 }
 
 /* ═════════════════════════════════════════════════════════════════════

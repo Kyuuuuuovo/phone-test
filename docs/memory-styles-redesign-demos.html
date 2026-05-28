@@ -1,0 +1,1346 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>记忆风格重做 demos — film / cosmic / planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Noto+Serif+SC:wght@400;600&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&family=Special+Elite&display=swap">
+<style>
+/* ───── page chrome ───── */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 24px;
+  background: #f4f4f5;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: #222;
+}
+h1 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 600;
+}
+.intro {
+  margin: 0 0 24px;
+  color: #666;
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 720px;
+}
+.intro code { background: #e8e8ea; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 24px;
+}
+.card {
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e2e2e5;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.card-label {
+  padding: 12px 16px;
+  border-bottom: 1px solid #ececef;
+  font-size: 14px;
+  font-weight: 600;
+  background: #fafafb;
+}
+.card-label .tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: 4px;
+  margin-right: 6px;
+  vertical-align: 1px;
+}
+.tag-film    { background: #fde6c8; color: #8a5a18; }
+.tag-cosmic  { background: #d8d2ee; color: #4a3c8a; }
+.tag-planner { background: #cfe4d0; color: #2f6a3c; }
+.card-notes {
+  padding: 10px 16px 14px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #666;
+  background: #fafafb;
+  border-top: 1px solid #ececef;
+}
+.card-notes b { color: #333; font-weight: 600; }
+.phone {
+  width: 380px;
+  margin: 16px auto;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  position: relative;
+}
+.phone-head {
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+  font-size: 13px;
+  font-weight: 600;
+}
+.phone-head .back { color: #888; font-weight: 400; margin-right: 8px; cursor: default; }
+.phone-head .title { flex: 1; text-align: center; }
+.phone-head .style-btn {
+  font-size: 11px;
+  padding: 3px 8px;
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: 99px;
+  color: #555;
+}
+.phone-tabs {
+  display: flex;
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+  font-size: 12px;
+}
+.phone-tabs .tab {
+  flex: 1;
+  text-align: center;
+  padding: 8px 4px;
+  color: #888;
+  white-space: nowrap;
+}
+.phone-tabs .tab.on { color: #222; font-weight: 600; }
+.phone-body {
+  padding: 12px;
+  min-height: 480px;
+}
+.char-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 10px;
+}
+.char-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.char-chip.on { font-weight: 600; }
+.char-av {
+  width: 24px; height: 24px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; color: #fff;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FILM 方案 A — 拍立得相册
+   每张 memory = 一张真拍立得照片(白边厚 + 微旋转 + 显影色块)
+   头像沿用 polaroid 风(方角 + 白边),照片"显影"用渐变模拟胶片色
+   ═══════════════════════════════════════════════════════════════ */
+.film-a {
+  background: #1f1d1c;
+  color: #ece6d8;
+  font-family: 'Crimson Pro', 'Noto Serif SC', serif;
+}
+.film-a .phone-head { background: #2a2826; border-bottom-color: rgba(255,255,255,0.08); color: #ece6d8; }
+.film-a .phone-head .style-btn { color: #ece6d8; border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.05); }
+.film-a .phone-tabs { background: #2a2826; border-bottom-color: rgba(255,255,255,0.08); }
+.film-a .phone-tabs .tab { color: #807a6e; }
+.film-a .phone-tabs .tab.on { color: #ece6d8; border-bottom: 2px solid #c0a060; }
+.film-a .phone-body { background: #1f1d1c; padding: 16px 12px; }
+.film-a .char-chip { background: transparent; }
+.film-a .char-chip .char-av {
+  border-radius: 3px;
+  border: 3px solid #ece6d8;
+  width: 38px; height: 38px;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.5);
+}
+.film-a .char-chip.on .char-av { border-color: #c0a060; }
+.film-a .char-chip span { color: #c0bba8; font-size: 11px; letter-spacing: 0.04em; }
+
+.polaroid {
+  background: #f4ede0;
+  padding: 14px 14px 36px;
+  margin: 0 auto 22px;
+  width: 92%;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.06) inset;
+  position: relative;
+  font-family: 'Caveat', 'Noto Serif SC', cursive;
+  color: #2a2826;
+}
+.polaroid:nth-child(2) { transform: rotate(-1.2deg); }
+.polaroid:nth-child(3) { transform: rotate(0.8deg); margin-left: 12%; }
+.polaroid:nth-child(4) { transform: rotate(-0.5deg); margin-right: 10%; }
+.polaroid-photo {
+  height: 130px;
+  background: linear-gradient(135deg, #6b5d3e, #b89c5e 55%, #d4b87a);
+  position: relative;
+  margin-bottom: 12px;
+  overflow: hidden;
+  box-shadow: inset 0 0 30px rgba(0,0,0,0.3);
+}
+.polaroid-photo::before {
+  /* 显影颗粒感 */
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    radial-gradient(circle at 30% 40%, rgba(255,255,255,0.15) 0, transparent 50%),
+    radial-gradient(circle at 70% 60%, rgba(0,0,0,0.2) 0, transparent 50%);
+  mix-blend-mode: overlay;
+}
+.polaroid-photo .scene {
+  position: absolute;
+  bottom: 8px; left: 10px; right: 10px;
+  font-family: 'Caveat', cursive;
+  font-size: 20px;
+  color: #fff;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+  letter-spacing: 0.02em;
+}
+.polaroid-photo.tone-2 { background: linear-gradient(135deg, #4e6878, #7a9bb0 55%, #b3c8d8); }
+.polaroid-photo.tone-3 { background: linear-gradient(135deg, #5a3838, #9e6968 55%, #c8908e); }
+.polaroid-photo.tone-4 { background: linear-gradient(135deg, #3d4830, #6b7a4e 55%, #a3b072); }
+.polaroid-stamp {
+  position: absolute;
+  top: -8px; right: 12px;
+  background: #c0a060;
+  color: #1f1d1c;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  letter-spacing: 0.1em;
+  transform: rotate(8deg);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+.polaroid-stamp.l2 { background: #8a7038; color: #f4ede0; }
+.polaroid-stamp.imp { background: #c45050; color: #fff; }
+.polaroid-body {
+  font-family: 'Caveat', 'Noto Serif SC', cursive;
+  font-size: 16px;
+  line-height: 1.35;
+  color: #2a2826;
+}
+.polaroid-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: #6b6553;
+  margin-top: 8px;
+  border-top: 1px dashed #c4ba9e;
+  padding-top: 6px;
+  text-transform: uppercase;
+}
+.polaroid-quotes {
+  margin-top: 6px;
+  border-top: 1px dashed #c4ba9e;
+  padding-top: 6px;
+  font-size: 12px;
+  color: #5a5340;
+  font-family: 'Noto Serif SC', serif;
+  font-style: italic;
+}
+.polaroid-events {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.polaroid-events .ev {
+  font-family: -apple-system, "PingFang SC", sans-serif;
+  font-size: 9px;
+  padding: 1px 5px;
+  background: rgba(192, 160, 96, 0.2);
+  color: #6b5418;
+  border-radius: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FILM 方案 B — 胶卷连环格
+   多张卡片融合成一卷胶片(上下齿孔贯穿,左右暗棕色侧条)
+   每帧黑底白字 monospace,带噪点 grain
+   ═══════════════════════════════════════════════════════════════ */
+.film-b {
+  background: #14110d;
+  color: #e8e3d8;
+  font-family: 'JetBrains Mono', monospace;
+}
+.film-b .phone-head { background: #1c1812; color: #e8e3d8; border-bottom-color: rgba(255,255,255,0.1); }
+.film-b .phone-head .style-btn { color: #c0a060; border-color: rgba(192,160,96,0.4); }
+.film-b .phone-tabs { background: #1c1812; border-bottom-color: rgba(255,255,255,0.1); }
+.film-b .phone-tabs .tab { color: #8a8074; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
+.film-b .phone-tabs .tab.on { color: #c0a060; border-bottom: 2px solid #c0a060; }
+.film-b .phone-body { padding: 0; background: #14110d; }
+
+.filmstrip {
+  background: #221d15;
+  position: relative;
+  padding: 10px 24px;
+  border-left: 6px solid #3a3024;
+  border-right: 6px solid #3a3024;
+}
+.filmstrip::before, .filmstrip::after {
+  content: '';
+  position: absolute;
+  left: 24px; right: 24px;
+  height: 14px;
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0, transparent 8px,
+    #14110d 8px, #14110d 18px
+  );
+}
+.filmstrip::before { top: 0; }
+.filmstrip::after { bottom: 0; }
+
+.frame {
+  background: #1a1610;
+  margin: 18px 0;
+  padding: 14px 16px;
+  position: relative;
+  border: 1px solid rgba(192, 160, 96, 0.15);
+}
+.frame-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.frame-id {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: #c0a060;
+}
+.frame-tier {
+  font-size: 9px;
+  padding: 2px 7px;
+  background: #c0a060;
+  color: #14110d;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+}
+.frame-tier.l2 { background: transparent; border: 1px solid #c0a060; color: #c0a060; }
+.frame-tier.imp { background: #c45050; color: #fff; }
+.frame-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #f0e8d4;
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+}
+.frame-body {
+  font-family: -apple-system, "PingFang SC", sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #d6d0c0;
+}
+.frame-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(192,160,96,0.4), transparent);
+  margin: 10px 0;
+}
+.frame-quotes {
+  font-family: 'Noto Serif SC', serif;
+  font-style: italic;
+  font-size: 12px;
+  color: #b8b0a0;
+}
+.frame-quotes .q { padding: 3px 0; }
+.frame-quotes .q::before { content: '— '; color: #c0a060; }
+.frame-events {
+  margin-top: 10px;
+  display: flex; flex-wrap: wrap; gap: 4px;
+}
+.frame-events .ev {
+  font-size: 10px;
+  padding: 1px 7px;
+  border: 1px solid rgba(192,160,96,0.3);
+  color: #c0a060;
+}
+.frame-meta {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(192,160,96,0.3);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: #8a8074;
+  text-transform: uppercase;
+}
+.film-b .char-row { padding: 12px 18px; background: #1a1610; border-bottom: 1px solid rgba(192,160,96,0.15); margin: 0; }
+.film-b .char-chip { background: transparent; padding: 0; }
+.film-b .char-chip .char-av {
+  border-radius: 0;
+  border: 2px solid #c0a060;
+  width: 32px; height: 32px;
+  background: #3a3024;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+.film-b .char-chip:not(.on) .char-av { border-color: rgba(192,160,96,0.3); }
+.film-b .char-chip span { color: #c0a060; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; }
+
+/* ═══════════════════════════════════════════════════════════════
+   COSMIC 方案 A — 月相日记
+   深紫黑底,左侧月相 SVG 按日期变化,卡片半透薄白
+   ═══════════════════════════════════════════════════════════════ */
+.cosmic-a {
+  background: linear-gradient(180deg, #0a0820 0%, #1a0e3a 100%);
+  color: #ede6d0;
+}
+.cosmic-a .phone-head {
+  background: transparent;
+  border-bottom-color: rgba(255,255,255,0.12);
+  color: #ede6d0;
+}
+.cosmic-a .phone-head .style-btn { color: #ede6d0; border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); }
+.cosmic-a .phone-tabs { background: transparent; border-bottom-color: rgba(255,255,255,0.12); }
+.cosmic-a .phone-tabs .tab { color: #a89cc8; font-family: 'Noto Serif SC', serif; }
+.cosmic-a .phone-tabs .tab.on { color: #ede6d0; border-bottom: 2px solid #c0a8e8; text-shadow: 0 0 12px rgba(192,168,232,0.5); }
+.cosmic-a .phone-body {
+  background:
+    radial-gradient(1px 1px at 12% 18%, #d8c8f0, transparent),
+    radial-gradient(1px 1px at 78% 32%, #d8c8f0, transparent),
+    radial-gradient(2px 2px at 45% 78%, #ede6d0, transparent),
+    radial-gradient(1px 1px at 88% 88%, #d8c8f0, transparent),
+    radial-gradient(1px 1px at 22% 62%, #ede6d0, transparent);
+  padding: 14px;
+}
+
+.luna-row {
+  display: flex;
+  gap: 12px;
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.luna-moon {
+  flex-shrink: 0;
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: #ede6d0;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 18px rgba(237,230,208,0.3);
+}
+.luna-moon::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #0a0820;
+  border-radius: 50%;
+}
+.luna-moon.phase-1::after { transform: translateX(40%); }   /* waxing */
+.luna-moon.phase-2::after { transform: translateX(80%); }   /* full-ish */
+.luna-moon.phase-3::after { transform: translateX(20%); }   /* gibbous */
+.luna-moon.phase-4::after { transform: translateX(100%); }  /* full */
+.luna-body { flex: 1; min-width: 0; }
+.luna-chips {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.luna-chips .ch {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: #ede6d0;
+}
+.luna-chips .ch.tier { background: rgba(192,168,232,0.25); border-color: rgba(192,168,232,0.45); color: #d8c8f0; }
+.luna-chips .ch.imp { background: rgba(240,140,140,0.25); border-color: rgba(240,140,140,0.45); color: #f5b8b8; }
+.luna-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #f5efd8;
+  margin-bottom: 4px;
+  text-shadow: 0 0 8px rgba(192,168,232,0.3);
+}
+.luna-text {
+  font-family: -apple-system, "PingFang SC", sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #d8d0b8;
+}
+.luna-quotes {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  font-family: 'Noto Serif SC', serif;
+  font-style: italic;
+  font-size: 12px;
+  color: #b8b0d0;
+}
+.luna-quotes .q { padding: 2px 0; }
+.luna-events {
+  margin-top: 6px;
+  display: flex; flex-wrap: wrap; gap: 4px;
+}
+.luna-events .ev {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: rgba(192,168,232,0.12);
+  border: 1px solid rgba(192,168,232,0.25);
+  color: #c0a8e8;
+}
+.luna-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: #8c80a8;
+  letter-spacing: 0.1em;
+  margin-top: 4px;
+}
+.cosmic-a .char-chip { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); }
+.cosmic-a .char-chip.on { border-color: #c0a8e8; box-shadow: 0 0 10px rgba(192,168,232,0.4); }
+.cosmic-a .char-chip span { color: #ede6d0; }
+.cosmic-a .char-av { background: rgba(255,255,255,0.1); }
+
+/* ═══════════════════════════════════════════════════════════════
+   COSMIC 方案 B — 海底荧光
+   深青墨绿,生物荧光主色(青绿/品蓝),不规则气泡形卡片
+   ═══════════════════════════════════════════════════════════════ */
+.cosmic-b {
+  background: linear-gradient(180deg, #051a25 0%, #0a2a35 60%, #08303a 100%);
+  color: #c8e8e0;
+}
+.cosmic-b .phone-head { background: transparent; border-bottom-color: rgba(120,220,200,0.15); color: #c8e8e0; }
+.cosmic-b .phone-head .style-btn { color: #6effce; border-color: rgba(110,255,206,0.3); background: rgba(110,255,206,0.05); }
+.cosmic-b .phone-tabs { background: transparent; border-bottom-color: rgba(120,220,200,0.15); }
+.cosmic-b .phone-tabs .tab { color: #6a9890; }
+.cosmic-b .phone-tabs .tab.on { color: #6effce; border-bottom: 2px solid #6effce; text-shadow: 0 0 12px rgba(110,255,206,0.6); }
+.cosmic-b .phone-body {
+  padding: 16px 14px;
+}
+
+.bloom {
+  background: rgba(110, 255, 206, 0.06);
+  border: 1px solid rgba(110, 255, 206, 0.2);
+  border-radius: 26px 8px 30px 12px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  position: relative;
+}
+.bloom:nth-child(odd) { border-radius: 12px 28px 14px 32px; }
+.bloom::before {
+  /* 荧光晕 */
+  content: '';
+  position: absolute;
+  top: -1px; left: -1px; right: -1px; bottom: -1px;
+  border-radius: inherit;
+  box-shadow: 0 0 20px rgba(110, 255, 206, 0.1) inset;
+  pointer-events: none;
+}
+.bloom-chips {
+  display: flex; gap: 6px; margin-bottom: 6px;
+}
+.bloom-chips .ch {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: rgba(110,255,206,0.1);
+  border: 1px solid rgba(110,255,206,0.25);
+  color: #6effce;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.05em;
+}
+.bloom-chips .ch.imp {
+  background: rgba(255, 130, 200, 0.15);
+  border-color: rgba(255, 130, 200, 0.35);
+  color: #ffb0d8;
+}
+.bloom-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #d8fff0;
+  margin-bottom: 4px;
+  text-shadow: 0 0 14px rgba(110,255,206,0.4);
+}
+.bloom-text {
+  font-family: -apple-system, "PingFang SC", sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #b8d8d0;
+}
+.bloom-quotes {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dotted rgba(110,255,206,0.25);
+  font-style: italic;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 12px;
+  color: #98c8c0;
+}
+.bloom-quotes .q { padding: 2px 0; }
+.bloom-events {
+  margin-top: 8px;
+  display: flex; flex-wrap: wrap; gap: 4px;
+}
+.bloom-events .ev {
+  font-size: 10px;
+  padding: 1px 7px;
+  background: rgba(180, 130, 255, 0.12);
+  border: 1px solid rgba(180, 130, 255, 0.3);
+  color: #d0b8ff;
+  border-radius: 99px;
+}
+.bloom-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: #6a9890;
+  letter-spacing: 0.1em;
+  margin-top: 6px;
+}
+.cosmic-b .char-chip { background: rgba(110,255,206,0.05); border: 1px solid rgba(110,255,206,0.18); }
+.cosmic-b .char-chip.on { border-color: #6effce; box-shadow: 0 0 10px rgba(110,255,206,0.4); }
+.cosmic-b .char-chip span { color: #c8e8e0; }
+.cosmic-b .char-av { background: rgba(110,255,206,0.15); }
+
+/* ═══════════════════════════════════════════════════════════════
+   PLANNER 方案 A — 活页本
+   保留左侧 accent 竖条 + 圆点时间轴
+   加 3 个打孔 SVG 圆圈,卡片是横线纸纹白卡
+   ═══════════════════════════════════════════════════════════════ */
+.planner-a {
+  background: #f6f1e6;
+  color: #2a2520;
+}
+.planner-a .phone-head { background: #ede6d5; border-bottom-color: #d8cfb8; color: #4a3f2e; font-family: 'Noto Serif SC', serif; font-style: italic; }
+.planner-a .phone-head .style-btn { color: #6a5a3a; border-color: #c8b890; background: #f6f1e6; }
+.planner-a .phone-tabs { background: #ede6d5; border-bottom: 2px dashed #b8a878; }
+.planner-a .phone-tabs .tab { color: #8a7a5a; }
+.planner-a .phone-tabs .tab.on { color: #4a3f2e; font-weight: 600; border-bottom: 2px solid #c45a3a; margin-bottom: -2px; }
+.planner-a .phone-body {
+  background: #f6f1e6;
+  background-image:
+    /* 横线纸纹 — 低对比,只为质感 */
+    repeating-linear-gradient(180deg,
+      transparent 0, transparent 27px,
+      rgba(180,140,100,0.12) 27px, rgba(180,140,100,0.12) 28px),
+    /* 左侧 punch hole 列 */
+    linear-gradient(90deg, rgba(180,140,100,0.04) 0, rgba(180,140,100,0.04) 32px, transparent 32px);
+  padding: 14px 14px 14px 40px;
+  position: relative;
+}
+.planner-a .phone-body::before {
+  /* 三个打孔 — fixed pos 装饰 */
+  content: '';
+  position: absolute;
+  left: 12px; top: 30px;
+  width: 12px; height: 12px;
+  background: #c8c0a8;
+  border-radius: 50%;
+  box-shadow:
+    0 130px 0 #c8c0a8,
+    0 260px 0 #c8c0a8;
+  box-shadow:
+    0 130px 0 #c8c0a8,
+    0 260px 0 #c8c0a8,
+    inset 0 1px 2px rgba(0,0,0,0.2);
+}
+
+.leaf {
+  position: relative;
+  padding: 6px 14px 6px 18px;
+  margin: 0 0 14px 4px;
+  border-left: 3px solid #c45a3a;
+}
+.leaf::before {
+  content: '';
+  position: absolute;
+  left: -7px;
+  top: 12px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #c45a3a;
+  box-shadow: 0 0 0 3px #f6f1e6;
+}
+.leaf-meta {
+  font-family: 'Noto Serif SC', serif;
+  font-style: italic;
+  font-size: 11px;
+  color: #8a7a5a;
+  margin-bottom: 2px;
+}
+.leaf-chips {
+  display: flex; gap: 4px; margin-bottom: 4px; flex-wrap: wrap;
+}
+.leaf-chips .ch {
+  font-size: 10px;
+  padding: 2px 7px;
+  background: linear-gradient(135deg, rgba(255,210,140,0.7), rgba(255,190,120,0.5));
+  border-radius: 2px;
+  color: #4a3520;
+  border-top: 1px dashed rgba(74,53,32,0.3);
+  border-bottom: 1px dashed rgba(74,53,32,0.3);
+}
+.leaf-chips .ch.imp { background: linear-gradient(135deg, rgba(255,160,160,0.7), rgba(220,120,120,0.6)); color: #6a2020; }
+.leaf-chips .ch.tier { background: linear-gradient(135deg, rgba(180,200,140,0.7), rgba(160,180,120,0.5)); color: #3a4520; }
+.leaf-title {
+  font-family: 'Noto Serif SC', serif;
+  font-weight: 600;
+  font-size: 14px;
+  color: #2a2520;
+  margin-bottom: 2px;
+}
+.leaf-body {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #3a3528;
+}
+.leaf-quotes {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed #c8b890;
+  font-size: 12px;
+  color: #5a4f3a;
+  font-style: italic;
+  font-family: 'Noto Serif SC', serif;
+}
+.leaf-events {
+  margin-top: 6px; display: flex; flex-wrap: wrap; gap: 3px;
+}
+.leaf-events .ev {
+  font-size: 10px;
+  padding: 1px 6px;
+  background: rgba(196,90,58,0.1);
+  border: 1px solid rgba(196,90,58,0.25);
+  color: #8a3a20;
+  border-radius: 2px;
+}
+.planner-a .char-row { padding-left: 0; }
+.planner-a .char-chip { background: #fff8e8; border: 1px solid #c8b890; }
+.planner-a .char-chip.on { border-color: #c45a3a; box-shadow: 0 0 0 2px rgba(196,90,58,0.2); }
+.planner-a .char-chip span { color: #4a3f2e; font-size: 11px; }
+.planner-a .char-av { border-radius: 3px; background: #b89870; }
+
+/* ═══════════════════════════════════════════════════════════════
+   PLANNER 方案 B — 便签夹
+   保留圆点时间轴,每条 memory 是色卡便签(粉黄绿 by tag)
+   顶部夹子 SVG,标题手写 + chip 当贴纸
+   ═══════════════════════════════════════════════════════════════ */
+.planner-b {
+  background: #2a2520;
+  color: #e8e0d0;
+}
+.planner-b .phone-head { background: #1f1a14; color: #e8e0d0; border-bottom-color: rgba(255,255,255,0.08); }
+.planner-b .phone-head .style-btn { color: #e8c878; border-color: rgba(232,200,120,0.3); background: rgba(232,200,120,0.05); }
+.planner-b .phone-tabs { background: #1f1a14; border-bottom-color: rgba(255,255,255,0.08); }
+.planner-b .phone-tabs .tab { color: #8a7a5a; }
+.planner-b .phone-tabs .tab.on { color: #e8c878; border-bottom: 2px solid #e8c878; }
+.planner-b .phone-body {
+  background: #2a2520;
+  padding: 18px 14px;
+  position: relative;
+}
+.planner-b .phone-body::before {
+  /* 左侧穿绳子 — accent 红线穿过整列 */
+  content: '';
+  position: absolute;
+  left: 28px; top: 0; bottom: 0;
+  width: 2px;
+  background: linear-gradient(180deg, rgba(232,120,90,0.6), rgba(232,120,90,0.3));
+}
+
+.sticky {
+  position: relative;
+  margin-left: 24px;
+  margin-bottom: 16px;
+  padding: 14px 14px 14px 16px;
+  background: #f5e6a0;
+  color: #2a2520;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.3) inset;
+  border-radius: 2px 8px 2px 8px;
+  font-family: 'Caveat', 'Noto Serif SC', cursive;
+}
+.sticky.tone-pink { background: #f4c8d0; }
+.sticky.tone-green { background: #cce0b0; }
+.sticky.tone-blue { background: #b8d4e8; }
+.sticky::before {
+  /* 时间轴圆点穿绳 */
+  content: '';
+  position: absolute;
+  left: -22px; top: 16px;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: #e8786a;
+  box-shadow: 0 0 0 3px #2a2520, 0 2px 4px rgba(0,0,0,0.4);
+}
+.sticky::after {
+  /* 顶部纸夹/胶带 */
+  content: '';
+  position: absolute;
+  top: -6px; left: 50%;
+  transform: translateX(-50%) rotate(2deg);
+  width: 50px; height: 12px;
+  background: rgba(255,255,255,0.4);
+  border: 1px solid rgba(0,0,0,0.1);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+.sticky-chips {
+  display: flex; gap: 4px; margin-bottom: 4px; flex-wrap: wrap;
+}
+.sticky-chips .ch {
+  font-family: -apple-system, "PingFang SC", sans-serif;
+  font-size: 10px;
+  padding: 2px 7px;
+  background: rgba(0,0,0,0.08);
+  border-radius: 99px;
+  color: #4a3520;
+  font-weight: 500;
+}
+.sticky-chips .ch.imp { background: rgba(196,90,58,0.25); color: #6a2818; }
+.sticky-chips .ch.tier { background: rgba(60,90,140,0.15); color: #2a4070; }
+.sticky-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 2px;
+  color: #2a2520;
+  font-family: 'Caveat', 'Noto Serif SC', cursive;
+  letter-spacing: 0.02em;
+}
+.sticky-body {
+  font-family: 'Caveat', 'Noto Serif SC', cursive;
+  font-size: 16px;
+  line-height: 1.4;
+  color: #2a2520;
+}
+.sticky-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: #6a5a3a;
+  letter-spacing: 0.05em;
+  margin-top: 4px;
+}
+.sticky-quotes {
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(74,53,32,0.3);
+  font-family: 'Noto Serif SC', serif;
+  font-style: italic;
+  font-size: 12px;
+  color: #4a3520;
+}
+.sticky-events {
+  margin-top: 6px;
+  display: flex; flex-wrap: wrap; gap: 3px;
+}
+.sticky-events .ev {
+  font-family: -apple-system, "PingFang SC", sans-serif;
+  font-size: 10px;
+  padding: 1px 6px;
+  background: rgba(0,0,0,0.06);
+  color: #4a3520;
+  border-radius: 99px;
+}
+.planner-b .char-row { padding: 0 0 10px; margin-left: 0; }
+.planner-b .char-chip { background: rgba(232,200,120,0.06); border: 1px solid rgba(232,200,120,0.25); }
+.planner-b .char-chip.on { border-color: #e8c878; }
+.planner-b .char-chip span { color: #e8c878; font-size: 11px; }
+.planner-b .char-av { background: #e8786a; }
+</style>
+</head>
+<body>
+
+<h1>记忆 app 风格重做 demo — film / cosmic / planner</h1>
+<p class="intro">
+  每个风格 2 方案并列。Mock 数据 = 4 条记忆(混合 L1/L2/重要度/有节选/有事件),配 char filter 横排。<br>
+  设计目标:<b>跟现在版本相比要有明显的视觉个性</b>,不只是配色微调。<br>
+  现在的版本问题:1) 整体结构跟参考酒馆站太像(就是 chip + 摘要 + 节选堆叠) 2) 各风格只在底色 + chip 形状上区分,卡片骨架是一套;3) film 的齿孔条 + 反色 meta 是唯一明显辨识但太重了。
+</p>
+
+<div class="grid">
+
+  <!-- ═════════════ FILM A ═════════════ -->
+  <article class="card">
+    <div class="card-label"><span class="tag tag-film">FILM A</span> 拍立得相册 — 每条记忆 = 一张真拍立得</div>
+    <div class="phone film-a">
+      <div class="phone-head">
+        <span class="back">‹ 返回</span>
+        <span class="title">记忆</span>
+        <span class="style-btn">胶片 ▾</span>
+      </div>
+      <div class="phone-tabs">
+        <span class="tab">月历</span>
+        <span class="tab on">时间线</span>
+        <span class="tab">纪念日</span>
+        <span class="tab">关于你</span>
+        <span class="tab">总结</span>
+      </div>
+      <div class="phone-body">
+        <div class="char-row">
+          <div class="char-chip on"><div class="char-av" style="background:#7a9bb0">渠</div><span>问影渠</span></div>
+          <div class="char-chip"><div class="char-av" style="background:#b89c5e">夕</div><span>云夕</span></div>
+          <div class="char-chip"><div class="char-av" style="background:#9e6968">青</div><span>沈青舟</span></div>
+        </div>
+
+        <div class="polaroid">
+          <div class="polaroid-stamp imp">高 IMP</div>
+          <div class="polaroid-photo">
+            <div class="scene">雨夜出租车后座</div>
+          </div>
+          <div class="polaroid-body">第一次说想见我。</div>
+          <div class="polaroid-quotes">
+            「能不能今天来。」<br>
+            「我等你。」
+          </div>
+          <div class="polaroid-events">
+            <span class="ev">语音 ×3 共 24″</span>
+            <span class="ev">位置:浦东</span>
+          </div>
+          <div class="polaroid-meta">05-22 22:14 — 23:08 · 渠</div>
+        </div>
+
+        <div class="polaroid">
+          <div class="polaroid-stamp">L1</div>
+          <div class="polaroid-photo tone-2">
+            <div class="scene">咖啡馆</div>
+          </div>
+          <div class="polaroid-body">谈到她哥哥的近况,说她最近常做同一个梦。</div>
+          <div class="polaroid-meta">05-20 14:02 — 15:30 · 渠</div>
+        </div>
+
+        <div class="polaroid">
+          <div class="polaroid-stamp l2">L2</div>
+          <div class="polaroid-photo tone-3">
+            <div class="scene">三月散漫的下午</div>
+          </div>
+          <div class="polaroid-body">三月里反复见面、看展、写信,她从陌生到把家钥匙给我。</div>
+          <div class="polaroid-meta">03-04 – 03-29 · 渠</div>
+        </div>
+
+        <div class="polaroid">
+          <div class="polaroid-stamp">L1</div>
+          <div class="polaroid-photo tone-4">
+            <div class="scene">楼顶</div>
+          </div>
+          <div class="polaroid-body">为了上次没回信吵了一架,最后她说算了。</div>
+          <div class="polaroid-events">
+            <span class="ev">撤回 ×4</span>
+            <span class="ev">转账 ¥200 → 已退回</span>
+          </div>
+          <div class="polaroid-meta">05-15 19:40 — 21:12 · 渠</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-notes">
+      <b>核心:</b>每条记忆是一张实物拍立得 — 顶部彩色"显影色块"代表情绪基调(暖橙=亲密、冷蓝=日常、暗红=冲突、暗绿=约定),底部白边写正文。<br>
+      <b>头像保留:</b>char filter 用 polaroid 风方角白边头像,跟卡片质感一脉。<br>
+      <b>chip 改造:</b>L1/L2/重要度变成右上角的橡皮"印章"(轻微旋转 + 投影),不再单独成行 → <b>顺带修了 L1 vs title 对齐问题</b>。<br>
+      <b>events / quotes:</b>用虚线分割成两块独立小区。
+    </div>
+  </article>
+
+  <!-- ═════════════ FILM B ═════════════ -->
+  <article class="card">
+    <div class="card-label"><span class="tag tag-film">FILM B</span> 胶卷连环格 — 整列卡片是一卷胶片</div>
+    <div class="phone film-b">
+      <div class="phone-head">
+        <span class="back">‹ 返回</span>
+        <span class="title">记忆</span>
+        <span class="style-btn">胶片 ▾</span>
+      </div>
+      <div class="phone-tabs">
+        <span class="tab">CAL</span>
+        <span class="tab on">LINE</span>
+        <span class="tab">MARK</span>
+        <span class="tab">ABOUT</span>
+        <span class="tab">SUM</span>
+      </div>
+      <div class="char-row">
+        <div class="char-chip on"><div class="char-av" style="background:#7a9bb0">渠</div><span>QU</span></div>
+        <div class="char-chip"><div class="char-av" style="background:#b89c5e">夕</div><span>XI</span></div>
+        <div class="char-chip"><div class="char-av" style="background:#9e6968">青</div><span>QING</span></div>
+      </div>
+      <div class="filmstrip">
+        <div class="frame">
+          <div class="frame-header">
+            <div class="frame-id">FRAME 027 · 05-22</div>
+            <div class="frame-tier imp">IMP</div>
+          </div>
+          <div class="frame-title">第一次说想见我</div>
+          <div class="frame-body">出租车后座,雨开始下,她说今天就来。</div>
+          <div class="frame-divider"></div>
+          <div class="frame-quotes">
+            <div class="q">能不能今天来。</div>
+            <div class="q">我等你。</div>
+          </div>
+          <div class="frame-events">
+            <span class="ev">VOICE×3 24″</span>
+            <span class="ev">LOC PUDONG</span>
+          </div>
+          <div class="frame-meta">22:14 — 23:08 · QU</div>
+        </div>
+
+        <div class="frame">
+          <div class="frame-header">
+            <div class="frame-id">FRAME 026 · 05-20</div>
+            <div class="frame-tier">L1</div>
+          </div>
+          <div class="frame-title">咖啡馆,梦的事</div>
+          <div class="frame-body">谈到她哥哥的近况,说她最近常做同一个梦。</div>
+          <div class="frame-meta">14:02 — 15:30 · QU</div>
+        </div>
+
+        <div class="frame">
+          <div class="frame-header">
+            <div class="frame-id">FRAME 025 · 三月合卷</div>
+            <div class="frame-tier l2">L2</div>
+          </div>
+          <div class="frame-title">从陌生到把家钥匙给我</div>
+          <div class="frame-body">三月里反复见面、看展、写信。</div>
+          <div class="frame-meta">03-04 – 03-29 · QU</div>
+        </div>
+
+        <div class="frame">
+          <div class="frame-header">
+            <div class="frame-id">FRAME 024 · 05-15</div>
+            <div class="frame-tier">L1</div>
+          </div>
+          <div class="frame-title">楼顶,算了</div>
+          <div class="frame-body">为了上次没回信吵了一架,最后她说算了。</div>
+          <div class="frame-events">
+            <span class="ev">RECALL×4</span>
+            <span class="ev">¥200 RTN</span>
+          </div>
+          <div class="frame-meta">19:40 — 21:12 · QU</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-notes">
+      <b>核心:</b>整列卡片用同一根"胶卷"包住 — 上下齿孔条 + 左右暗棕侧条贯穿,卡片之间无独立背景,视觉是一卷胶片。<br>
+      <b>头像保留:</b>char filter 用方角胶片片头标签,黑底金边,大写字母 + 拼音首字。<br>
+      <b>编号系统:</b>每帧前缀 <code>FRAME 027</code> 等,monospace 数字,有"档案感"。<br>
+      <b>chip 改造:</b>tier/imp 放卡片右上角作为色卡,L1/L2/IMP 三色单色块,不堆叠 → <b>对齐问题消失</b>。<br>
+      <b>tab 缩写:</b>用 CAL/LINE/MARK 等大写英文缩短适配窄屏。
+    </div>
+  </article>
+
+  <!-- ═════════════ COSMIC A ═════════════ -->
+  <article class="card">
+    <div class="card-label"><span class="tag tag-cosmic">COSMIC A</span> 月相日记 — 左侧月相按日期变化</div>
+    <div class="phone cosmic-a">
+      <div class="phone-head">
+        <span class="back">‹ 返回</span>
+        <span class="title">记忆</span>
+        <span class="style-btn">星河 ▾</span>
+      </div>
+      <div class="phone-tabs">
+        <span class="tab">月历</span>
+        <span class="tab on">时间线</span>
+        <span class="tab">纪念日</span>
+        <span class="tab">关于你</span>
+        <span class="tab">总结</span>
+      </div>
+      <div class="phone-body">
+        <div class="char-row">
+          <div class="char-chip on"><div class="char-av">渠</div><span>问影渠</span></div>
+          <div class="char-chip"><div class="char-av">夕</div><span>云夕</span></div>
+          <div class="char-chip"><div class="char-av">青</div><span>沈青舟</span></div>
+        </div>
+
+        <div class="luna-row">
+          <div class="luna-moon phase-2"></div>
+          <div class="luna-body">
+            <div class="luna-chips">
+              <span class="ch tier">L1</span>
+              <span class="ch imp">重要</span>
+            </div>
+            <div class="luna-title">第一次说想见我</div>
+            <div class="luna-text">出租车后座,雨开始下,她说今天就来。</div>
+            <div class="luna-quotes">
+              <div class="q">能不能今天来。</div>
+              <div class="q">我等你。</div>
+            </div>
+            <div class="luna-events">
+              <span class="ev">语音 ×3 共 24″</span>
+              <span class="ev">位置:浦东</span>
+            </div>
+            <div class="luna-meta">2026-05-22 22:14 — 23:08 · 渠</div>
+          </div>
+        </div>
+
+        <div class="luna-row">
+          <div class="luna-moon phase-1"></div>
+          <div class="luna-body">
+            <div class="luna-chips">
+              <span class="ch tier">L1</span>
+            </div>
+            <div class="luna-title">咖啡馆,梦的事</div>
+            <div class="luna-text">谈到她哥哥的近况,说她最近常做同一个梦。</div>
+            <div class="luna-meta">2026-05-20 14:02 — 15:30 · 渠</div>
+          </div>
+        </div>
+
+        <div class="luna-row">
+          <div class="luna-moon phase-4"></div>
+          <div class="luna-body">
+            <div class="luna-chips">
+              <span class="ch tier">L2</span>
+            </div>
+            <div class="luna-title">从陌生到把家钥匙给我</div>
+            <div class="luna-text">三月里反复见面、看展、写信。</div>
+            <div class="luna-meta">2026-03-04 – 03-29 · 渠</div>
+          </div>
+        </div>
+
+        <div class="luna-row">
+          <div class="luna-moon phase-3"></div>
+          <div class="luna-body">
+            <div class="luna-chips">
+              <span class="ch tier">L1</span>
+            </div>
+            <div class="luna-title">楼顶,算了</div>
+            <div class="luna-text">为了上次没回信吵了一架,最后她说算了。</div>
+            <div class="luna-events">
+              <span class="ev">撤回 ×4</span>
+              <span class="ev">¥200 已退回</span>
+            </div>
+            <div class="luna-meta">2026-05-15 19:40 — 21:12 · 渠</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-notes">
+      <b>核心:</b>每条记忆左侧是月相(根据 dayKey 的 day-of-month 自动算 — 1/28 是新月、15/28 是满月,中间渐变)。整月翻看时左侧月相会像月历一样循环,有"日记"质感。<br>
+      <b>深色基调:</b>沿用现版 #0a0820 → #1a0e3a 渐变 + 月光米白 #ede6d0,但更深 + 加 backdrop blur 让卡片更"飘"。<br>
+      <b>chip 改造:</b>tier/imp 改成发光"星星"般的小 pill,跟整体星河感呼应 → 不再有 L1 vs title 对齐问题(chips 在 body 内自然 flex)。<br>
+      <b>标题字:</b>Noto Serif SC 加 text-shadow 发光,标题有"月光下的字"感。
+    </div>
+  </article>
+
+  <!-- ═════════════ COSMIC B ═════════════ -->
+  <article class="card">
+    <div class="card-label"><span class="tag tag-cosmic">COSMIC B</span> 海底荧光 — 深青墨绿 + 生物荧光</div>
+    <div class="phone cosmic-b">
+      <div class="phone-head">
+        <span class="back">‹ 返回</span>
+        <span class="title">记忆</span>
+        <span class="style-btn">星河 ▾</span>
+      </div>
+      <div class="phone-tabs">
+        <span class="tab">月历</span>
+        <span class="tab on">时间线</span>
+        <span class="tab">纪念日</span>
+        <span class="tab">关于你</span>
+        <span class="tab">总结</span>
+      </div>
+      <div class="phone-body">
+        <div class="char-row">
+          <div class="char-chip on"><div class="char-av">渠</div><span>问影渠</span></div>
+          <div class="char-chip"><div class="char-av">夕</div><span>云夕</span></div>
+          <div class="char-chip"><div class="char-av">青</div><span>沈青舟</span></div>
+        </div>
+
+        <div class="bloom">
+          <div class="bloom-chips">
+            <span class="ch">L1</span>
+            <span class="ch imp">重要</span>
+          </div>
+          <div class="bloom-title">第一次说想见我</div>
+          <div class="bloom-text">出租车后座,雨开始下,她说今天就来。</div>
+          <div class="bloom-quotes">
+            <div class="q">「能不能今天来。」</div>
+            <div class="q">「我等你。」</div>
+          </div>
+          <div class="bloom-events">
+            <span class="ev">语音 ×3 共 24″</span>
+            <span class="ev">位置:浦东</span>
+          </div>
+          <div class="bloom-meta">05-22 22:14 — 23:08 · 渠</div>
+        </div>
+
+        <div class="bloom">
+          <div class="bloom-chips"><span class="ch">L1</span></div>
+          <div class="bloom-title">咖啡馆,梦的事</div>
+          <div class="bloom-text">谈到她哥哥的近况,说她最近常做同一个梦。</div>
+          <div class="bloom-meta">05-20 14:02 — 15:30 · 渠</div>
+        </div>
+
+        <div class="bloom">
+          <div class="bloom-chips"><span class="ch">L2</span></div>
+          <div class="bloom-title">从陌生到把家钥匙给我</div>
+          <div class="bloom-text">三月里反复见面、看展、写信。</div>
+          <div class="bloom-meta">03-04 – 03-29 · 渠</div>
+        </div>
+
+        <div class="bloom">
+          <div class="bloom-chips"><span class="ch">L1</span></div>
+          <div class="bloom-title">楼顶,算了</div>
+          <div class="bloom-text">为了上次没回信吵了一架,最后她说算了。</div>
+          <div class="bloom-events">
+            <span class="ev">撤回 ×4</span>
+            <span class="ev">¥200 已退回</span>
+          </div>
+          <div class="bloom-meta">05-15 19:40 — 21:12 · 渠</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-notes">
+      <b>核心:</b>跟方案 A 完全不同方向 — 深海主题,不用月光 / 星空。背景 #051a25 → #08303a 深青墨绿渐变,卡片是<b>不规则气泡形</b>(border-radius 非对称,奇偶卡片交替)+ 内发光,像深海发光生物。<br>
+      <b>主色:</b>荧光青绿 #6effce 作为 accent(tier、focus、glow),品紫 #d0b8ff 作为次色(events)。两色都是 biolume 真实存在的色。<br>
+      <b>区别于 A:</b>A 是"夜晚 + 静谧",B 是"深海 + 异色生命"。你可以选哪个更贴心境。
+    </div>
+  </article>
+
+  <!-- ═════════════ PLANNER A ═════════════ -->
+  <article class="card">
+    <div class="card-label"><span class="tag tag-planner">PLANNER A</span> 活页本 — 左侧打孔 + 点线时间轴</div>
+    <div class="phone planner-a">
+      <div class="phone-head">
+        <span class="back">‹ 返回</span>
+        <span class="title"><i>记忆</i></span>
+        <span class="style-btn">手账本 ▾</span>
+      </div>
+      <div class="phone-tabs">
+        <span class="tab">月历</span>
+        <span class="tab on">时间线</span>
+        <span class="tab">纪念日</span>
+        <span class="tab">关于你</span>
+        <span class="tab">总结</span>
+      </div>
+      <div class="phone-body">
+        <div class="char-row">
+          <div class="char-chip on"><div class="char-av">渠</div><span>问影渠</span></div>
+          <div class="char-chip"><div class="char-av" style="background:#a8c878">夕</div><span>云夕</span></div>
+          <div class="char-chip"><div class="char-av" style="background:#d89878">青</div><span>沈青舟</span></div>
+        </div>
+
+        <div class="leaf">
+          <div class="leaf-meta">2026-05-22 22:14 — 23:08 · 渠</div>
+          <div class="leaf-chips">
+            <span class="ch tier">L1</span>
+            <span class="ch imp">重要</span>
+          </div>
+          <div class="leaf-title">第一次说想见我</div>
+          <div class="leaf-body">出租车后座,雨开始下,她说今天就来。</div>
+          <div class="leaf-quotes">
+            「能不能今天来。」 / 「我等你。」
+          </div>
+          <div class="leaf-events">
+            <span class="ev">语音 ×3 共 24″</span>
+            <span class="ev">位置:浦东</span>
+          </div>
+        </div>
+
+        <div class="leaf">
+          <div class="leaf-meta">2026-05-20 14:02 — 15:30 · 渠</div>
+          <div class="leaf-chips"><span class="ch tier">L1</span></div>
+          <div class="leaf-title">咖啡馆,梦的事</div>
+          <div class="leaf-body">谈到她哥哥的近况,说她最近常做同一个梦。</div>
+        </div>
+
+        <div class="leaf">
+          <div class="leaf-meta">2026-03-04 – 03-29 · 渠</div>
+          <div class="leaf-chips"><span class="ch tier">L2</span></div>
+          <div class="leaf-title">从陌生到把家钥匙给我</div>
+          <div class="leaf-body">三月里反复见面、看展、写信。</div>
+        </div>
+
+        <div class="leaf">
+          <div class="leaf-meta">2026-05-15 19:40 — 21:12 · 渠</div>
+          <div class="leaf-chips"><span class="ch tier">L1</span></div>
+          <div class="leaf-title">楼顶,算了</div>
+          <div class="leaf-body">为了上次没回信吵了一架,最后她说算了。</div>
+          <div class="leaf-events">
+            <span class="ev">撤回 ×4</span>
+            <span class="ev">¥200 已退回</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-notes">
+      <b>保留:</b>左侧 accent 竖条 + 圆点时间轴(你说还可以的设计) — 颜色从粉黑改成更柔的橙红 #c45a3a,搭奶白纸底更舒服。<br>
+      <b>新加:</b>1)左侧 3 个打孔圆圈固定装饰(活页本扣眼);2)纸纹用淡淡横线背景(真活页本质感);3)tab 用斜体 Noto Serif SC italic + 红色 active line。<br>
+      <b>chip 当胶带:</b>沿用渐变奶油 + dashed border 但收敛了颜色;tier/重要度三色区分(蓝绿/橙红)。<br>
+      <b>chips 在 meta 下方独立行:</b>从 L1 vs title 对齐问题里解脱 — chips 是次要装饰、title 是主位,本来就该上下分。
+    </div>
+  </article>
+
+  <!-- ═════════════ PLANNER B ═════════════ -->
+  <article class="card">
+    <div class="card-label"><span class="tag tag-planner">PLANNER B</span> 便签夹 — 点线时间轴 + 色卡便签</div>
+    <div class="phone planner-b">
+      <div class="phone-head">
+        <span class="back">‹ 返回</span>
+        <span class="title">记忆</span>
+        <span class="style-btn">手账本 ▾</span>
+      </div>
+      <div class="phone-tabs">
+        <span class="tab">月历</span>
+        <span class="tab on">时间线</span>
+        <span class="tab">纪念日</span>
+        <span class="tab">关于你</span>
+        <span class="tab">总结</span>
+      </div>
+      <div class="phone-body">
+        <div class="char-row">
+          <div class="char-chip on"><div class="char-av">渠</div><span>问影渠</span></div>
+          <div class="char-chip"><div class="char-av" style="background:#88a8b0">夕</div><span>云夕</span></div>
+          <div class="char-chip"><div class="char-av" style="background:#b08878">青</div><span>沈青舟</span></div>
+        </div>
+
+        <div class="sticky tone-pink">
+          <div class="sticky-chips">
+            <span class="ch imp">重要</span>
+            <span class="ch tier">L1</span>
+          </div>
+          <div class="sticky-title">第一次说想见我</div>
+          <div class="sticky-body">出租车后座,雨开始下,她说今天就来。</div>
+          <div class="sticky-quotes">「能不能今天来。」「我等你。」</div>
+          <div class="sticky-events">
+            <span class="ev">语音 ×3 共 24″</span>
+            <span class="ev">位置:浦东</span>
+          </div>
+          <div class="sticky-meta">2026-05-22 22:14 — 23:08 · 渠</div>
+        </div>
+
+        <div class="sticky">
+          <div class="sticky-chips"><span class="ch tier">L1</span></div>
+          <div class="sticky-title">咖啡馆,梦的事</div>
+          <div class="sticky-body">谈到她哥哥的近况,说她最近常做同一个梦。</div>
+          <div class="sticky-meta">2026-05-20 · 渠</div>
+        </div>
+
+        <div class="sticky tone-green">
+          <div class="sticky-chips"><span class="ch tier">L2</span></div>
+          <div class="sticky-title">从陌生到把家钥匙给我</div>
+          <div class="sticky-body">三月里反复见面、看展、写信。</div>
+          <div class="sticky-meta">2026-03-04 – 03-29 · 渠</div>
+        </div>
+
+        <div class="sticky tone-blue">
+          <div class="sticky-chips"><span class="ch tier">L1</span></div>
+          <div class="sticky-title">楼顶,算了</div>
+          <div class="sticky-body">为了上次没回信吵了一架,最后她说算了。</div>
+          <div class="sticky-events">
+            <span class="ev">撤回 ×4</span>
+            <span class="ev">¥200 已退回</span>
+          </div>
+          <div class="sticky-meta">2026-05-15 · 渠</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-notes">
+      <b>核心:</b>整体背深棕 → 便签像真便签夹在墙上 — 一根 accent 红线穿过整列(取代 A 的 accent 竖条),每张便签穿在线上(线上的圆点 = 时间轴节点)。<br>
+      <b>保留:</b>圆点时间轴的核心结构 — 但圆点从"卡片左侧"挪到"绳子上"。<br>
+      <b>色卡 by tag:</b>转折 / 亲密 = 粉、约定 / 日常 = 黄(默认)、发现 = 绿、冲突 = 蓝。视觉一眼分类。<br>
+      <b>顶部胶带 SVG:</b>每张便签顶部一段透明胶带,微旋。<br>
+      <b>标题手写体:</b>Caveat + Noto Serif SC fallback,搭便签纸感更搭。
+    </div>
+  </article>
+
+</div>
+
+</body>
+</html>

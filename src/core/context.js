@@ -1053,7 +1053,7 @@ const MEMORY_OUTPUT_RULES = `
 
 [CARD]
 标题: <8 字内,概括这段对话的主题(像章节名)>
-摘要: <这一段的中文摘要,不超过 300 字。可放心使用任何标点包括双引号。>
+摘要: <这一段的中文摘要,不超过 200 字。可放心使用任何标点包括双引号。**用对话双方的真名指代他们**,不要写"用户和角色"。>
 关键原话: <可省略;每行一条,格式 "说话人→对方: 原话内容";1-5 条>
 标签: <6 类之一>
 重要度: <high 或 low>
@@ -1301,15 +1301,24 @@ export async function maybeCompressMemory(sessionId, opts = {}) {
   const oldestDay = sortedDays[0];
   const overflow = byDay.get(oldestDay);
 
+  const session = await db.get('chatSessions', sessionId);
+  // 拿真名注入 dump + prompt context — 让模型用 personaName / charName 而非
+  // 「用户」「角色」泛指。Memory app 翻看时摘要直接读「沈青舟说她...」更
+  // 有"我自己的关系"感,不是 LLM 输出味儿。fallback 到泛指防止 character/
+  // persona 被删后 dump 出现 undefined。
+  const character = session?.characterId ? await db.get('characters', session.characterId) : null;
+  const persona   = session?.personaId   ? await db.get('personas',   session.personaId)   : null;
+  const personaName = (persona?.name   || '').trim() || '用户';
+  const charName    = (character?.name || '').trim() || '角色';
+
   // Pass quote-resolver into renderActionsAsText so reply 引用原文 inlined
   // in the dump too (B#8).
   const ctx = makeRenderContext(all);
   const dump = overflow.map(m => {
-    const speaker = m.role === 'user' ? '用户' : (m.role === 'character' ? '角色' : 'system');
+    const speaker = m.role === 'user' ? personaName : (m.role === 'character' ? charName : 'system');
     return `${speaker}: ${renderActionsAsText(m.actions ?? [], ctx)}`;
   }).join('\n');
 
-  const session = await db.get('chatSessions', sessionId);
   const override = (session?.memoryPromptOverride || '').trim();
   // 拼三段:压缩规则 + 输出格式(JSON + 6 类 tag) + 风格补充(session-level)
   const sys = [
@@ -1318,9 +1327,13 @@ export async function maybeCompressMemory(sessionId, opts = {}) {
     override ? `\n# 风格补充(适用于 summary 字段的语气)\n${override}` : '',
   ].filter(Boolean).join('\n');
 
+  // user message 顶部加一行明示双方真名,辅助模型在 summary / 标题 / 关键原话
+  // 里都用真名。dump 里 speaker 已经是真名,这行起强化作用。
+  const userMsg = `这是「${personaName}」和「${charName}」的对话。请在「标题」「摘要」「关键原话」三处都用这两个真名指代,不要写"用户"或"角色"。\n\n${dump}`;
+
   const raw = await ai.callAI({
     systemPrompt: sys,
-    messages: [{ role: 'user', content: dump }],
+    messages: [{ role: 'user', content: userMsg }],
     temperature: 0.3,
   });
 

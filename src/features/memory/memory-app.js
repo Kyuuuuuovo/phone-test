@@ -57,10 +57,6 @@ export async function mountMemoryApp(container, params, router) {
   let vectorQuery = '';
   let vectorHits = null;     // null = 未搜过;[] = 搜过没结果;[...] = 有命中
   let vectorBusy = false;
-  // 向量打标 backfill 状态。老 memory 没 tag 字段,新生成的(context MVP)有。
-  // user 点按钮 → 串行扫所有缺 tag 的 memory,逐条 AI 分类,写回 m.tag。
-  let backfillBusy = false;
-  let backfillStatus = { text: '', cls: '' };
 
   async function render() {
     const chars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
@@ -170,7 +166,12 @@ export async function mountMemoryApp(container, params, router) {
   //   右上角,跟 meta / chips 视觉抢位置。改成跟 chips 同行 flex 右端,跟卡片
   //   内容一起在 flow 里,不再悬浮。extras 仍保留给 mergedDetail 这类底部
   //   非按钮内容用。
-  function buildMemCard({ meta = [], body, tier, timeRange, tag, score, extras = '', tools = '', dataAttrs = '', cardClass = '', title, quotes, importance, events }) {
+  function buildMemCard({ meta = [], body, tier, timeRange, tag, score, extras = '', tools = '', dataAttrs = '', cardClass = '', title, quotes, importance, events, phaseFromTs }) {
+    // 月相相位(cosmic 风格用,其他风格无视)— day-of-month 4 档映射。
+    //   不是真天文月相,是"日期诗意"映射 — 让用户看月初 / 月中 / 月末记忆时
+    //   左侧月相循环变化,有"日记翻页"感。phaseAttr 空时 cosmic CSS 默认满月。
+    const phase = moonPhaseOf(phaseFromTs);
+    const phaseAttr = phase ? ` data-moon-phase="${phase}"` : '';
     const tierChip = tier
       ? `<span class="mem-tier mem-tier-${tier === 2 ? 'l2' : 'l1'}">${tier === 2 ? 'L2' : 'L1'}</span>`
       : '';
@@ -217,7 +218,7 @@ export async function mountMemoryApp(container, params, router) {
     ` : '';
     const cardClasses = [cardClass, importance === 'high' ? 'ma-row-imp-high' : ''].filter(Boolean).join(' ');
     return `
-      <div class="ma-row${cardClasses ? ' ' + cardClasses : ''}"${dataAttrs ? ' ' + dataAttrs : ''}>
+      <div class="ma-row${cardClasses ? ' ' + cardClasses : ''}"${phaseAttr}${dataAttrs ? ' ' + dataAttrs : ''}>
         ${chipsBlock}
         ${metaBlock}
         ${titleHtml}
@@ -445,6 +446,7 @@ export async function mountMemoryApp(container, params, router) {
             extras: mergedDetail,
             cardClass: t.mergedFrom ? 'merged-row' : '',
             dataAttrs: `data-tl-id="${esc(t.id)}"`,
+            phaseFromTs: t.fromTs,
           });
         }).join('')}
       </div>
@@ -533,6 +535,7 @@ export async function mountMemoryApp(container, params, router) {
               dataAttrs: `data-ms-id="${esc(m.id)}"`,
               tools,
               extras,
+              phaseFromTs: dayKeyToTs(m.dayKey),
             });
           }).join('')}
         </div>
@@ -719,6 +722,7 @@ export async function mountMemoryApp(container, params, router) {
                 importance: h.memory.importance,
                 events: h.memory.events,
                 cardClass: 'vh-row',
+                phaseFromTs: h.memory.fromTs || h.memory.createdAt,
               });
             }).join('')}
           </div>
@@ -764,6 +768,7 @@ export async function mountMemoryApp(container, params, router) {
                 events: m.events,
                 tools: `<button class="ma-row-edit" type="button" title="编辑">✎</button><button class="ma-row-del" type="button" title="删除">×</button>`,
                 dataAttrs: `data-memory-id="${esc(m.id)}"`,
+                phaseFromTs: m.fromTs || m.createdAt,
               })).join('')}
             </details>
           `;
@@ -809,52 +814,6 @@ export async function mountMemoryApp(container, params, router) {
     } finally {
       vectorBusy = false;
       await render();
-    }
-  }
-
-  // 向量打标 backfill — 扫 memories 里 m.tag 为空的(老 memory + 当时解析
-  // 失败的),串行调 AI 分类。每次最多 30 条,避免一次性烧 token / 撞限速。
-  // Prompt 极简,只让模型从 6 类挑 1 个,不二次复述 summary。
-  async function runTagBackfill() {
-    if (backfillBusy) return;
-    backfillBusy = true;
-    backfillStatus = { text: '扫描中…', cls: '' };
-    await render();
-    const ai = await import('../../core/ai.js');
-    const TAGS = ['转折', '亲密', '冲突', '发现', '约定', '日常'];
-    const sys = `分类下面这段记忆摘要,从 6 类挑 1 个最贴切的:转折(关系关键节点)/ 亲密(温柔深入暖)/ 冲突(摩擦紧张)/ 发现(新事实)/ 约定(计划承诺)/ 日常(闲聊兜底)。**只输出 tag 名**(2 字),不加引号、不加解释、不加标点。`;
-    let done = 0, errors = 0;
-    try {
-      const all = (await db.getAll('memories')).filter(m => !m.tag).slice(0, 30);
-      const total = all.length;
-      for (const m of all) {
-        try {
-          const raw = await ai.callAI({
-            systemPrompt: sys,
-            messages: [{ role: 'user', content: normalizeMemorySummary(m.summary) || '(空)' }],
-            temperature: 0.2,
-          });
-          const tag = String(raw || '').trim().slice(0, 4);  // 模型可能多吐字符,截 4 字内
-          if (TAGS.includes(tag)) {
-            const fresh = await db.get('memories', m.id);
-            if (fresh) { fresh.tag = tag; await db.set('memories', fresh); }
-            done++;
-          } else {
-            errors++;
-          }
-        } catch (e) {
-          console.warn('[memory-app] tag backfill failed for', m.id, e);
-          errors++;
-        }
-        const live = container.querySelector('.ma-tag-backfill + .ma-tl-status');
-        if (live) { live.textContent = `${done + errors} / ${total}`; }
-      }
-      backfillStatus = { text: `打标完成:成功 ${done}${errors ? ` · 失败 ${errors}` : ''}`, cls: errors ? ' error' : ' success' };
-    } catch (e) {
-      backfillStatus = { text: `失败:${String(e).slice(0, 200)}`, cls: ' error' };
-    } finally {
-      backfillBusy = false;
-      if (activeTab === 'summary') await render();
     }
   }
 
@@ -918,7 +877,6 @@ export async function mountMemoryApp(container, params, router) {
       });
     }
     container.querySelector('.mem-vh-search')?.addEventListener('click', () => runVectorSearch());
-    container.querySelector('.ma-tag-backfill')?.addEventListener('click', () => runTagBackfill());
 
     container.querySelector('.ma-nav-btn.prev')?.addEventListener('click', async () => {
       calendarCursor = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth() - 1, 1);
@@ -1185,6 +1143,28 @@ function applyMemoryStyleToBody(style) {
 function dayKeyOf(ts) {
   const d = new Date(ts);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// dayKey "YYYY-MM-DD" → 当天 0 点本地时间戳。给 milestones 算月相用 — dayKey
+// 是字符串,moonPhaseOf 要 ts,这是桥。
+function dayKeyToTs(dayKey) {
+  if (typeof dayKey !== 'string') return 0;
+  const parts = dayKey.split('-');
+  if (parts.length !== 3) return 0;
+  const [y, m, d] = parts.map(Number);
+  if (!y || !m || !d) return 0;
+  return new Date(y, m - 1, d).getTime();
+}
+
+// Cosmic 月相相位 — day-of-month 4 档:1-7 新月、8-14 上弦、15-21 满月、22-31 下弦。
+// 0 = 没有数据(profile / 无 fromTs 卡片),CSS 默认不渲染月相。
+function moonPhaseOf(ts) {
+  if (!Number.isFinite(ts)) return 0;
+  const d = new Date(ts).getDate();
+  if (d <= 7)  return 1;
+  if (d <= 14) return 2;
+  if (d <= 21) return 3;
+  return 4;
 }
 
 function formatDate(ts) {
