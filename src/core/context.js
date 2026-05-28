@@ -1168,6 +1168,9 @@ async function maybeRollupToL2(sessionId) {
     return null;
   }
   const newId = db.newId();
+  // 1a-fix: L2 之前漏了 fromTs/toTs,formatMemoryWithDate 退到 createdAt
+  // 会显示成「L2 合并那天」而不是它覆盖的真实对话时间。从 toMerge 这批
+  // L1 的 fromTs/toTs 取范围;老 L1 没这俩字段就 fallback 到 createdAt。
   const newL2 = {
     id: newId,
     sessionId,
@@ -1175,6 +1178,8 @@ async function maybeRollupToL2(sessionId) {
     summary: merged.trim(),
     fromMsgId: toMerge[0].fromMsgId,
     toMsgId: toMerge[toMerge.length - 1].toMsgId,
+    fromTs: toMerge[0].fromTs ?? toMerge[0].createdAt,
+    toTs:   toMerge[toMerge.length - 1].toTs ?? toMerge[toMerge.length - 1].createdAt,
     createdAt: Date.now(),
   };
   await db.set('memories', newL2);
