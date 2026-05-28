@@ -166,6 +166,13 @@ body[data-mono="1"] .memory-app-page .mem-chips {
 .memory-app-page .mem-chip-avatar img {
   width: 100%; height: 100%; object-fit: cover;
 }
+/* T31 「全部」chip 无 avatar 块 — padding 对称、字号略大,纯文字按钮感。
+   各风格不需要 override(没 avatar 也没什么可改,chip 容器样式已经够)。 */
+.memory-app-page .mem-char-chip-all {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
 
 /* ─────────────────────────────────────────────────────────────────────
    通用:cabinet 纵向文件夹列表(cabinet 风格独占 — 其他 4 个走 chip)
