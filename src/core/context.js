@@ -312,6 +312,27 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     body: isFictional ? '' : currentTimeLine(),
     kind: 'computed',
   });
+  // 7d. 当前地点 — 跟时间同性质的稳定事实(几个 token,不随对话变),改成
+  //   静态注入而不是工具调用。原 get_location 工具弱模型经常 who 传反 把
+  //   角色城市当成 user,或干脆不调,体验时灵时不灵。注入后白纸黑字写明
+  //   双方城市,模型不用猜。Label(虚构名)优先,Key(真实城市)只给时区/
+  //   天气工具用。架空模式跳过(中世纪角色不该知道"上海")。受
+  //   session.{char,user}LocEnabled 双开关 + label/key 任一非空才注入。
+  const locLines = [];
+  if (!isFictional) {
+    if (session.charLocEnabled && (session.charCityLabel || session.charCityKey)) {
+      locLines.push(`你在:${session.charCityLabel || session.charCityKey}`);
+    }
+    if (session.userLocEnabled && (session.userCityLabel || session.userCityKey)) {
+      locLines.push(`对方在:${session.userCityLabel || session.userCityKey}`);
+    }
+  }
+  parts.push({
+    key: 'current-loc',
+    title: '# 当前地点',
+    body: locLines.join('\n'),
+    kind: 'computed',
+  });
   // 8. 当前社交状态
   parts.push({
     key: 'social',
@@ -485,6 +506,7 @@ const PART_GROUPS = {
   'mem-l2':        'memory',
   'mem-l1':        'memory',
   'current-time':  'state',
+  'current-loc':   'state',
   'social':        'state',
   'schedule':      'state',
   'checkins':      'state',
@@ -1049,7 +1071,7 @@ function renderActionsAsText(actions, ctx) {
 // 两行,summary 里随便什么字符都不破坏 schema。V4 (多卡 [CARD] 块):一次压缩
 // 可产出 1-3 张「故事卡」,每卡 title + summary + quotes + tag + importance。
 // V4 仍 fallback 兼容 V3 老输出,parseMemoryOutput 返回 array,旧 V3 直接当 1 卡。
-const DEFAULT_MEMORY_SYS = '你是对话压缩助手。把下面这段对话压成 1-3 张「故事卡」,每张卡聚焦一个独立故事段落。模型自己判断:对话明显涵盖多个独立主题(比如先吵架后和好,或先回家后出门)时切多张;单一主题就只出 1 张。';
+const DEFAULT_MEMORY_SYS = '你是对话压缩助手。把下面这段对话压成 1-3 张「故事卡」,每张卡聚焦一个独立故事段落。模型自己判断:对话明显涵盖多个独立主题(比如先吵架后和好,或先回家后出门)时切多张;单一主题就只出 1 张。**每张卡必须是一段叙事完整的故事**(有起因 / 过程 / 结果或转折),不要只写一句话标语;同时**单卡摘要严格控制在 200 字以内**(多卡情况下各自独立计算,不共享配额)。';
 
 const MEMORY_OUTPUT_RULES = `
 **输出格式严格按下面 [CARD] 块结构,不要 JSON、不要 markdown 包裹、不要前后缀文字**:

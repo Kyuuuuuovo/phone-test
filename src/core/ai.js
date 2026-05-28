@@ -140,25 +140,11 @@ function buildToolsForSession(session, character) {
       },
     });
   }
-  const locEnums = [];
-  if (session.charLocEnabled) locEnums.push('character');
-  if (session.userLocEnabled) locEnums.push('user');
-  if (locEnums.length > 0) {
-    tools.push({
-      type: 'function',
-      function: {
-        name: 'get_location',
-        description: '获取当前所在地名(只是城市/地名,不查任何 API)。返回 { city }。who=character 是角色所在地,who=user 是玩家所在地。',
-        parameters: {
-          type: 'object',
-          properties: {
-            who: { type: 'string', enum: locEnums, description: 'character 或 user' },
-          },
-          required: ['who'],
-        },
-      },
-    });
-  }
+  // get_location 工具已删 — 地点是稳定事实(几个 token),改静态注入到
+  //   context.js 的 # 当前地点 段。删工具是因为弱模型经常该调不调 / who
+  //   传反,体验时灵时不灵。注入后白纸黑字写在 prompt 里。
+  //   `session.{char,user}LocEnabled` 字段保留 — 它现在控制注入开关,跟
+  //   原工具开关同语义。chat-settings UI 不用动。
 
   const wxEnums = [];
   if (session.charWeatherEnabled) wxEnums.push('character');
@@ -225,12 +211,6 @@ async function getWeatherFor(session, who) {
   }
 }
 
-function getLocationFor(session, who) {
-  const { key, label } = pickWhoFields(session, who);
-  if (!key && !label) return JSON.stringify({ error: `${who} 的所在地未配置` });
-  return JSON.stringify({ city: label || key });
-}
-
 async function executeToolCall(tc, session) {
   const fn = tc.function?.name;
   let args = {};
@@ -238,7 +218,11 @@ async function executeToolCall(tc, session) {
   const who = args.who;
   if (fn === 'get_current_time') return getCurrentTimeFor(session, who);
   if (fn === 'get_weather')      return await getWeatherFor(session, who);
-  if (fn === 'get_location')     return getLocationFor(session, who);
+  // 兼容老模型/老缓存的 get_location 调用 — 工具已删但模型可能仍记得,
+  //   返回提示让它知道这条信息已在 system prompt 里,不要再调。
+  if (fn === 'get_location') {
+    return JSON.stringify({ error: '地点信息已在 system prompt 的「# 当前地点」段里,直接用,不要调这个工具' });
+  }
   return JSON.stringify({ error: `unknown tool: ${fn}` });
 }
 

@@ -57,6 +57,10 @@ export async function mountMemoryApp(container, params, router) {
   let vectorQuery = '';
   let vectorHits = null;     // null = 未搜过;[] = 搜过没结果;[...] = 有命中
   let vectorBusy = false;
+  // 风格菜单外点关闭的 document click handler — closure 级,wire() 不重复绑;
+  // 离开 app 时 cleanup 兜底 removeEventListener 防泄漏(否则风格菜单开着
+  // 切到别页时这个 listener 永远挂在 document 上,每次点 document 都跑)。
+  let outsideClickHandler = null;
 
   async function render() {
     const chars = (await db.getAll('characters')).filter(c => c.id !== '__bear__');
@@ -892,17 +896,28 @@ export async function mountMemoryApp(container, params, router) {
         await render();
       });
     });
-    // 点菜单外面关掉(下一次 render 清掉)。
+    // 点菜单外面关掉。outsideClickHandler 是 closure 级变量,wire() 重复
+    //   跑也只绑一次(先 remove 再 add),离开 memory app 时 cleanup 兜底
+    //   removeEventListener 防止悬挂。
     if (stylePickerOpen) {
-      const onDocClick = (e) => {
-        if (!e.target.closest('.actions')) {
-          stylePickerOpen = false;
-          document.removeEventListener('click', onDocClick);
-          render();
-        }
-      };
-      // 延后绑定,避免本次 click 立刻自身触发关闭。
-      setTimeout(() => document.addEventListener('click', onDocClick), 0);
+      if (!outsideClickHandler) {
+        outsideClickHandler = (e) => {
+          if (!e.target.closest('.actions')) {
+            stylePickerOpen = false;
+            document.removeEventListener('click', outsideClickHandler);
+            outsideClickHandler = null;
+            render();
+          }
+        };
+        // 延后绑定,避免本次 click 立刻自身触发关闭。
+        setTimeout(() => {
+          if (outsideClickHandler) document.addEventListener('click', outsideClickHandler);
+        }, 0);
+      }
+    } else if (outsideClickHandler) {
+      // 菜单被选项点击关掉的(不是外面点的)— 主动清监听
+      document.removeEventListener('click', outsideClickHandler);
+      outsideClickHandler = null;
     }
     container.querySelectorAll('.ma-tab').forEach(t => {
       t.addEventListener('click', async () => {
@@ -1181,8 +1196,14 @@ export async function mountMemoryApp(container, params, router) {
   await render();
   // cleanup:离开记忆 app 时清掉 body.dataset.memStyle,免得 memory-styles.css
   // 的 scope 漏到其他 app(例如桌面也用 .mem-card 的话)。
+  // 兜底清风格菜单 outside-click 监听 — 用户开着菜单切走时不会自清,留在
+  // document 上永远跑。
   return () => {
     delete document.body.dataset.memStyle;
+    if (outsideClickHandler) {
+      document.removeEventListener('click', outsideClickHandler);
+      outsideClickHandler = null;
+    }
   };
 }
 
