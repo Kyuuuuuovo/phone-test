@@ -5828,6 +5828,103 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
   opacity: 0.85;
 }
 
+/* T25 chat-beautify 气泡 preset 卡片网格 — 2 列,每张卡片显示 label + hint
+   一句,点击 active 切 attr 应用预览(保存到 character.chatBubbleStyle.preset)。 */
+.chat-beautify-page .bubble-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.chat-beautify-page .bubble-preset-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, transform 0.1s;
+  color: var(--fg);
+}
+.chat-beautify-page .bubble-preset-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+}
+.chat-beautify-page .bubble-preset-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.chat-beautify-page .bubble-preset-card:active { transform: scale(0.98); }
+.chat-beautify-page .bubble-preset-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+.chat-beautify-page .bubble-preset-hint {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* T25 聊天气泡 preset + 字段覆盖 — character.chatBubbleStyle 由 chat-beautify
+   保存,chat.js mount 时 apply 到 .chat-page 上:
+   - preset = attr `data-bubble-preset="ios"` 等,base.css 这里有 6 套样式
+   - 字段微调 = CSS var(--chat-bubble-radius / -padding / -user-bg / -char-bg)
+   - 自由 CSS = `<style>` element inject 在 chat-page 内
+   优先级:user CSS > 字段 var > preset attr > base.css 默认。 */
+.chat-page .bubble {
+  border-radius: var(--chat-bubble-radius, 16px);
+  padding: var(--chat-bubble-padding, 8px 12px);
+}
+.chat-page .bubble.user {
+  background: var(--chat-bubble-user-bg, var(--bubble-user));
+}
+.chat-page .bubble.char {
+  background: var(--chat-bubble-char-bg, var(--bubble-char));
+}
+/* iOS — 大圆角 + 同侧底部小尖角 */
+.chat-page[data-bubble-preset="ios"] .bubble.user { border-bottom-right-radius: 4px; }
+.chat-page[data-bubble-preset="ios"] .bubble.char { border-bottom-left-radius: 4px; }
+/* Material — 卡片感,小圆角 + drop shadow */
+.chat-page[data-bubble-preset="material"] .bubble {
+  border-radius: var(--chat-bubble-radius, 6px);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.18);
+}
+/* 极简 — 无背景填充,描边低对比度 */
+.chat-page[data-bubble-preset="minimal"] .bubble {
+  background: transparent !important;
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent);
+  border-radius: var(--chat-bubble-radius, 12px);
+}
+.chat-page[data-bubble-preset="minimal"] .bubble.user {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+/* 卡片 — 超大圆角 + 浅阴影,纸张感 */
+.chat-page[data-bubble-preset="card"] .bubble {
+  border-radius: var(--chat-bubble-radius, 22px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+/* 描边 — 实色边框 2px 透明背景 */
+.chat-page[data-bubble-preset="outline"] .bubble {
+  border-radius: var(--chat-bubble-radius, 14px);
+  border: 2px solid;
+  background: transparent !important;
+}
+.chat-page[data-bubble-preset="outline"] .bubble.user {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.chat-page[data-bubble-preset="outline"] .bubble.char {
+  border-color: color-mix(in srgb, var(--fg) 40%, transparent);
+}
+/* 手写 — 手写体 + 大圆角 */
+.chat-page[data-bubble-preset="handwritten"] .bubble {
+  font-family: "Ma Shan Zheng", "Long Cang", "Caveat", "Kaiti SC", "STKaiti", cursive;
+  font-size: 1.1em;
+  border-radius: var(--chat-bubble-radius, 18px);
+}
+
 /* T18 PWA 新版本提示 banner — SW updatefound 触发后顶部 slide-in,user 点
    重启 = location.reload。视觉跟 schedule-banner 风格对齐但走 accent 色
    (不是 danger),因为这是"好消息有更新"不是"出错了"。 */

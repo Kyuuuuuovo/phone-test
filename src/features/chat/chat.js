@@ -148,6 +148,27 @@ export async function mountChat(container, params, router) {
   const backBtn     = container.querySelector('.back');
   const chatPage    = container.querySelector('.chat-page');
 
+  // T25: per-character 气泡样式 — 4 路 apply,base.css 有 6 preset 兜底:
+  //   (a) preset → `.chat-page[data-bubble-preset="ios"]` attr
+  //   (b) 字段微调 → CSS var on .chat-page(覆盖 preset 默认)
+  //   (c) 自由 CSS → inject `<style>` 到 .chat-page 末尾
+  // 字段值留空 / null = preset 默认。preset='' = 没选 preset,全走 base.css 默认。
+  if (chatPage && character?.chatBubbleStyle) {
+    const cb = character.chatBubbleStyle;
+    if (cb.preset) chatPage.dataset.bubblePreset = cb.preset;
+    if (Number.isFinite(cb.bubbleRadius)) chatPage.style.setProperty('--chat-bubble-radius', `${cb.bubbleRadius}px`);
+    if (cb.bubblePadding) chatPage.style.setProperty('--chat-bubble-padding', cb.bubblePadding);
+    if (cb.userBubbleColor) chatPage.style.setProperty('--chat-bubble-user-bg', cb.userBubbleColor);
+    if (cb.charBubbleColor) chatPage.style.setProperty('--chat-bubble-char-bg', cb.charBubbleColor);
+    if (cb.customCss && cb.customCss.trim()) {
+      const styleEl = document.createElement('style');
+      styleEl.className = 'chat-custom-css';
+      // user 自己负责 scope —— UI hint 已经写「自己用 .chat-page 前缀」
+      styleEl.textContent = cb.customCss;
+      chatPage.appendChild(styleEl);
+    }
+  }
+
   // Per-render preview map: msgId -> first-action text (for inline quote rendering)
   let previewMap = new Map();
   // State

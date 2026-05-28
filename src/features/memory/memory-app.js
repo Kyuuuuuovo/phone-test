@@ -132,14 +132,21 @@ export async function mountMemoryApp(container, params, router) {
       return `<div class="mem-folder-list">${all}${rows}</div>`;
     }
     // 默认 / planner / petal / film / cosmic — 横向 chip
+    // 「全部」(空 id)走特例 — 不显示 avatar 块,只显文字「All」+ chip-all class,
+    // 让各风格能给它独立样式(planner washi 贴纸感 / petal 圆角 / 等)。
     const chip = (id, name, avatar) => {
+      const isAll = !id;
       const color = stableColor(id || 'all');
       const active = (id || '') === filterCharId ? ' active' : '';
       const initial = (name || '?').slice(0, 1);
-      const avatarHtml = avatar
-        ? `<span class="mem-chip-avatar"><img src="${esc(avatar)}" alt=""></span>`
-        : `<span class="mem-chip-avatar" style="background:${color}">${esc(initial)}</span>`;
-      return `<button class="mem-char-chip${active}" data-char-id="${esc(id || '')}" type="button">${avatarHtml}<span class="mem-chip-name">${esc(name)}</span></button>`;
+      const avatarHtml = isAll
+        ? ''
+        : avatar
+          ? `<span class="mem-chip-avatar"><img src="${esc(avatar)}" alt=""></span>`
+          : `<span class="mem-chip-avatar" style="background:${color}">${esc(initial)}</span>`;
+      const cls = isAll ? 'mem-char-chip mem-char-chip-all' : 'mem-char-chip';
+      const label = isAll ? 'All' : name;
+      return `<button class="${cls}${active}" data-char-id="${esc(id || '')}" type="button">${avatarHtml}<span class="mem-chip-name">${esc(label)}</span></button>`;
     };
     return `
       <div class="mem-char-chips">
