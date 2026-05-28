@@ -850,13 +850,15 @@ body[data-mem-style="cosmic"] .memory-app-page .ma-style-opt-desc {
    只写差异化的东西,共享部分(chip / folder / vector hits)在上面 通用 段。
    ═════════════════════════════════════════════════════════════════════ */
 
-/* planner — chip 当胶带:微旋转 + 虚线边 + 渐变奶油底色 */
+/* planner — chip 当胶带:虚线边 + 渐变奶油底色
+   T34 v3: 删 transform: rotate(-1.2deg) — user 反馈 L1 chip 跟下面 title
+   左侧"没对齐",元凶就是旋转让 chip 框视觉歪斜,boundingRect 数据上对齐
+   但人眼看不齐。失去微旋转的"胶带"感,但保留奶油底 + dashed 边的辨识。 */
 body[data-mem-style="planner"] .memory-app-page .mem-chips > span {
   background: linear-gradient(135deg, rgba(255, 220, 150, 0.55), rgba(255, 200, 130, 0.35));
   border-top: 1px dashed color-mix(in srgb, var(--fg) 35%, transparent);
   border-bottom: 1px dashed color-mix(in srgb, var(--fg) 35%, transparent);
   border-radius: 2px;
-  transform: rotate(-1.2deg);
   color: var(--fg);
   padding: 2px 8px;
 }

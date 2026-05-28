@@ -33,6 +33,11 @@ export async function mountMemoryManage(container, params, router) {
   // Lazy-gen guard: only run once per page mount when timeline tab opens.
   let lazyGenDone = false;
   let lazyGenBusy = false;
+  // T34: 节选 / 这次发生了 区段开关 — 跟 memory-app.js 共享 settings flags,
+  //   默认开。在 mount 时读一次;user 改设置后下次打开 page 生效。
+  const initialSettings = (await db.get('settings', 'default')) || {};
+  const showQuotes = initialSettings.memoryShowQuotes !== false;
+  const showEvents = initialSettings.memoryShowEvents !== false;
 
   async function render() {
     container.innerHTML = `
@@ -71,13 +76,13 @@ export async function mountMemoryManage(container, params, router) {
           ${memories.map(m => {
             const titleHtml = m.title ? `<div class="memory-title">${esc(m.title)}</div>` : '';
             const impHtml = m.importance === 'high' ? `<span class="memory-imp-high">重要</span>` : '';
-            const quotesHtml = (Array.isArray(m.quotes) && m.quotes.length > 0) ? `
+            const quotesHtml = (showQuotes && Array.isArray(m.quotes) && m.quotes.length > 0) ? `
               <div class="memory-quotes">
-                <div class="memory-quotes-label">关键原话</div>
+                <div class="memory-quotes-label">节选</div>
                 ${m.quotes.map(q => `<div class="memory-quote">${esc(q)}</div>`).join('')}
               </div>
             ` : '';
-            const eventsHtml = (Array.isArray(m.events) && m.events.length > 0) ? `
+            const eventsHtml = (showEvents && Array.isArray(m.events) && m.events.length > 0) ? `
               <div class="memory-events">
                 <div class="memory-events-label">这次发生了</div>
                 <div class="memory-events-chips">

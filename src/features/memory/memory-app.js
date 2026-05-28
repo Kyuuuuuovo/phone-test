@@ -48,6 +48,10 @@ export async function mountMemoryApp(container, params, router) {
   let memoryStyle = initialSettings.memoryStyle || 'planner';
   applyMemoryStyleToBody(memoryStyle);
   let stylePickerOpen = false;
+  // T34: 节选 / 这次发生了 区段开关 — user 反馈"做成选开",放在设置 → 记忆总结。
+  //   默认开;false 时 buildMemCard 跳过对应区段渲染。
+  const showQuotes = initialSettings.memoryShowQuotes !== false;
+  const showEvents = initialSettings.memoryShowEvents !== false;
   // Vector hits 区(summary tab 顶部)— 配置了 embedding 才显示。query 用
   // 输入框,user 输入后跑跨会话 cosine 召回。状态走 closure,re-render 保持。
   let vectorQuery = '';
@@ -193,16 +197,17 @@ export async function mountMemoryApp(container, params, router) {
       </div>
     ` : '';
     const titleHtml = title ? `<div class="ma-row-title">${esc(title)}</div>` : '';
-    // quotes 默认展开 — 一般 1-3 条不长,跟参考站一样直接显示。
-    const quotesHtml = (Array.isArray(quotes) && quotes.length > 0) ? `
+    // quotes 默认展开 — 1-5 条短句,跟参考站一样直接显示。受 settings.memoryShowQuotes
+    //   控制,user 可在设置 → 记忆总结 关掉(默认开)。T34 label "关键原话" → "节选"。
+    const quotesHtml = (showQuotes && Array.isArray(quotes) && quotes.length > 0) ? `
       <div class="ma-row-quotes">
-        <div class="ma-row-quotes-label">关键原话</div>
+        <div class="ma-row-quotes-label">节选</div>
         ${quotes.map(q => `<div class="ma-row-quote">${esc(q)}</div>`).join('')}
       </div>
     ` : '';
     // 「这次发生了」事件链 — 手机原生 action 扫出来的 plain chip。差异化关键
-    // (酒馆站的剧情记忆不带这些手机维度)。
-    const eventsHtml = (Array.isArray(events) && events.length > 0) ? `
+    //   (酒馆站的剧情记忆不带这些手机维度)。受 settings.memoryShowEvents 控制。
+    const eventsHtml = (showEvents && Array.isArray(events) && events.length > 0) ? `
       <div class="ma-row-events">
         <div class="ma-row-events-label">这次发生了</div>
         <div class="ma-row-events-chips">
@@ -691,7 +696,6 @@ export async function mountMemoryApp(container, params, router) {
     const vectorBlock = embEnabled ? `
       <div class="mem-vector-hits">
         <div class="mem-vh-head">
-          <span class="mem-vh-label">搜索</span>
           <input type="text" class="mem-vh-input" placeholder="想找跟什么相关的记忆?" value="${esc(vectorQuery)}" ${vectorBusy ? 'disabled' : ''}>
           <button type="button" class="mem-vh-search btn" ${vectorBusy ? 'disabled' : ''}>${vectorBusy ? '搜索中…' : '搜索'}</button>
         </div>

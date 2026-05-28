@@ -15,6 +15,9 @@ export async function mountMemorySettings(container, params, router) {
   const enabled = settings.memoryEnabled !== false;  // default on
   const threshold = Number.isFinite(settings.memoryThreshold) && settings.memoryThreshold > 0
     ? settings.memoryThreshold : DEFAULT_THRESHOLD;
+  // T34: 记忆卡片显示控制 — 默认都开,user 想瘦身记忆卡片就关掉。
+  const showQuotes = settings.memoryShowQuotes !== false;
+  const showEvents = settings.memoryShowEvents !== false;
 
   container.innerHTML = `
     <div class="page">
@@ -42,6 +45,16 @@ export async function mountMemorySettings(container, params, router) {
           <label>
             <div class="label-text">缓冲条数(留多少条活跃不压,默认 ${DEFAULT_THRESHOLD})</div>
             <input type="number" name="threshold" min="5" max="200" step="1" value="${threshold}">
+          </label>
+          <h3 class="section-title" style="margin-top: 18px;">记忆卡片显示</h3>
+          <p class="hint">控制记忆 app 和聊天内总结里,每张卡片是否显示这两个区段。关掉只让卡片更简洁,不影响生成 — 数据仍写入 memory,改回开就能看到。</p>
+          <label class="checkbox-row">
+            <input type="checkbox" name="showQuotes"${showQuotes ? ' checked' : ''}>
+            <span>显示「节选」(1-5 条关键原话)</span>
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" name="showEvents"${showEvents ? ' checked' : ''}>
+            <span>显示「这次发生了」(红包/转账/语音/图片等手机原生事件链)</span>
           </label>
           <div class="form-actions">
             <button type="submit" class="btn">保存</button>
@@ -76,6 +89,8 @@ export async function mountMemorySettings(container, params, router) {
     const s = (await db.get('settings', 'default')) || { id: 'default' };
     s.memoryEnabled = en;
     s.memoryThreshold = t;
+    s.memoryShowQuotes = !!fd.get('showQuotes');
+    s.memoryShowEvents = !!fd.get('showEvents');
     // T17: memoryBatchSize 字段废弃 — 新规则按 dayKey 分组,每天一条 memory,
     //   不再需要"一次总结 N 条"概念。老 settings 里的值留着不动也不读。
     await db.set('settings', s);
