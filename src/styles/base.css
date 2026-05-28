@@ -5718,30 +5718,47 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
   line-height: 1.45;
   word-break: break-word;
 }
-.memory-app-page .ms-row { cursor: pointer; padding-right: 32px; }
+.memory-app-page .ms-row { cursor: pointer; }
 .memory-app-page .ms-row:hover { background: var(--bubble-char); }
+/* T34: ✎ × 按钮重排 — 原 absolute right top 跟 meta/chips 抢位置 user 不满。
+   改成 .ma-row-header 内 flex 右端,跟 chips 同一行 inline,跟内容一起在
+   flow 里。chips 在左 flex:1 撑开,tools 在右 flex-end 自然落位。 */
+.memory-app-page .ma-row-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.memory-app-page .ma-row-header .mem-chips {
+  flex: 1;
+  margin-bottom: 0;
+}
+.memory-app-page .ma-row-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
 .memory-app-page .ma-row-del,
 .memory-app-page .ma-row-edit {
-  position: absolute;
-  top: 8px;
   background: none;
   border: none;
   color: var(--muted);
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1;
   cursor: pointer;
   padding: 4px 6px;
+  border-radius: 4px;
 }
-.memory-app-page .ma-row-del { right: 6px; font-size: 18px; }
-/* T33: ✎ + × 两按钮间距 — del 宽 ≈ 30px 占 right [6, 36],原 edit right 32
-   重叠 4px。改 40 留 4px 视觉间距,不再挤一起。 */
-.memory-app-page .ma-row-edit { right: 40px; }
-.memory-app-page .ma-row-del:hover { color: var(--danger); }
-.memory-app-page .ma-row-edit:hover { color: var(--accent); }
-/* timeline / memory row 有 edit + del 两个按钮 — body 留够右 padding 不
-   被按钮挡住 */
-.memory-app-page .ma-row[data-tl-id],
-.memory-app-page .ma-row[data-memory-id] { padding-right: 60px; }
+.memory-app-page .ma-row-del { font-size: 16px; }
+.memory-app-page .ma-row-edit:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.memory-app-page .ma-row-del:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
 
 .ma-ms-head { margin-bottom: 12px; }
 .ma-ms-new { padding: 8px 14px; font-size: 13px; }

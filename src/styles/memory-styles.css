@@ -172,7 +172,9 @@ body[data-mono="1"] .memory-app-page .mem-chips {
 .memory-app-page .ma-row-events {
   margin-top: 4px;
   padding-top: 4px;
+  padding-bottom: 2px;
   border-top: 1px dashed var(--border);
+  margin-bottom: 4px;
 }
 .memory-app-page .ma-row-events-label {
   font-size: 10px;
@@ -666,14 +668,19 @@ body[data-mem-style="film"] .memory-app-page .ma-row-body {
   line-height: 1.6;
   color: var(--fg);
 }
-/* T33: film 子元素统一 inline padding 12px — 跟 chips / meta margin / body 对齐。
-   .ma-row 自身 padding 0(齿孔条 + 反色 meta label 布局必需),所以 title /
-   quotes / events 必须自己 padding,否则贴左跟其他元素错开。 */
+/* T33/T34: film 子元素统一 inline padding 12px — 跟 chips / meta margin / body
+   对齐。.ma-row 自身 padding 0(齿孔条 + 反色 meta label 布局必需),所以
+   header / title / quotes / events 必须自己 padding,否则贴左跟其他元素错开。 */
+body[data-mem-style="film"] .memory-app-page .ma-row-header,
 body[data-mem-style="film"] .memory-app-page .ma-row-title,
 body[data-mem-style="film"] .memory-app-page .ma-row-quotes,
 body[data-mem-style="film"] .memory-app-page .ma-row-events {
   padding-left: 12px;
   padding-right: 12px;
+}
+/* film 卡片底 chip padding-bottom — chip 不能紧贴卡片底,加 8px 视觉间距 */
+body[data-mem-style="film"] .memory-app-page .ma-row {
+  padding-bottom: 8px;
 }
 body[data-mem-style="film"] .memory-app-page .ma-cell {
   background: var(--surface);

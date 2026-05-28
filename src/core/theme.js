@@ -524,8 +524,11 @@ function resolveFontStack(t) {
     // 拼 stack:英文字体优先(ASCII 匹配),中文 fallback(浏览器 unicode-range
     // 自动从 En 跳到 Cn),最后兜底系统中文。两侧家族名要加引号防"My Font"
     // 这种带空格的拆掉。
-    const en = (t.customFontFamilyEn || '').trim();
-    const cn = (t.customFontFamilyCn || '').trim();
+    // T34: user 可能把整段 stack 贴进单字段(`"MaoKen (beta)", sans-serif`),
+    //   只取第一个 family — hint 已写"单个,不要逗号"但 user 误填很常见,
+    //   sanitize 比报错友好。
+    const en = sanitizeFamilyInput(t.customFontFamilyEn);
+    const cn = sanitizeFamilyInput(t.customFontFamilyCn);
     // Legacy 单字段:如果用户老配置只填了 customFontFamily,normalizeTheme 已
     // 把它迁进 Cn,所以这里不重复处理。
     const parts = [];
@@ -536,6 +539,18 @@ function resolveFontStack(t) {
   }
   const found = FONT_OPTIONS.find(f => f.id === t.fontFamily);
   return found?.stack || FONT_OPTIONS[0].stack;
+}
+
+// T34: 容错处理 user 在 family 字段贴整段 stack 的情况。规范是单 family,
+//   但 user 经常误填 `"MaoKen (beta)", sans-serif` 这种把 fallback 一起贴进来。
+//   按逗号切,只取第一个 token,strip 首尾引号供下游处理。
+function sanitizeFamilyInput(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  const first = s.split(',')[0].trim();
+  // 去外层引号(quoteIfNeeded 会按需重新加)
+  if (/^["'].*["']$/.test(first)) return first.slice(1, -1).trim();
+  return first;
 }
 
 // 给可能带空格的 family name 加引号(`My Font` → `"My Font"`)。如果已带
@@ -599,7 +614,11 @@ function ensureFontLink(key, url) {
   link.id   = id;
   link.rel  = 'stylesheet';
   link.href = trimmed;
-  link.crossOrigin = 'anonymous';
+  // T34: 删 crossOrigin='anonymous' — 第三方字体 CDN(zeoseven 等)不一定
+  //   配 CORS,加这个 attr 浏览器会要求 Access-Control-Allow-Origin header
+  //   不通过就拒绝整个 stylesheet,字体直接不显示。stylesheet `<link>` 加载
+  //   字体根本不需要 anonymous CORS — Google Fonts 没这个 attr 也能正常工作。
+  //   原因:user 反馈"字体自定义无效"的回归就是这个 attr 阻止加载。
   document.head.appendChild(link);
 }
 function reconcileFontImports(t) {

@@ -162,7 +162,11 @@ export async function mountMemoryApp(container, params, router) {
   //   title=可选标题(V4 多卡:[CARD] 的「标题」字段)、quotes=string[](V4 关键原话)、
   //   importance='high'|'low'(V4 重要度,high 加 accent 边)、
   //   events=string[](「这次发生了」事件链,手机原生 action 自动扫出,无 AI 成本)。
-  function buildMemCard({ meta = [], body, tier, timeRange, tag, score, extras = '', dataAttrs = '', cardClass = '', title, quotes, importance, events }) {
+  // T34: tools(按钮) 参数从 extras 拆出来 — 原来 ✎ × 按钮 absolute 在卡片
+  //   右上角,跟 meta / chips 视觉抢位置。改成跟 chips 同行 flex 右端,跟卡片
+  //   内容一起在 flow 里,不再悬浮。extras 仍保留给 mergedDetail 这类底部
+  //   非按钮内容用。
+  function buildMemCard({ meta = [], body, tier, timeRange, tag, score, extras = '', tools = '', dataAttrs = '', cardClass = '', title, quotes, importance, events }) {
     const tierChip = tier
       ? `<span class="mem-tier mem-tier-${tier === 2 ? 'l2' : 'l1'}">${tier === 2 ? 'L2' : 'L1'}</span>`
       : '';
@@ -171,6 +175,13 @@ export async function mountMemoryApp(container, params, router) {
     const scoreChip  = (score != null) ? `<span class="mem-score">${Math.round(score * 100)}%</span>` : '';
     const impChip    = importance === 'high' ? `<span class="mem-imp mem-imp-high">重要</span>` : '';
     const chips = [tierChip, impChip, timeChip, tagChip, scoreChip].filter(Boolean).join('');
+    // header — chips 在左占 flex:1,tools(按钮)在右 flex-end。任一存在就渲染。
+    const headerHtml = (chips || tools) ? `
+      <div class="ma-row-header">
+        <div class="mem-chips">${chips}</div>
+        ${tools ? `<div class="ma-row-tools">${tools}</div>` : ''}
+      </div>
+    ` : '';
     const titleHtml = title ? `<div class="ma-row-title">${esc(title)}</div>` : '';
     // quotes 默认展开 — 一般 1-3 条不长,跟参考站一样直接显示。
     const quotesHtml = (Array.isArray(quotes) && quotes.length > 0) ? `
@@ -192,7 +203,7 @@ export async function mountMemoryApp(container, params, router) {
     const cardClasses = [cardClass, importance === 'high' ? 'ma-row-imp-high' : ''].filter(Boolean).join(' ');
     return `
       <div class="ma-row${cardClasses ? ' ' + cardClasses : ''}"${dataAttrs ? ' ' + dataAttrs : ''}>
-        ${chips ? `<div class="mem-chips">${chips}</div>` : ''}
+        ${headerHtml}
         ${meta.length > 0 ? `<div class="ma-row-meta">${meta.map(esc).join(' · ')}</div>` : ''}
         ${titleHtml}
         <div class="ma-row-body">${esc(body || '(空)')}</div>
@@ -409,11 +420,14 @@ export async function mountMemoryApp(container, params, router) {
           if (t.mergedFrom) meta.push(`合并(${t.mergedFrom.length})`);
           // T28: timeline 不再打 tag — user 反馈"不打标",timeline 只显日期+事件
           // T29: 每行加 edit + del 按钮 — user 反馈"时间线和记忆没有修改键"
-          const rowExtras = `<button class="ma-row-edit" type="button" title="编辑">✎</button><button class="ma-row-del" type="button" title="删除">×</button>${mergedDetail}`;
+          // T34: 按钮挪进 chips 同行 tools 槽,不再 absolute 悬右上;mergedDetail
+          //   仍在 extras 留底部(它是 details 展开块,跟按钮不同性质)
+          const rowTools = `<button class="ma-row-edit" type="button" title="编辑">✎</button><button class="ma-row-del" type="button" title="删除">×</button>`;
           return buildMemCard({
             meta,
             body: t.summary,
-            extras: rowExtras,
+            tools: rowTools,
+            extras: mergedDetail,
             cardClass: t.mergedFrom ? 'merged-row' : '',
             dataAttrs: `data-tl-id="${esc(t.id)}"`,
           });
@@ -495,12 +509,14 @@ export async function mountMemoryApp(container, params, router) {
             if (m.recurring) meta.push('每年');
             if (m.characterId) meta.push(charLabel(m.characterId));
             const body = m.title || '(无标题)';
-            const extras = `<button class="ma-row-del" type="button" title="删除">×</button>${m.desc ? `<div class="ma-row-desc">${esc(m.desc)}</div>` : ''}`;
+            const tools = `<button class="ma-row-del" type="button" title="删除">×</button>`;
+            const extras = m.desc ? `<div class="ma-row-desc">${esc(m.desc)}</div>` : '';
             return buildMemCard({
               meta,
               body,
               cardClass: 'ms-row',
               dataAttrs: `data-ms-id="${esc(m.id)}"`,
+              tools,
               extras,
             });
           }).join('')}
@@ -538,13 +554,13 @@ export async function mountMemoryApp(container, params, router) {
             if (p.dislikes)    previewBits.push(`不喜欢:${p.dislikes.split('\n')[0].slice(0, 30)}`);
             if (p.discoveries) previewBits.push(`发现:${p.discoveries.split('\n')[0].slice(0, 30)}`);
             const body = previewBits.length > 0 ? previewBits.join(' · ') : '(空 — 点击编辑)';
-            const extras = `<button class="ma-row-del" type="button" title="删除">×</button>`;
+            const tools = `<button class="ma-row-del" type="button" title="删除">×</button>`;
             return buildMemCard({
               meta,
               body,
               cardClass: 'profile-row',
               dataAttrs: `data-profile-id="${esc(p.id)}"`,
-              extras,
+              tools,
             });
           }).join('')}
         </div>
@@ -732,7 +748,7 @@ export async function mountMemoryApp(container, params, router) {
                 quotes: m.quotes,
                 importance: m.importance,
                 events: m.events,
-                extras: `<button class="ma-row-edit" type="button" title="编辑">✎</button><button class="ma-row-del" type="button" title="删除">×</button>`,
+                tools: `<button class="ma-row-edit" type="button" title="编辑">✎</button><button class="ma-row-del" type="button" title="删除">×</button>`,
                 dataAttrs: `data-memory-id="${esc(m.id)}"`,
               })).join('')}
             </details>
