@@ -336,7 +336,13 @@ export async function mountMemoryApp(container, params, router) {
     if (topLevel.length === 0) {
       return head + `<p class="hint">还没有时间线条目。点击上方按钮扫描各会话的对话历史,自动生成每天的一句话总结(不含今天)。</p>`;
     }
-    return head + `
+    // T27: 时间线 tab 装饰 — petal 加章节 divider,cosmic 加 glow-line。
+    // film 的 filmstrip 装饰在 CSS 上(.ma-row::after),不需要 HTML 改。
+    const styleDecor =
+      memoryStyle === 'petal'  ? `<div class="ma-section-divider">时间线</div>` :
+      memoryStyle === 'cosmic' ? `<div class="ma-glow-line"></div>` :
+      '';
+    return head + styleDecor + `
       <div class="ma-list">
         ${topLevel.map(t => {
           const mergedDetail = (Array.isArray(t.mergedFrom) && t.mergedFrom.length > 0)

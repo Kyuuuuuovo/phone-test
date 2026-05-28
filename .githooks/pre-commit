@@ -1,0 +1,39 @@
+#!/bin/sh
+# pre-commit: 自动 bump sw.js 的 CACHE 版本号
+#
+# 触发条件:除 sw.js 外有 staged 文件 → sw.js 里 `phone-app-vN` 的 N +1,
+# 让 SW updatefound 事件触发(iOS PWA 弹「有新版,重启」banner)。
+#
+# 跳过:staged 为空 / 只 commit sw.js 本身(避免 hook 改 sw.js 又触发自己)。
+#
+# 安装(新机器 clone 后):
+#   git config core.hooksPath .githooks
+# 之后所有 commit 都自动跑这个脚本。
+
+set -e
+
+staged=$(git diff --cached --name-only)
+[ -z "$staged" ] && exit 0
+
+# 除 sw.js 外有 staged 文件吗?
+other=$(echo "$staged" | grep -v '^sw\.js$' || true)
+[ -z "$other" ] && exit 0
+
+# sw.js 当前 vN
+current=$(grep -oE "phone-app-v[0-9]+" sw.js | grep -oE "[0-9]+" | head -1)
+if [ -z "$current" ]; then
+  echo "[pre-commit] sw.js 里找不到 phone-app-vN 模式,跳过 bump"
+  exit 0
+fi
+
+next=$((current + 1))
+
+# GNU sed (Linux / git-bash) vs BSD sed (macOS) 区分 -i 用法
+if sed --version >/dev/null 2>&1; then
+  sed -i "s/phone-app-v$current/phone-app-v$next/" sw.js
+else
+  sed -i '' "s/phone-app-v$current/phone-app-v$next/" sw.js
+fi
+
+git add sw.js
+echo "[pre-commit] sw.js CACHE bumped v$current → v$next"

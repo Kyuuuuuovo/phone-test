@@ -17,7 +17,7 @@
 //   5. user 点重启 → location.reload(),新 SW 接管,所有资源拿新版
 //
 // ⚠️ DEPLOY 流程关键:**每次 commit 前把 CACHE 字符串里的 vN 改大一位**
-// (`'phone-app-v1'` → `'v2'` → ...)。理由:
+// (`'phone-app-v2'` → `'v2'` → ...)。理由:
 //   1. sw.js 字节变化才触发浏览器 updatefound 事件 → 弹「有新版,重启」banner
 //   2. 老 cache (vN) 在新 SW activate 时被删,fetch 重新拉新版 js/css
 // 不改 vN 的话:即使你改了 base.css / chat.js,user 的 SW 仍然给老 cache,
