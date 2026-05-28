@@ -177,7 +177,7 @@ export async function mountChatInfo(container, params, router) {
       //   maybeCompressMemory 返回 null(没东西可压)。label 实时显示进度。
       const settings = (await db.get('settings', 'default')) || {};
       const batchLimit = Number.isFinite(settings.memoryForceBatchLimit) && settings.memoryForceBatchLimit > 0
-        ? settings.memoryForceBatchLimit : 5;
+        ? settings.memoryForceBatchLimit : 30;
       if (!await openConfirm(container, {
         title: '立即提取记忆',
         message: `把"今天以外"的活跃消息按天分组逐天压缩,本次最多压 ${batchLimit} 天(在「设置 → 记忆总结」可调)。会连续调用 AI,可能慢。继续?`,

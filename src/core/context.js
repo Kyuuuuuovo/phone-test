@@ -1385,7 +1385,7 @@ export async function maybeCompressMemory(sessionId, opts = {}) {
   const settings = (await db.get('settings', 'default')) || {};
   if (settings.memoryEnabled === false) return null;
   const threshold = Number.isFinite(settings.memoryThreshold) && settings.memoryThreshold > 0
-    ? settings.memoryThreshold : 30;
+    ? settings.memoryThreshold : 20;
 
   // Filter archived rows BEFORE the threshold check — without this, every
   // new message past threshold would re-include the already-archived rows
@@ -1452,10 +1452,14 @@ export async function maybeCompressMemory(sessionId, opts = {}) {
   // 里都用真名。dump 里 speaker 已经是真名,这行起强化作用。
   const userMsg = `这是「${personaName}」和「${charName}」的对话。请在「标题」「摘要」「关键原话」三处都用这两个真名指代,不要写"用户"或"角色"。\n\n${dump}`;
 
+  // 记忆压缩 / L2 合并 / timeline 合并 都走 settings.memoryApiConfigId
+  //   (可选,fallback active)。让 user 给记忆用便宜模型省 token。
+  const memoryApiConfigId = settings.memoryApiConfigId || null;
   const raw = await ai.callAI({
     systemPrompt: sys,
     messages: [{ role: 'user', content: userMsg }],
     temperature: 0.3,
+    apiConfigId: memoryApiConfigId,
   });
 
   // V4 多卡解析。每张卡独立写一行 memory,共享 groupId 方便记忆 app 一起 undo。
@@ -1573,6 +1577,7 @@ async function maybeAutoMergeTimeline(sessionId) {
         systemPrompt: TL_MERGE_PROMPT,
         messages: [{ role: 'user', content: dump }],
         temperature: 0.3,
+        apiConfigId: settings.memoryApiConfigId || null,
       });
       mergedLine = String(mergedLine || '').trim().split('\n')[0].trim();
     } catch (e) {
@@ -1597,18 +1602,15 @@ async function maybeAutoMergeTimeline(sessionId) {
   }
 }
 
-// Timeline 注入 prompt 段 — 拿最近 N 条(settings.timelineInjectCount 默认 20)
-//   按时间升序(老→新),join 成多行字符串。空就返回空字符串。
+// Timeline 注入 prompt 段 — **全部注入**,按时间升序(老→新)。
+//   不再有 timelineInjectCount setting(被 auto merge 阈值替代 — 超过阈值
+//   合并最老的几条,总条数被自动控制,所以"全部"也不会失控)。
 async function buildTimelineIndexLines(sessionId) {
-  const settings = (await db.get('settings', 'default')) || {};
-  const injectCount = Number.isFinite(settings.timelineInjectCount) && settings.timelineInjectCount > 0
-    ? settings.timelineInjectCount : 20;
   const rows = (await db.query('timeline', 'sessionId', sessionId))
     .filter(t => !t.mergedInto)
     .sort((a, b) => (a.fromTs ?? a.createdAt ?? 0) - (b.fromTs ?? b.createdAt ?? 0));
   if (rows.length === 0) return '';
-  // 取最新的 N 条(slice 末尾),但仍按老→新顺序输出
-  return rows.slice(-injectCount).map(t => t.summary).join('\n');
+  return rows.map(t => t.summary).join('\n');
 }
 
 // L2 rollup: when tier-1 summaries exceed L1_KEEP_RECENT, fold the oldest
@@ -1630,10 +1632,12 @@ async function maybeRollupToL2(sessionId) {
   const dump = toMerge.map((m, i) => `[${i + 1}] ${m.summary}`).join('\n\n');
   let merged;
   try {
+    const settings = (await db.get('settings', 'default')) || {};
     merged = await ai.callAI({
       systemPrompt: DEFAULT_MEMORY_SYS_L2,
       messages: [{ role: 'user', content: dump }],
       temperature: 0.3,
+      apiConfigId: settings.memoryApiConfigId || null,
     });
   } catch (e) {
     console.warn('[context] L2 rollup AI call failed (non-fatal):', e);

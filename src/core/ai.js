@@ -30,10 +30,21 @@ export async function getActiveApiConfig() {
   return (await db.get('apiConfig', settings.activeApiConfigId)) || null;
 }
 
+// 取指定 apiConfigId 的 config,找不到 fallback active。给 callAI / callAIOnce
+//   的 apiConfigId override 用 — 记忆压缩 / timeline 合并可以指定专用 API。
+async function resolveApiConfig(apiConfigId) {
+  if (apiConfigId) {
+    const cfg = await db.get('apiConfig', apiConfigId);
+    if (cfg) return cfg;
+  }
+  return await getActiveApiConfig();
+}
+
 // Single round-trip. Returns the choice's message object verbatim so callers can
 // inspect tool_calls. Optional `tools` enables OpenAI function calling.
-export async function callAIOnce({ systemPrompt, messages, temperature, tools }) {
-  const config = await getActiveApiConfig();
+// 新加 apiConfigId override — 给记忆相关调用走专用配置(便宜模型省 token)。
+export async function callAIOnce({ systemPrompt, messages, temperature, tools, apiConfigId }) {
+  const config = await resolveApiConfig(apiConfigId);
   if (!config || !config.apiUrl || !config.apiKey || !config.modelName) {
     throw new Error('ai.callAIOnce: 没有可用的 API 配置 — 去 设置 → API 设置 创建一组并选中');
   }
@@ -84,8 +95,9 @@ export async function callAIOnce({ systemPrompt, messages, temperature, tools })
 
 // Back-compat: text-only callers (memory compression, test connection).
 // Throws if the model returned tool_calls instead of plain text.
-export async function callAI({ systemPrompt, messages, temperature }) {
-  const { message } = await callAIOnce({ systemPrompt, messages, temperature });
+// 加 apiConfigId 透传给 callAIOnce — 记忆压缩可以指定专用 cfg。
+export async function callAI({ systemPrompt, messages, temperature, apiConfigId }) {
+  const { message } = await callAIOnce({ systemPrompt, messages, temperature, apiConfigId });
   if (typeof message.content !== 'string') {
     throw new Error('ai.callAI: 期望文本回复但收到 tool_calls / 空内容');
   }
