@@ -188,14 +188,20 @@ export async function mountMemoryApp(container, params, router) {
     return '日常';
   }
 
-  // 时间覆盖范围 — m.fromMsgId / m.toMsgId 查 chatMessages cache,渲成
-  // `5月22日` 或 `5月22日–5月23日`。msgIdx 是 caller 预建的 id→msg map。
+  // 时间覆盖范围 — 优先用 m.fromTs / m.toTs(memory 上的字段,context.js
+  // formatMemoryWithDate 也用这个),fallback 走 fromMsgId/toMsgId 查 msgIdx,
+  // 都没有再用 createdAt。这样消息被删了也能正确显示时间范围。
   function timeRangeOf(m, msgIdx) {
-    const from = m.fromMsgId ? msgIdx.get(m.fromMsgId) : null;
-    const to   = m.toMsgId   ? msgIdx.get(m.toMsgId)   : null;
-    if (!from || !to) return null;
-    const fromDate = new Date(from.createdAt);
-    const toDate   = new Date(to.createdAt);
+    let fromTs = m?.fromTs, toTs = m?.toTs;
+    if (!Number.isFinite(fromTs) || !Number.isFinite(toTs)) {
+      const from = m?.fromMsgId ? msgIdx.get(m.fromMsgId) : null;
+      const to   = m?.toMsgId   ? msgIdx.get(m.toMsgId)   : null;
+      fromTs = from?.createdAt ?? m?.createdAt;
+      toTs   = to?.createdAt   ?? m?.createdAt;
+    }
+    if (!Number.isFinite(fromTs) || !Number.isFinite(toTs)) return null;
+    const fromDate = new Date(fromTs);
+    const toDate   = new Date(toTs);
     const fmt = (d) => `${d.getMonth() + 1}月${d.getDate()}日`;
     const sameDay = fromDate.toDateString() === toDate.toDateString();
     return sameDay ? fmt(fromDate) : `${fmt(fromDate)}–${fmt(toDate)}`;
