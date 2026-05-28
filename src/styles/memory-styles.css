@@ -1160,6 +1160,10 @@ body[data-mem-style="cosmic"] .memory-app-page .ma-row {
   margin-left: 0;
   padding-left: 56px;  /* 月相 36 + 左缝 8 + 右缝 12 */
 }
+/* v3:月相整颗颜色由 --accent + 夜底深浅档推导,跟随主题预设。换粉主题
+   月亮粉、蓝主题月亮蓝、青主题月亮青。剩下的 #fbf7ff / #d9d0ee / #2a2147 /
+   #161031 / #120d28 不是"另一套配色",只是夜底亮度梯度(近白到近黑紫),
+   真色相由 --accent 注入。 */
 body[data-mem-style="cosmic"] .memory-app-page .ma-row::before {
   content: '';
   position: absolute;
@@ -1168,29 +1172,43 @@ body[data-mem-style="cosmic"] .memory-app-page .ma-row::before {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  box-shadow: 0 0 14px rgba(237,230,208,0.28);
-  /* 默认 = 满月(phase 缺失或为 3 都走这态) */
-  background: radial-gradient(circle at 36% 30%, #f6f0dc 0%, #dbd2b4 62%, #b9af8d 100%);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 35%, transparent);
+  /* 默认 = 满月(phase 缺失也走这态) */
+  background: radial-gradient(circle at 36% 30%,
+    color-mix(in srgb, var(--accent) 22%, #fbf7ff) 0%,
+    color-mix(in srgb, var(--accent) 52%, #d9d0ee) 60%,
+    color-mix(in srgb, var(--accent) 70%, #2a2147) 100%);
 }
-/* phase 1 新月 — 几乎全暗,只留一圈被星光照亮的边(用 accent token 让
-   月光跟主题预设走 — 切到粉主题月边变粉,蓝主题变蓝,以此类推) */
+/* phase 1 新月 — 几乎全暗,内圈给一点 accent 透光 + 1px accent 边光 */
 body[data-mem-style="cosmic"] .memory-app-page .ma-row[data-moon-phase="1"]::before {
-  background: radial-gradient(circle at 50% 46%, #2b2547 0%, #161031 68%);
+  background: radial-gradient(circle at 50% 46%,
+    color-mix(in srgb, var(--accent) 30%, #161031) 0%, #120d28 68%);
   box-shadow:
-    0 0 10px color-mix(in srgb, var(--accent) 30%, transparent),
-    inset 0 0 0 1px rgba(237,230,208,0.12);
+    0 0 10px color-mix(in srgb, var(--accent) 45%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
 }
-/* phase 2 上弦 — 光源推到右外侧,米白聚右、深紫到左,terminator 是弧 */
+/* phase 2 上弦 — 光源推到右外侧,亮面 accent 染色,terminator 弧形 */
 body[data-mem-style="cosmic"] .memory-app-page .ma-row[data-moon-phase="2"]::before {
-  background: radial-gradient(circle at 128% 50%, #f4eeda 0%, #e0d7b9 38%, #1b1336 72%, #120d28 100%);
+  background: radial-gradient(circle at 128% 50%,
+    color-mix(in srgb, var(--accent) 22%, #fbf7ff) 0%,
+    color-mix(in srgb, var(--accent) 50%, #d9d0ee) 36%,
+    color-mix(in srgb, var(--accent) 60%, #161031) 72%,
+    #120d28 100%);
 }
 /* phase 3 满月 — 跟默认一致(显式声明便于阅读) */
 body[data-mem-style="cosmic"] .memory-app-page .ma-row[data-moon-phase="3"]::before {
-  background: radial-gradient(circle at 36% 30%, #f6f0dc 0%, #dbd2b4 62%, #b9af8d 100%);
+  background: radial-gradient(circle at 36% 30%,
+    color-mix(in srgb, var(--accent) 22%, #fbf7ff) 0%,
+    color-mix(in srgb, var(--accent) 52%, #d9d0ee) 60%,
+    color-mix(in srgb, var(--accent) 70%, #2a2147) 100%);
 }
-/* phase 4 下弦 — 光源推到左外侧,米白聚左、深紫到右 */
+/* phase 4 下弦 — 光源推到左外侧 */
 body[data-mem-style="cosmic"] .memory-app-page .ma-row[data-moon-phase="4"]::before {
-  background: radial-gradient(circle at -28% 50%, #f4eeda 0%, #e0d7b9 38%, #1b1336 72%, #120d28 100%);
+  background: radial-gradient(circle at -28% 50%,
+    color-mix(in srgb, var(--accent) 22%, #fbf7ff) 0%,
+    color-mix(in srgb, var(--accent) 50%, #d9d0ee) 36%,
+    color-mix(in srgb, var(--accent) 60%, #161031) 72%,
+    #120d28 100%);
 }
 body[data-mem-style="cosmic"] .memory-app-page .mem-chips > span {
   background: rgba(255, 255, 255, 0.06);

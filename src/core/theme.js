@@ -445,6 +445,105 @@ export const THEME_PRESETS = [
       },
     },
   },
+  // ────────────────────────────────────────────────────────────────────
+  // 三色补全(紫 / 青 / 黄)— user 反馈:仓库没有独立的紫青色调,黄色只有
+  // 「缄默 · 夜读」的辅助老纸黄。每套自带不同 radius / glass / texture 气质,
+  // 避免新预设视觉过于雷同。月相 v3 走 --accent 推导,这三套切到 cosmic
+  // 风格会自然呈现紫月 / 青月 / 黄月。
+  // ────────────────────────────────────────────────────────────────────
+  {
+    id: 'night-violet',
+    label: '夜紫',
+    theme: {
+      notch: false,
+      bg:           '#1A1232',           // 深紫底,跟 cosmic 风格深紫黑同源
+      fg:           '#ECE6D8',           // 米白文字
+      surface:      '#2A1F4A',           // 深紫卡,比 bg 稍亮
+      accent:       '#9A86D6',           // 柔紫(月光紫)— 不刺眼
+      muted:        '#8C80A8',
+      border:       '#38305A',
+      bubbleUser:   '#9A86D6',
+      bubbleUserFg: '#FFFFFF',
+      bubbleChar:   'rgba(255,255,255,0.07)',
+      bubbleCharFg: '#ECE6D8',
+      outsideBg:    '#0D0A1E',
+      bgPinned:     '#2F2655',
+      fontFamily:   'system',
+      fontSize:     15,
+      radius:       16,                  // 柔圆 — 夜晚的圆润感
+      effects: {
+        glass:          'liquid',         // 紫底 + liquid 玻璃 = 夜色质感
+        glassIntensity: 80,
+        gradient:       false,
+        gradientTo:     '#2F2655',
+        texture:        'noise',           // 细微噪点 = 星空像素粒
+        transparency:   0,
+        surfaceAlpha:   65,
+      },
+    },
+  },
+  {
+    id: 'deep-teal',
+    label: '深青',
+    theme: {
+      notch: false,
+      bg:           '#0E2A30',           // 深青墨绿
+      fg:           '#D8E8E0',           // 柔白米绿
+      surface:      '#143840',           // 深青卡
+      accent:       '#6EE0C8',           // 明青绿(发光生物色)
+      muted:        '#7A9890',
+      border:       '#1F4A52',
+      bubbleUser:   '#6EE0C8',
+      bubbleUserFg: '#0E2A30',           // 深底深字反差 — 沉静感
+      bubbleChar:   '#1B454D',
+      bubbleCharFg: '#D8E8E0',
+      outsideBg:    '#051A20',
+      bgPinned:     '#1A4048',
+      fontFamily:   'system',
+      fontSize:     15,
+      radius:       4,                   // 硬朗几何感(跟柔紫对比)
+      effects: {
+        glass:          'frosted',        // 毛玻璃 — 比 liquid 收敛
+        glassIntensity: 70,
+        gradient:       false,
+        gradientTo:     '#1A4048',
+        texture:        'lines',           // 斜纹 = 深海纹理
+        transparency:   0,
+        surfaceAlpha:   55,
+      },
+    },
+  },
+  {
+    id: 'warm-amber',
+    label: '暖琥珀',
+    theme: {
+      notch: false,
+      bg:           '#FFF7E8',           // 柔奶黄
+      fg:           '#3A2A18',           // 深咖文字
+      surface:      '#FFFCF4',           // 米白卡
+      accent:       '#E89A38',           // 温琥珀橙黄
+      muted:        '#A8927A',
+      border:       '#F0DBB0',
+      bubbleUser:   '#E89A38',
+      bubbleUserFg: '#FFFCF4',
+      bubbleChar:   '#FFEFCC',
+      bubbleCharFg: '#3A2A18',
+      outsideBg:    '#E8D8B0',
+      bgPinned:     '#FFF0CC',
+      fontFamily:   'rounded',           // 圆体 + 大圆角 = 软糖暖意
+      fontSize:     15,
+      radius:       22,                  // 超圆 — 复古海报糖块感
+      effects: {
+        glass:          'none',           // 纯色不要玻璃,保留奶黄通透
+        glassIntensity: 100,
+        gradient:       false,
+        gradientTo:     '#FFF0CC',
+        texture:        'dots',           // 点阵 = 旧复古印刷感
+        transparency:   0,
+        surfaceAlpha:   0,
+      },
+    },
+  },
 ];
 
 export function applyTheme(theme) {
