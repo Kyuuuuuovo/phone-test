@@ -57,7 +57,6 @@ export async function mountWeatherApi(container, params, router) {
   const urlInput    = form.elements.urlTemplate;
   const saveBtn     = form.querySelector('button[type="submit"]');
   const dirty       = bindFormDirty(form, saveBtn);
-  dirty.markSaved();
 
   function showPresetHint() {
     const match = PRESET_TEMPLATES.find(p => p.urlTemplate === urlInput.value.trim());

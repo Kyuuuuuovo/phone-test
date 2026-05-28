@@ -75,7 +75,6 @@ export async function mountPersonaDetail(container, params, router) {
   const deleteBtn   = container.querySelector('.delete-btn');
   const saveBtn     = form.querySelector('button[type="submit"]');
   const dirty       = bindFormDirty(form, saveBtn);
-  dirty.markSaved();
 
   function setStatus(text, kind) {
     status.textContent = text;

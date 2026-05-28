@@ -83,7 +83,6 @@ export async function mountApiDetail(container, params, router) {
   const modelList  = container.querySelector('.model-list');
   const saveBtn    = form.querySelector('button[type="submit"]');
   const dirty      = bindFormDirty(form, saveBtn);
-  dirty.markSaved();
 
   async function saveFromForm() {
     const fd = new FormData(form);

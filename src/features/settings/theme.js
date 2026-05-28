@@ -33,7 +33,7 @@ export async function mountTheme(container, params, router) {
   // T8: dirty 是这一轮"按了保存之后,有没有改过新东西" — 跟 saved 不同。
   //   saved 描述"整个 session 里点过 save 没",cleanup 用它判断要不要 revert。
   //   dirty 描述"现在还没保存的修改",save-btn 视觉用它。
-  let dirty = false;
+  let dirty = true;  // 默认 dirty(显示「保存」)— 进页面只 saved 反而误导
   let activeTab = 'preset';
   // User presets live in settings.themePresets (array of { id, label, theme }).
   let userPresets = Array.isArray(settings.themePresets) ? settings.themePresets : [];

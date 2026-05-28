@@ -95,7 +95,6 @@ export async function mountCharacterDetail(container, params, router) {
   const wbList       = container.querySelector('.wb-mount-list');
   const saveBtn      = form.querySelector('button[type="submit"]');
   const dirty        = bindFormDirty(form, saveBtn);
-  dirty.markSaved();
 
   function setStatus(text, kind) {
     status.textContent = text;

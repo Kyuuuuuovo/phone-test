@@ -93,7 +93,6 @@ export async function mountEmbeddingSettings(container, params, router) {
   const backStatus   = container.querySelector('.backfill-status');
   const saveBtn      = form.querySelector('button[type="submit"]');
   const dirty        = bindFormDirty(form, saveBtn);
-  dirty.markSaved();
   // 预设 chip 写入 form 后也算 dirty(form.elements 赋值不触发 input event)
   container.querySelectorAll('.preset-chip').forEach(btn => {
     btn.addEventListener('click', () => dirty.markDirty());

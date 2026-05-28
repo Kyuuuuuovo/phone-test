@@ -57,7 +57,6 @@ export async function mountMemorySettings(container, params, router) {
   const backBtn = container.querySelector('.back');
   const saveBtn = form.querySelector('button[type="submit"]');
   const dirty   = bindFormDirty(form, saveBtn);
-  dirty.markSaved();
 
   function setStatus(text, kind) {
     status.textContent = text;
