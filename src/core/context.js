@@ -179,8 +179,15 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
   const settings = (await db.get('settings', 'default')) || {};
   const ov  = settings.promptOverrides       || {};
   const ovo = settings.promptOutputOverrides || {};
-  const humanizer   = (ov.humanizer   ?? HUMANIZER_PROMPT   ?? '').trim();
-  const behavior    = (ov.behavior    ?? BEHAVIOR_GUIDANCE  ?? '').trim();
+  // {user} 占位符 → persona.name 真名替换。HUMANIZER_PROMPT 写「你在用手机和
+  //   {user} 聊天」,持续注入到每段对话规范里;以前没做这个替换,模型读到字
+  //   面「{user}」会困惑。同样替换规则也应用于 user 自定义 override,让 author
+  //   和 user 都能写 {user} 占位而不必关心运行时拼接。fallback「用户」防 persona
+  //   为空时拼出"你在用手机和 null 聊天"。
+  const userNameForPrompt = (persona?.name || '').trim() || '用户';
+  const subUser = (s) => (s || '').replace(/\{user\}/g, userNameForPrompt);
+  const humanizer   = subUser((ov.humanizer   ?? HUMANIZER_PROMPT   ?? '').trim());
+  const behavior    = subUser((ov.behavior    ?? BEHAVIOR_GUIDANCE  ?? '').trim());
   const countSpec   = (ovo.countSpec   ?? OUTPUT_COUNT_SPEC).trim();
   const schemasText = (ovo.schemasText ?? ACTION_SCHEMAS_TEXT).trim();
 
