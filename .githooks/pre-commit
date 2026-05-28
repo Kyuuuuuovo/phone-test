@@ -28,11 +28,13 @@ fi
 
 next=$((current + 1))
 
-# GNU sed (Linux / git-bash) vs BSD sed (macOS) 区分 -i 用法
+# GNU sed (Linux / git-bash) vs BSD sed (macOS) 区分 -i 用法。
+# pattern 精确匹配 `const CACHE = 'phone-app-vN';` 那一行,不动注释里
+# 出现的 vN 字符串(否则注释示例会被一起替换语义错乱)。
 if sed --version >/dev/null 2>&1; then
-  sed -i "s/phone-app-v$current/phone-app-v$next/" sw.js
+  sed -i "s/^const CACHE = 'phone-app-v$current';/const CACHE = 'phone-app-v$next';/" sw.js
 else
-  sed -i '' "s/phone-app-v$current/phone-app-v$next/" sw.js
+  sed -i '' "s/^const CACHE = 'phone-app-v$current';/const CACHE = 'phone-app-v$next';/" sw.js
 fi
 
 git add sw.js

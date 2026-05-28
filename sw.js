@@ -16,15 +16,16 @@
 //   4. main.js 收到 statechange → 显示「有新版」banner
 //   5. user 点重启 → location.reload(),新 SW 接管,所有资源拿新版
 //
-// ⚠️ DEPLOY 流程关键:**每次 commit 前把 CACHE 字符串里的 vN 改大一位**
-// (`'phone-app-v2'` → `'v2'` → ...)。理由:
+// ⚠️ DEPLOY 流程关键:**每次 commit 前把 CACHE 字符串里的 vN 加 1**
+// (vN → vN+1)。.githooks/pre-commit 已经自动做这件事,只要 staged 文件里
+// 除 sw.js 之外还有别的,commit 时它会跑 sed +1。理由:
 //   1. sw.js 字节变化才触发浏览器 updatefound 事件 → 弹「有新版,重启」banner
 //   2. 老 cache (vN) 在新 SW activate 时被删,fetch 重新拉新版 js/css
 // 不改 vN 的话:即使你改了 base.css / chat.js,user 的 SW 仍然给老 cache,
 // 看不到新版。只改 sw.js 注释也不行 — 改 CACHE 字符串(用户能看到的视觉
 // 变化:cache key 名变了)是最稳的触发方式。
 
-const CACHE = 'phone-app-v2';
+const CACHE = 'phone-app-v3';
 
 self.addEventListener('install', () => {
   // 不预 cache 任何文件 — 让 runtime 边用边缓存,免维护 asset manifest
