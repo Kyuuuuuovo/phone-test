@@ -1010,7 +1010,7 @@ export async function mountMemoryApp(container, params, router) {
           // T29 memory 删 — 同时 unarchive 指向这条 memory 的所有 chatMessages
           //   (否则那些消息永远不显示)。embedding 也清掉,避免向量表孤儿。
           if (!await openConfirm(container, {
-            title: '删除记忆', message: '确定删除这条总结?被压缩的聊天消息会恢复成正常聊天记录(不再折叠)。',
+            title: '删除记忆', message: '确定删除这条记忆?\n\n原本被它压缩进来的那段聊天会重新展开显示(否则那部分对话就消失了 — 它们当时被折叠是因为有这条记忆代替它们注入 prompt)。\n\nAI 下次回复时,这段就当作未压缩看待,等再次触发压缩会重新生成新的记忆。',
             confirmLabel: '删除', danger: true,
           })) return;
           const memId = memoryRow.dataset.memoryId;
