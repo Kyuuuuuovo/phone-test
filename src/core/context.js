@@ -403,13 +403,18 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     kind: 'data',
     editRoute: 'cycle',
   });
-  // 8e. 关于你 — per (角色×人设) 的画像。lookup 先精确匹配 charId|personaId
-  //  再 fallback charId|(共享行)。500 字以内,渲染 likes/dislikes/discoveries
-  //  三行(空段不出现)。手动编辑入口:记忆 app → 关于你 tab。
-  const profileLines = await buildUserProfileLine(character.id, session.personaId);
+  // 8e. 关于{用户真名} — per (角色×人设) 的画像。lookup 先精确匹配 charId|
+  //  personaId 再 fallback charId|(共享行)。500 字以内,渲染 likes/dislikes/
+  //  discoveries 三行(空段不出现)。
+  //  Section title 跟内容里的指代都用 persona.name(真名),不用"你"——
+  //  prompt 里大量段落「你 = character」,这一段如果写「关于你」让模型把
+  //  自己当成 user 容易出戏。直接用 user 真名最不会混淆。
+  //  手动编辑入口:记忆 app → 关于你 tab。
+  const userProfileName = persona?.name || '用户';
+  const profileLines = await buildUserProfileLine(character.id, session.personaId, userProfileName);
   parts.push({
     key: 'user-profile',
-    title: '# 关于你',
+    title: `# 关于${userProfileName}`,
     body: profileLines,
     kind: 'data',
     editRoute: 'memory',
@@ -904,26 +909,31 @@ export async function buildCheckinLines() {
   return lines.join('\n');
 }
 
-// 用户画像 — per (角色×人设) 的"角色眼中的 ta"。
+// 用户画像 — per (角色×人设) 的"角色眼中的 user"。
 // id = composite `${characterId}|${personaId}`,personaId 留空 = "所有人设共享"。
 // Lookup:先精确匹配 charId|sessionPersonaId,落空 fallback charId|;两者皆无
 // 返回 ''(prompt 注入空 → 不渲染该 part)。
-// 渲染格式(空段跳过):
-//   ta 喜欢:...
-//   ta 不喜欢:...
-//   你发现 ta:...
+// 渲染格式(空段跳过):用 user 真名指代,不用"ta" / "你"。理由:prompt
+//   大量段落「你 = character」,这一段用代词会让模型混淆 user / character;
+//   真名最直接。
+//   {name} 喜欢:...
+//   {name} 不喜欢:...
+//   你发现 {name}:...
 // 整段尽量简洁,不要长篇大论 — UI 已限 500 字。
-export async function buildUserProfileLine(characterId, sessionPersonaId) {
+//
+// personaName 由 caller 传 (`persona?.name || '用户'`)。
+export async function buildUserProfileLine(characterId, sessionPersonaId, personaName) {
   if (!characterId) return '';
   const exactId = `${characterId}|${sessionPersonaId || ''}`;
   const sharedId = `${characterId}|`;
   let row = await db.get('userProfiles', exactId);
   if (!row && exactId !== sharedId) row = await db.get('userProfiles', sharedId);
   if (!row) return '';
+  const name = (personaName || '').trim() || '用户';
   const lines = [];
-  if (row.likes && row.likes.trim())       lines.push(`ta 喜欢:${row.likes.trim()}`);
-  if (row.dislikes && row.dislikes.trim()) lines.push(`ta 不喜欢:${row.dislikes.trim()}`);
-  if (row.discoveries && row.discoveries.trim()) lines.push(`你发现 ta:${row.discoveries.trim()}`);
+  if (row.likes && row.likes.trim())       lines.push(`${name} 喜欢:${row.likes.trim()}`);
+  if (row.dislikes && row.dislikes.trim()) lines.push(`${name} 不喜欢:${row.dislikes.trim()}`);
+  if (row.discoveries && row.discoveries.trim()) lines.push(`你发现 ${name}:${row.discoveries.trim()}`);
   return lines.join('\n');
 }
 
