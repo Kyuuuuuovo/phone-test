@@ -2,7 +2,7 @@
 // Data model frozen in STORES below — bump DB_VERSION when changing schema.
 
 export const DB_NAME = 'phone-app';
-export const DB_VERSION = 13;
+export const DB_VERSION = 14;
 
 // Object store definitions. Applied during onupgradeneeded.
 // keyPath = primary key field; indexes = secondary lookup paths.
@@ -163,9 +163,11 @@ export const STORES = {
   },
   // 打卡类型 — 用户自定义的"每天要打的卡"集合。schedule app 用,跟 schedule
   // 平级但独立 store(打卡是 boolean 标记,schedule 是时段事件 — 数据形状
-  // 不同)。字段:id / name / icon / color / targetFreq? ('daily'|'weekly:N')
-  // / reminder? ('morning'|'noon'|'evening'|null) / createdAt。通常 < 20 行,
-  // 无索引。
+  // 不同)。字段:id / name / icon / color / kind?('normal' | 'period',默认
+  // 'normal';'period' = 生理期特殊类型,UI 上单独 section + 预测窗口 + 通知)
+  // / cycleConfig?(only when kind='period':{enabled, visibleToChat, averageLength,
+  //   periodLength, fluctuation, lastStartDayKey, history}) / reminder? / createdAt。
+  // 通常 < 20 行,无索引。
   checkinTypes: {
     keyPath: 'id',
     indexes: [],

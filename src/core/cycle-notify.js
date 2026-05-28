@@ -10,7 +10,7 @@
 
 import * as db from './db.js';
 import { dayKeyOf } from './util.js';
-import { computeCycleStatus } from './cycle.js';
+import { computePeriodStatus, findPeriodType } from './period.js';
 
 let routerRef = null;
 
@@ -20,9 +20,13 @@ export async function start(router) {
 }
 
 async function checkAndNotify() {
-  const cfg = await db.get('cycle', 'default');
-  if (!cfg?.enabled) return;
-  const status = computeCycleStatus(cfg);
+  // T23 数据源换了 — checkinTypes 里 kind='period' 的 type 上的 cycleConfig
+  const types = await db.getAll('checkinTypes');
+  const periodType = findPeriodType(types);
+  if (!periodType) return;
+  const cfg = periodType.cycleConfig || {};
+  if (!cfg.enabled) return;
+  const status = computePeriodStatus(cfg);
   // 只对「快开始(浮动窗内)」和「已推迟」发通知 — in-period 是 user 自己
   // 标的不需要 app 反过来提醒,inactive / predicted 距离还远没意义。
   if (status.phase !== 'fluctuation' && status.phase !== 'overdue') return;

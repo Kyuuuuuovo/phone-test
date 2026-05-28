@@ -144,6 +144,10 @@ async function boot() {
   await db.init();
   console.log('[boot] db ready');
 
+  // T23 周期 → 打卡 migration — DB_VERSION 14 后老 cycle / cycleSymptoms 数据
+  // 迁移到 checkinTypes(kind='period')+ checkins。幂等(settings flag 防重跑)。
+  await migrateCycleToCheckin().catch(err => console.warn('[migrate] cycle→checkin failed:', err));
+
   // 先渲染 shell —— applyTheme 里的 applyWallpaper 需要 .phone-frame 已经在
   // DOM 里(它把背景图设到 frame 上)。之前是 applyTheme 先跑、renderShell
   // 后跑,所以 boot 时 wallpaper 设不上,要等到下次 user 上传/清除壁纸才
@@ -667,6 +671,96 @@ async function openMemoryHelperPanel(sessionId) {
   }
 
   await render();
+}
+
+// T23 周期 → 打卡 数据迁移。一次性,幂等。
+//
+// 旧数据形状:
+//   cycle store(单例 id='default')— enabled / visibleToChat / averageLength /
+//     periodLength / fluctuation / lastStartDayKey / history[{startDayKey, endDayKey?, note?}]
+//   cycleSymptoms store(per-row)— dayKey / kind / severity? / note?
+//
+// 新数据形状:
+//   checkinTypes 加一条 kind='period' 的 type,带 cycleConfig 字段
+//   checkins 每条 period 期间的某天 = 一行(typeId 指向 period type)
+//   cycleSymptoms 也转成 checkins(同 typeId),note 字段拼"症状: cramp 程度 2 · ..."
+//
+// 跑完写 settings.cycleToCheckinMigrated = true 防止重跑。完成后物理删 cycle
+// 单例 + 所有 cycleSymptoms 行(数据已搬走,store 本身保留兼容)。
+async function migrateCycleToCheckin() {
+  const settings = (await db.get('settings', 'default')) || {};
+  if (settings.cycleToCheckinMigrated) return;
+  const cycle = await db.get('cycle', 'default');
+  // 老 cycle 不存在或没启用过 → 直接标记完成不留 type
+  if (!cycle || (!cycle.lastStartDayKey && !cycle.enabled)) {
+    await db.updateSettings(s => { s.cycleToCheckinMigrated = true; });
+    return;
+  }
+  const periodLen = cycle.periodLength ?? 5;
+  const typeId = db.newId();
+  await db.set('checkinTypes', {
+    id: typeId,
+    name: '生理期',
+    icon: '🌸',
+    color: '#d96b8f',
+    kind: 'period',
+    cycleConfig: {
+      enabled: cycle.enabled !== false,
+      visibleToChat: cycle.visibleToChat === true,
+      averageLength: cycle.averageLength ?? 28,
+      periodLength: periodLen,
+      fluctuation: cycle.fluctuation ?? 2,
+      lastStartDayKey: cycle.lastStartDayKey || null,
+      history: Array.isArray(cycle.history) ? cycle.history : [],
+    },
+    createdAt: Date.now(),
+  });
+  // 把每段 period 期间的每天写成 checkin(start ... end)
+  const addDaysDk = (dk, n) => {
+    const [y, m, d] = dk.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setHours(0, 0, 0, 0);
+    dt.setDate(dt.getDate() + n);
+    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  };
+  if (Array.isArray(cycle.history)) {
+    for (const h of cycle.history) {
+      if (!h?.startDayKey) continue;
+      const endDk = h.endDayKey || addDaysDk(h.startDayKey, periodLen - 1);
+      let cursor = h.startDayKey;
+      while (cursor <= endDk) {
+        await db.set('checkins', {
+          id: db.newId(),
+          typeId,
+          dayKey: cursor,
+          checkedAt: Date.now(),
+          note: h.note || null,
+        });
+        cursor = addDaysDk(cursor, 1);
+      }
+    }
+  }
+  // 同步 cycleSymptoms → checkins(note 字段拼成 "症状: kind 程度 N · note")
+  const symptoms = await db.getAll('cycleSymptoms');
+  const SYMPTOM_LABELS = { cramp: '痛经', headache: '头痛', mood: '情绪低', flow: '量', note: '其他' };
+  for (const s of symptoms) {
+    const parts = [];
+    parts.push(`症状:${SYMPTOM_LABELS[s.kind] || s.kind}`);
+    if (s.severity) parts.push(`程度 ${s.severity}`);
+    if (s.note) parts.push(s.note);
+    await db.set('checkins', {
+      id: db.newId(),
+      typeId,
+      dayKey: s.dayKey,
+      checkedAt: s.createdAt || Date.now(),
+      note: parts.join(' · '),
+    });
+  }
+  // 物理清老数据(已搬完)
+  await db.del('cycle', 'default');
+  for (const s of symptoms) await db.del('cycleSymptoms', s.id);
+  await db.updateSettings(s => { s.cycleToCheckinMigrated = true; });
+  console.log(`[migrate] cycle→checkin: 1 type + ${(cycle.history?.length || 0)} 段 history + ${symptoms.length} 症状 已迁`);
 }
 
 // 重置一个会话的所有记忆 — 三件事原子心态(逐项 await 但不放一个 tx 里,

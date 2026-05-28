@@ -7,7 +7,7 @@ import { BEHAVIOR_GUIDANCE } from './behavior.js';
 import * as embedding from './embedding.js';
 import * as timeline from './timeline.js';
 import { parseTolerantJSON, dayKeyOf } from './util.js';
-import { computeCycleStatus } from './cycle.js';
+import { computePeriodStatus, findPeriodType } from './period.js';
 
 // 向量打标 6 类固定 enum — 转折 / 亲密 / 冲突 / 发现 / 约定 / 日常。每条 L1
 // memory 生成时随 summary 同步打标(单次 AI 调用,不双倍 token)。enum 内
@@ -788,11 +788,17 @@ export async function buildScheduleLines(characterId, sessionPersonaId, names = 
 //   in-period:「用户目前在生理期(第 X 天 / 共约 N 天)。这是 ta 真实的身
 //     体状态,具体如何反应由你的人设决定。」
 //   fluctuation:「用户近期可能进入生理期(预测窗口内)。」
+// T23 数据源换了 — 从 checkinTypes 里找 kind='period' 的 type,读它 cycleConfig
+// 字段(双门控仍是 enabled + visibleToChat,但都挂在 type.cycleConfig 上)。
+// 行为 / prompt 文案不变,只是 backing store 换了。
 export async function buildCycleStatus() {
-  const cfg = await db.get('cycle', 'default');
-  if (!cfg?.enabled) return '';
+  const types = await db.getAll('checkinTypes');
+  const periodType = findPeriodType(types);
+  if (!periodType) return '';
+  const cfg = periodType.cycleConfig || {};
+  if (!cfg.enabled) return '';
   if (cfg.visibleToChat !== true) return '';
-  const status = computeCycleStatus(cfg);
+  const status = computePeriodStatus(cfg);
   if (status.phase === 'in-period') {
     return `用户目前在生理期(第 ${status.dayInPeriod} 天 · 通常持续 ${status.periodLength} 天)。这是 ta 真实的身体状态,具体如何反应由你的人设决定。`;
   }
