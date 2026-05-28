@@ -5600,6 +5600,9 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
   cursor: pointer;
   border-bottom: 2px solid transparent;
   transition: color 0.15s, border-color 0.15s;
+  /* T35: 防中文 tab 名("时间线" / "纪念日" / "关于你")按字断行
+     — flex:1 平分让每 tab 宽 ~70px,3 字中文 + padding 可能撞边界 */
+  white-space: nowrap;
 }
 .memory-app-page .ma-tab:hover { color: var(--fg); }
 .memory-app-page .ma-tab.active { color: var(--accent); border-bottom-color: var(--accent); }

@@ -353,26 +353,23 @@ body[data-mono="1"] .memory-app-page .mem-chips {
 body[data-mem-style="planner"] .memory-app-page.page {
   background: var(--bg);
 }
-/* 横线纸已彻底拿掉(user 反馈太乱)。planner 的辨识度还在:dashed tabs +
-   .ma-row 左 3px accent 竖条 + 圆点时间轴 + 胶带 chip + 方角月历 dot。 */
+/* 横线纸已彻底拿掉(user 反馈太乱)。planner 的辨识度还在:dashed bottom +
+   .ma-row 左 3px accent 竖条 + 圆点时间轴 + 胶带 chip + 方角月历 dot。
+   T35: 删 tab 自身 dashed border + active 的 solid border + box-shadow —
+   user 反馈"黑粉线冲突"。改成简洁 — inactive 透明,active 加 accent 底
+   border 跟其他风格一致(只保留容器底部 dashed 体现 planner 纸纹辨识)。 */
 body[data-mem-style="planner"] .memory-app-page .ma-tabs {
   border-bottom: 2px dashed color-mix(in srgb, var(--fg) 25%, transparent);
 }
 body[data-mem-style="planner"] .memory-app-page .ma-tab {
-  border: 1px dashed color-mix(in srgb, var(--fg) 25%, transparent);
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
-  margin: 0 2px -1px 2px;
   background: transparent;
   color: var(--muted);
-  padding: 6px 12px;
+  padding: 8px 6px;
 }
 body[data-mem-style="planner"] .memory-app-page .ma-tab.active {
-  border-style: solid;
-  background: var(--surface);
   color: var(--fg);
   font-weight: 600;
-  box-shadow: 0 -2px 0 var(--accent) inset;
+  border-bottom-color: var(--accent);
 }
 body[data-mem-style="planner"] .memory-app-page .ma-row {
   background: transparent;
@@ -453,7 +450,9 @@ body[data-mem-style="cabinet"] .memory-app-page .ma-tabs {
 body[data-mem-style="cabinet"] .memory-app-page .ma-tab {
   border: none;
   background: none;
-  padding: 6px 14px;
+  /* T35: 14 → 10 — 5 个胶囊 tab 在 phone-frame 380 内排不下,"时间线"
+     "纪念日" 按字断成两行。10px padding 让总宽 ~330px 够。 */
+  padding: 6px 10px;
   border-radius: 999px;
   font-size: 13px;
   color: var(--muted);
@@ -546,8 +545,9 @@ body[data-mem-style="petal"] .memory-app-page .ma-tab {
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border-radius: 999px;
-  padding: 6px 14px;
-  margin: 0 3px;
+  /* T35: 14 → 10, margin 3 → 2 — 5 个独立 pill tab 在 phone-frame 排不下 */
+  padding: 6px 10px;
+  margin: 0 2px;
   color: var(--muted);
 }
 body[data-mem-style="petal"] .memory-app-page .ma-tab.active {
@@ -868,8 +868,10 @@ body[data-mem-style="planner"] .memory-app-page .mem-timerange,
 body[data-mem-style="planner"] .memory-app-page .mem-score {
   background: linear-gradient(135deg, rgba(255, 220, 150, 0.55), rgba(255, 200, 130, 0.35));
 }
+/* T35: 原 dashed border 让 char chip 看起来"破破的",user 反馈"虚线丑"。
+   改 solid 跟 chip 文字区分用更细 muted 边色,保留 planner 风格但收敛。 */
 body[data-mem-style="planner"] .memory-app-page .mem-char-chip {
-  border-style: dashed;
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent);
 }
 body[data-mem-style="planner"] .memory-app-page .mem-chip-name {
   font-size: 11px;
