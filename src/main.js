@@ -882,14 +882,16 @@ async function migrateCycleToCheckin() {
   console.log(`[migrate] cycle→checkin: 1 type + ${(cycle.history?.length || 0)} 段 history + ${symptoms.length} 症状 已迁`);
 }
 
-// 重置一个会话的所有记忆 — 三件事原子心态(逐项 await 但不放一个 tx 里,
-// 因为跨 3 个 store + maybeCompressMemory 后续也要写,大事务持有时间过长):
+// 重置一个会话的所有记忆 — 四件事原子心态(逐项 await 但不放一个 tx 里,
+// 因为跨 4 个 store + maybeCompressMemory 后续也要写,大事务持有时间过长):
 //   1. 删 memories(L1 + L2)
 //   2. unarchive 所有 chatMessages(让被压缩进总结的消息恢复成活跃)
 //   3. 删该会话的 memory-source embeddings(否则向量表留孤儿,以后再压缩
 //      会重复 embed)
-// 调用方:memory-helper 的「重置」按钮 / 「重新提取」按钮(后者再调
-// maybeCompressMemory 跑一遍新压缩)。
+//   4. 删该会话的 timeline rows — 记忆压缩末尾 fire-and-forget 调
+//      generateMissingDays 生成 timeline,跟 memory 是同源数据。重置 memory
+//      时 timeline 不清,会留下"已生成"标记,下次重新压缩后扫描 generateMissingDays
+//      看 dayKey 已存在就 skip,等于老 timeline 留着不刷新。
 async function resetMemoriesForSession(sessionId) {
   const mems = await db.query('memories', 'sessionId', sessionId);
   for (const m of mems) await db.del('memories', m.id);
@@ -906,6 +908,8 @@ async function resetMemoriesForSession(sessionId) {
   for (const e of embs) {
     if (e.sourceType === 'memory') await db.del('embeddings', e.id);
   }
+  const tls = await db.query('timeline', 'sessionId', sessionId);
+  for (const t of tls) await db.del('timeline', t.id);
 }
 
 boot().catch(err => console.error('[boot] failed:', err));

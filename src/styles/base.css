@@ -972,24 +972,9 @@ label .label-text {
 .page.home.editing .widget.user-widget {
   transform: none;
 }
-/* B1: 触屏 user 看不到 ⚙/× hint(@media hover 把 hover 反馈圈给鼠标了)。
-   加一个永久显示的极淡角标 — 5px 圆点在右上,让人感觉"这里能动"。鼠标设
-   备 hover 自然会出 ⚙/×,角标只在触屏(@media hover: none)出现。polaroid
-   是悬浮照片本身就有视觉特征,跳过。 */
-@media (hover: none) {
-  .page.home:not(.editing) .widget.user-widget:not(.widget-polaroid)::before {
-    content: '';
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--fg) 35%, transparent);
-    pointer-events: none;
-    z-index: 3;
-  }
-}
+/* B1 永久 hint dot 已删 — user 反馈"小点不知道什么意思",而且粉色等浅
+   主题下衬比明显反而像 bug。长按 / 右键进编辑模式后右上角自然有 ⚙/×,
+   不需要额外永久提示。 */
 .widget.user-widget .widget-del {
   position: absolute;
   top: 6px;
@@ -1309,9 +1294,11 @@ body[data-fx-glass="metal"] .widget.widget-polaroid::after {
   font-size: 12px;
 }
 
-/* A2: 游戏机 widget — 纯装饰。SVG 居中填充 widget 卡片;比例 5:7 接近原版
-   Game Boy。padding 0 让卡片整张被屏占满,卡片本身的 bg(--widget-bg)在
-   SVG 后面透出来一圈边,看着像放在桌面上的实体。 */
+/* A2: 游戏机 widget + MP3 widget — 纯装饰。SVG 居中填充 widget 卡片。
+   user 反馈"背景白色不需要" — 改 background: none 让 SVG 边缘直接落在
+   home 壁纸上,SVG 本体已经是完整的实体造型(机壳+按钮+屏幕),不需要
+   外面再有一层 widget 卡片包它。box-shadow 也去掉,避免"贴在白卡上"的
+   错觉。 */
 .widget.widget-gameboy,
 .widget.widget-mp3 {
   padding: 0;
@@ -1319,6 +1306,9 @@ body[data-fx-glass="metal"] .widget.widget-polaroid::after {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  background: none !important;
+  box-shadow: none !important;
+  border: none !important;
 }
 .widget.widget-gameboy .gameboy-svg,
 .widget.widget-mp3 .mp3-svg {

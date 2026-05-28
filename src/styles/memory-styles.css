@@ -621,19 +621,7 @@ body[data-mem-style="petal"] .memory-app-page .ma-row {
   position: relative;
   overflow: hidden;
 }
-/* 花瓣装饰挪到右下角,避免跟标题 / 编辑×删除按钮 / chips 在顶部挤一起。
-   字号缩到 22px(原 28),opacity 0.14(原 0.18)让装饰更隐;pointer-events
-   none 保证不挡互动。 */
-body[data-mem-style="petal"] .memory-app-page .ma-row::after {
-  content: '\273F';
-  position: absolute;
-  bottom: 8px;
-  right: 12px;
-  opacity: 0.14;
-  font-size: 22px;
-  color: var(--accent);
-  pointer-events: none;
-}
+/* 花瓣 ✿ 装饰已删 — user 反馈不好看。保留 ma-row 的玻璃感 + 圆角足够辨识。 */
 body[data-mem-style="petal"] .memory-app-page .ma-row-meta {
   color: var(--muted);
   font-size: 11px;
@@ -811,7 +799,8 @@ body[data-mem-style="cosmic"] .memory-app-page.page {
   color: color-mix(in srgb, var(--accent) 15%, #ece6d6);
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-tabs {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  /* 容器底部横线删了 — active tab 已经有月光小圆点 indicator,横线冗余。 */
+  border-bottom: none;
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-tab {
   border: none;

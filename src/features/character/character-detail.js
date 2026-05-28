@@ -204,6 +204,8 @@ export async function mountCharacterDetail(container, params, router) {
       for (const m of msgs) await db.del('chatMessages', m.id);
       const mems = await db.query('memories', 'sessionId', s.id);
       for (const m of mems) await db.del('memories', m.id);
+      const tls = await db.query('timeline', 'sessionId', s.id);
+      for (const t of tls) await db.del('timeline', t.id);
       await db.del('chatSessions', s.id);
     }
     // Cascade: worldbook bindings owned by this character

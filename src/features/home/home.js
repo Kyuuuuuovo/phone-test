@@ -338,31 +338,46 @@ function renderMp3Widget(w, gs) {
     <div class="widget widget-mp3 user-widget" style="${gs}" data-widget-id="${escHtml(w.id)}">
       <svg viewBox="0 0 100 140" class="mp3-svg" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
         <defs>
-          <linearGradient id="mp3-screen-${escAttr(w.id)}" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#e8f0e8"/>
-            <stop offset="100%" stop-color="#bcd0bc"/>
+          <linearGradient id="mp3-body-${escAttr(w.id)}" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%"  stop-color="#f4f4f7"/>
+            <stop offset="45%" stop-color="#dedee2"/>
+            <stop offset="100%" stop-color="#b8b8be"/>
           </linearGradient>
-          <radialGradient id="mp3-wheel-${escAttr(w.id)}" cx="50%" cy="40%" r="60%">
-            <stop offset="0%" stop-color="#f5f5f7"/>
+          <linearGradient id="mp3-screen-${escAttr(w.id)}" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%"  stop-color="#cfdce8"/>
+            <stop offset="100%" stop-color="#8aa0b8"/>
+          </linearGradient>
+          <radialGradient id="mp3-wheel-${escAttr(w.id)}" cx="50%" cy="35%" r="65%">
+            <stop offset="0%"  stop-color="#fafafd"/>
+            <stop offset="60%" stop-color="#d2d2d8"/>
+            <stop offset="100%" stop-color="#9a9aa0"/>
+          </radialGradient>
+          <radialGradient id="mp3-center-${escAttr(w.id)}" cx="40%" cy="35%" r="70%">
+            <stop offset="0%"  stop-color="#ffffff"/>
             <stop offset="100%" stop-color="#c4c4c8"/>
           </radialGradient>
         </defs>
-        <rect x="6" y="6" width="88" height="128" rx="10" ry="10" fill="#fafafa" stroke="#a8a8ac" stroke-width="0.8"/>
-        <rect x="14" y="14" width="72" height="44" rx="3" ry="3" fill="url(#mp3-screen-${escAttr(w.id)})" stroke="#7a8a7a" stroke-width="0.6"/>
-        <text x="20" y="24" font-size="3.5" fill="#3a4a3a" font-family="sans-serif" font-weight="600">Now Playing</text>
-        <line x1="20" y1="28" x2="80" y2="28" stroke="#7a8a7a" stroke-width="0.4"/>
-        <rect x="20" y="32" width="34" height="3.5" fill="#3a4a3a" opacity="0.8"/>
-        <rect x="20" y="38" width="22" height="2.5" fill="#3a4a3a" opacity="0.55"/>
-        <rect x="20" y="46" width="60" height="2.2" rx="1.1" fill="#cad6ca"/>
-        <rect x="20" y="46" width="22" height="2.2" rx="1.1" fill="#3a4a3a"/>
-        <text x="20" y="54" font-size="2.6" fill="#3a4a3a" opacity="0.7">1:23</text>
-        <text x="80" y="54" font-size="2.6" fill="#3a4a3a" opacity="0.7" text-anchor="end">3:45</text>
-        <circle cx="50" cy="96" r="28" fill="url(#mp3-wheel-${escAttr(w.id)})" stroke="#a8a8ac" stroke-width="0.6"/>
-        <circle cx="50" cy="96" r="10" fill="#ffffff" stroke="#bcbcc0" stroke-width="0.5"/>
-        <text x="50" y="74" font-size="3.5" fill="#5a5a5e" text-anchor="middle" font-weight="600">MENU</text>
-        <path d="M 35 96 L 41 92 L 41 100 Z" fill="#5a5a5e"/>
-        <path d="M 65 96 L 59 92 L 59 100 Z" fill="#5a5a5e"/>
-        <g transform="translate(50 116)" fill="#5a5a5e">
+        <!-- 机身银白 metallic — 顶亮底暗 gradient + 微 inset 高光 -->
+        <rect x="4" y="4" width="92" height="132" rx="12" ry="12" fill="url(#mp3-body-${escAttr(w.id)})" stroke="#909094" stroke-width="0.6"/>
+        <rect x="6" y="6" width="88" height="4" rx="2" fill="#ffffff" opacity="0.4"/>
+        <!-- 屏幕 — 浅蓝白色玻璃感 -->
+        <rect x="14" y="14" width="72" height="44" rx="3" ry="3" fill="url(#mp3-screen-${escAttr(w.id)})" stroke="#5a708a" stroke-width="0.4"/>
+        <rect x="14" y="14" width="72" height="6" rx="3" fill="#ffffff" opacity="0.25"/>
+        <text x="20" y="24" font-size="3.5" fill="#1f3050" font-family="sans-serif" font-weight="600">Now Playing</text>
+        <line x1="20" y1="28" x2="80" y2="28" stroke="#5a708a" stroke-width="0.35" opacity="0.6"/>
+        <rect x="20" y="32" width="34" height="3.5" fill="#1f3050" opacity="0.85"/>
+        <rect x="20" y="38" width="22" height="2.5" fill="#1f3050" opacity="0.55"/>
+        <rect x="20" y="46" width="60" height="2.2" rx="1.1" fill="#aebcd0"/>
+        <rect x="20" y="46" width="22" height="2.2" rx="1.1" fill="#1f3050"/>
+        <text x="20" y="54" font-size="2.6" fill="#1f3050" opacity="0.7">1:23</text>
+        <text x="80" y="54" font-size="2.6" fill="#1f3050" opacity="0.7" text-anchor="end">3:45</text>
+        <!-- 滚轮 — 银白 metallic radial + 中央按钮 -->
+        <circle cx="50" cy="96" r="28" fill="url(#mp3-wheel-${escAttr(w.id)})" stroke="#909094" stroke-width="0.5"/>
+        <circle cx="50" cy="96" r="10" fill="url(#mp3-center-${escAttr(w.id)})" stroke="#b0b0b6" stroke-width="0.4"/>
+        <text x="50" y="74" font-size="3.5" fill="#4a4a50" text-anchor="middle" font-weight="600">MENU</text>
+        <path d="M 35 96 L 41 92 L 41 100 Z" fill="#4a4a50"/>
+        <path d="M 65 96 L 59 92 L 59 100 Z" fill="#4a4a50"/>
+        <g transform="translate(50 116)" fill="#4a4a50">
           <path d="M -4 -3 L 0 0 L -4 3 Z"/>
           <path d="M 0 -3 L 4 0 L 0 3 Z"/>
           <rect x="5" y="-3" width="1.5" height="6"/>
@@ -443,29 +458,45 @@ function renderGameboyWidget(w, gs) {
   return `
     <div class="widget widget-gameboy user-widget" style="${gs}" data-widget-id="${escHtml(w.id)}">
       <svg viewBox="0 0 100 140" class="gameboy-svg" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-        <rect x="4" y="4" width="92" height="132" rx="8" ry="8" fill="#cfc8b6" stroke="#7a7466" stroke-width="1"/>
-        <path d="M4 116 L96 116 L96 128 Q96 136 88 136 L12 136 Q4 136 4 128 Z" fill="#c0b9a6"/>
-        <rect x="14" y="18" width="72" height="58" rx="3" ry="3" fill="#3d3d3d"/>
+        <defs>
+          <linearGradient id="gb-body-${escAttr(w.id)}" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%"  stop-color="#eaeaed"/>
+            <stop offset="50%" stop-color="#d4d4d8"/>
+            <stop offset="100%" stop-color="#b0b0b6"/>
+          </linearGradient>
+          <linearGradient id="gb-bottom-${escAttr(w.id)}" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%"  stop-color="#c8c8cc"/>
+            <stop offset="100%" stop-color="#9a9aa0"/>
+          </linearGradient>
+        </defs>
+        <!-- 外壳银白 metallic + 顶部 4px 高光条 -->
+        <rect x="4" y="4" width="92" height="132" rx="8" ry="8" fill="url(#gb-body-${escAttr(w.id)})" stroke="#80808a" stroke-width="0.8"/>
+        <rect x="6" y="6" width="88" height="4" rx="2" fill="#ffffff" opacity="0.45"/>
+        <!-- 底部曲线圆弧加深一档(银白也分上下面) -->
+        <path d="M4 116 L96 116 L96 128 Q96 136 88 136 L12 136 Q4 136 4 128 Z" fill="url(#gb-bottom-${escAttr(w.id)})"/>
+        <!-- 屏幕外框深灰 + 经典绿屏(致敬) -->
+        <rect x="14" y="18" width="72" height="58" rx="3" ry="3" fill="#2a2a2e"/>
         <rect x="20" y="26" width="60" height="42" fill="#9bbc0f"/>
         <circle cx="20" cy="58" r="1.4" fill="#dc1414"/>
-        <text x="50" y="84" font-size="4" fill="#4a4a4a" font-family="serif" text-anchor="middle" font-style="italic" font-weight="bold">Nintendo GAME BOY</text>
-        <rect x="13" y="92" width="20" height="6" fill="#2a2a2a" rx="1"/>
-        <rect x="20" y="85" width="6" height="20" fill="#2a2a2a" rx="1"/>
-        <circle cx="68" cy="98" r="4.5" fill="#9c2050"/>
+        <text x="50" y="84" font-size="4" fill="#3a3a40" font-family="serif" text-anchor="middle" font-style="italic" font-weight="bold">Nintendo GAME BOY</text>
+        <!-- 十字键 + AB 按钮:深灰 -->
+        <rect x="13" y="92" width="20" height="6" fill="#3a3a3e" rx="1"/>
+        <rect x="20" y="85" width="6" height="20" fill="#3a3a3e" rx="1"/>
+        <circle cx="68" cy="98" r="4.5" fill="#5a5a60"/>
         <text x="68" y="100" font-size="3.5" fill="#fff" text-anchor="middle" font-weight="bold">B</text>
-        <circle cx="80" cy="92" r="4.5" fill="#9c2050"/>
+        <circle cx="80" cy="92" r="4.5" fill="#5a5a60"/>
         <text x="80" y="94" font-size="3.5" fill="#fff" text-anchor="middle" font-weight="bold">A</text>
         <g transform="translate(38 110) rotate(-20)">
-          <rect width="11" height="3" rx="1.5" fill="#5a5a5a"/>
+          <rect width="11" height="3" rx="1.5" fill="#6a6a70"/>
         </g>
         <g transform="translate(53 110) rotate(-20)">
-          <rect width="11" height="3" rx="1.5" fill="#5a5a5a"/>
+          <rect width="11" height="3" rx="1.5" fill="#6a6a70"/>
         </g>
-        <text x="42" y="124" font-size="2.2" fill="#4a4a4a" text-anchor="middle">SELECT</text>
-        <text x="60" y="124" font-size="2.2" fill="#4a4a4a" text-anchor="middle">START</text>
-        <line x1="68" y1="124" x2="86" y2="118" stroke="#7a7466" stroke-width="0.6"/>
-        <line x1="68" y1="128" x2="86" y2="122" stroke="#7a7466" stroke-width="0.6"/>
-        <line x1="68" y1="132" x2="86" y2="126" stroke="#7a7466" stroke-width="0.6"/>
+        <text x="42" y="124" font-size="2.2" fill="#5a5a60" text-anchor="middle">SELECT</text>
+        <text x="60" y="124" font-size="2.2" fill="#5a5a60" text-anchor="middle">START</text>
+        <line x1="68" y1="124" x2="86" y2="118" stroke="#80808a" stroke-width="0.6"/>
+        <line x1="68" y1="128" x2="86" y2="122" stroke="#80808a" stroke-width="0.6"/>
+        <line x1="68" y1="132" x2="86" y2="126" stroke="#80808a" stroke-width="0.6"/>
       </svg>
       <button class="widget-edit" title="编辑" aria-label="编辑"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54A.484.484 0 0 0 13.92 2h-3.84a.49.49 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.73 8.47a.49.49 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 0 0 7.2z"/></svg></button>
       <button class="widget-del" title="删除" aria-label="删除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button>

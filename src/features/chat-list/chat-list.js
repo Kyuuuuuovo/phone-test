@@ -216,6 +216,8 @@ export async function mountChatList(container, params, router) {
         for (const m of msgs) await db.del('chatMessages', m.id);
         const mems = await db.query('memories', 'sessionId', id);
         for (const m of mems) await db.del('memories', m.id);
+        const tls = await db.query('timeline', 'sessionId', id);
+        for (const t of tls) await db.del('timeline', t.id);
         await db.del('chatSessions', id);
         revealed = null;
         await renderList();
@@ -329,6 +331,8 @@ export async function mountChatList(container, params, router) {
       for (const m of msgs) await db.del('chatMessages', m.id);
       const mems = await db.query('memories', 'sessionId', id);
       for (const m of mems) await db.del('memories', m.id);
+      const tls = await db.query('timeline', 'sessionId', id);
+      for (const t of tls) await db.del('timeline', t.id);
       await db.del('chatSessions', id);
       await renderList();
     }

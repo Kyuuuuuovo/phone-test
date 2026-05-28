@@ -264,7 +264,9 @@ export async function mountChatInfo(container, params, router) {
       for (const m of msgs) await db.del('chatMessages', m.id);
       const mems = await db.query('memories', 'sessionId', sessionId);
       for (const m of mems) await db.del('memories', m.id);
-      await openAlert(container, { title: '已清空', message: '会话的消息和记忆都清掉了。角色保留。' });
+      const tls = await db.query('timeline', 'sessionId', sessionId);
+      for (const t of tls) await db.del('timeline', t.id);
+      await openAlert(container, { title: '已清空', message: '会话的消息、记忆、时间线都清掉了。角色保留。' });
 
     } else if (action === 'block') {
       const fresh = await db.get('characters', session.characterId);
