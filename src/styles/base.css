@@ -319,6 +319,12 @@ body[data-fx-texture="lines"] .page::before { background-image: repeating-linear
 body[data-fx-texture="noise"] .page::before { background-image: radial-gradient(rgba(0,0,0,0.05) 50%, transparent 51%); background-size: 4px 4px; opacity: 0.35; }
 body[data-fx-texture]:not([data-fx-texture="none"]) .page { position: relative; }
 body[data-fx-texture]:not([data-fx-texture="none"]) .page > * { position: relative; z-index: 1; }
+/* page-header 是页面 chrome,本来就该盖在 .page-body 内容之上。开纹理预设
+   时上面那条把 header / body 拍平到同级 z:1,DOM 顺序 body 在后绘制覆盖
+   header,header 里 z-50 的 .actions 也被关死在 header 子层。结果:memory app
+   风格菜单下拉被 tab 行盖住(本来在 .page-body 顶部上方的 popover 都中招)。
+   抬高 header 一级,跟无纹理时的隐式绘制顺序对齐。 */
+body[data-fx-texture]:not([data-fx-texture="none"]) .page > .page-header { z-index: 2; }
 
 #app {
   height: 100vh;

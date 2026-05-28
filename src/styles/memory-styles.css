@@ -1055,11 +1055,15 @@ body[data-mem-style="film"] .memory-app-page .mem-char-chip.active .mem-chip-ava
 }
 
 /* cosmic 月相日记 — 每张卡左侧一个月相圆球,phase 按 fromTs 的 day-of-month
-   4 档变化(memory-app.js 的 moonPhaseOf 函数;1=新月、2=弦月偏右、
-   3=满月、4=弦月偏左)。不是真天文月相,是"日期诗意"映射 — 月初新月、
-   月中满月、月末另一种弦月,循环让用户翻看记忆时左侧月相像月历转动。
-   实现:::before = 月球本体(米白圆 + 发光),::after = 同位阴影遮罩
-   (深紫,transform translateX 移动遮挡产生 phase)。 */
+   4 档变化(memory-app.js 的 moonPhaseOf;1=新月、2=上弦、3=满月、4=下弦)。
+   不是真天文月相,是"日期诗意"映射 — 月初新月、月中满月、月末下弦,循环
+   让翻看记忆时左侧月相像月历转动。
+
+   v2:用径向渐变光照代替"等大圆平移遮挡" — 原方案两等大圆错开 50% 时
+   交界是近似直线("半黑半白圆"),不是月相。radial-gradient 终结线天生
+   弧形 + 球体感,顺便从 ::before + ::after 双层简化成 ::before 单层。
+   新月用 --accent token 让月光跟主题预设走,其他相位米白主体固定(月光
+   米白是 cosmic 风格身份的一部分,跟整体深紫底配,不动)。 */
 body[data-mem-style="cosmic"] .memory-app-page .ma-row {
   position: relative;
   margin-left: 0;
@@ -1073,38 +1077,29 @@ body[data-mem-style="cosmic"] .memory-app-page .ma-row::before {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: #ede6d0;
+  box-shadow: 0 0 14px rgba(237,230,208,0.28);
+  /* 默认 = 满月(phase 缺失或为 3 都走这态) */
+  background: radial-gradient(circle at 36% 30%, #f6f0dc 0%, #dbd2b4 62%, #b9af8d 100%);
+}
+/* phase 1 新月 — 几乎全暗,只留一圈被星光照亮的边(用 accent token 让
+   月光跟主题预设走 — 切到粉主题月边变粉,蓝主题变蓝,以此类推) */
+body[data-mem-style="cosmic"] .memory-app-page .ma-row[data-moon-phase="1"]::before {
+  background: radial-gradient(circle at 50% 46%, #2b2547 0%, #161031 68%);
   box-shadow:
-    0 0 16px rgba(237,230,208,0.32),
-    inset -2px -2px 6px rgba(0,0,0,0.12);  /* 微立体球感 */
+    0 0 10px color-mix(in srgb, var(--accent) 30%, transparent),
+    inset 0 0 0 1px rgba(237,230,208,0.12);
 }
-body[data-mem-style="cosmic"] .memory-app-page .ma-row::after {
-  content: '';
-  position: absolute;
-  left: 8px;
-  top: 16px;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: linear-gradient(180deg, #0d0a1e, #1a0e3a);
-  /* 默认满月 — 阴影完全移出月球右侧;phase 数据缺失也走这态 */
-  transform: translateX(100%);
+/* phase 2 上弦 — 光源推到右外侧,米白聚右、深紫到左,terminator 是弧 */
+body[data-mem-style="cosmic"] .memory-app-page .ma-row[data-moon-phase="2"]::before {
+  background: radial-gradient(circle at 128% 50%, #f4eeda 0%, #e0d7b9 38%, #1b1336 72%, #120d28 100%);
 }
-/* phase 1 (day 1-7 新月)   — 阴影完全覆盖月球 */
-body[data-mem-style="cosmic"] .memory-app-page .ma-row[data-moon-phase="1"]::after {
-  transform: translateX(0);
+/* phase 3 满月 — 跟默认一致(显式声明便于阅读) */
+body[data-mem-style="cosmic"] .memory-app-page .ma-row[data-moon-phase="3"]::before {
+  background: radial-gradient(circle at 36% 30%, #f6f0dc 0%, #dbd2b4 62%, #b9af8d 100%);
 }
-/* phase 2 (day 8-14 弦月)  — 阴影右移 50%,左半月暗、右半月亮 */
-body[data-mem-style="cosmic"] .memory-app-page .ma-row[data-moon-phase="2"]::after {
-  transform: translateX(50%);
-}
-/* phase 3 (day 15-21 满月) — 阴影完全在外 */
-body[data-mem-style="cosmic"] .memory-app-page .ma-row[data-moon-phase="3"]::after {
-  transform: translateX(100%);
-}
-/* phase 4 (day 22-31 弦月) — 阴影左移 50%,右半月暗、左半月亮 */
-body[data-mem-style="cosmic"] .memory-app-page .ma-row[data-moon-phase="4"]::after {
-  transform: translateX(-50%);
+/* phase 4 下弦 — 光源推到左外侧,米白聚左、深紫到右 */
+body[data-mem-style="cosmic"] .memory-app-page .ma-row[data-moon-phase="4"]::before {
+  background: radial-gradient(circle at -28% 50%, #f4eeda 0%, #e0d7b9 38%, #1b1336 72%, #120d28 100%);
 }
 body[data-mem-style="cosmic"] .memory-app-page .mem-chips > span {
   background: rgba(255, 255, 255, 0.06);
