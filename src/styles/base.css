@@ -2242,15 +2242,16 @@ body[data-fx-glass="metal"] .widget.widget-music::after { display: none; }
    the surface toward transparent (revealing the wallpaper underneath). */
 .theme-editor-page .mini-page-surface {
   padding: 10px;
-  background: color-mix(in srgb, var(--bg), transparent calc(var(--surface-alpha-shift) * 100%));
+  /* T21: surface 半透明叠在壁纸上(40% bg + 60% 透明),让 wallpaper 大面积
+     可见同时保留主题色感。原来 100% bg + 8px margin 在黑色主题下 surface
+     太实,user 反馈"明明保存后外面能看到壁纸,preview 完全黑"。surfaceAlpha
+     slider 仍然能进一步推到全透(那时 surface 完全消失 = home page 视觉)。
+     公式:base 40% bg + slider 加成,默认看到壁纸+主题色叠加。 */
+  background: color-mix(in srgb, var(--bg), transparent calc(60% + var(--surface-alpha-shift) * 40%));
   display: flex;
   flex-direction: column;
   gap: 10px;
-  /* user 反馈:切 preset 后 preview 不显示壁纸。原因:大多 preset 把 surface
-     设成 100% 不透明,完全盖住 wallpaper bg。preview 应该总能看见 wallpaper
-     才能反映"壁纸 + 主题"的真实组合 → margin 让 wallpaper 在 surface 周围
-     露出来,跟内部内容无关。 */
-  margin: 8px;
+  margin: 12px;
   border-radius: 6px;
 }
 /* Gradient preview applies inside the mini-page-surface when active and no

@@ -425,6 +425,10 @@ export async function mountTheme(container, params, router) {
       draft = JSON.parse(JSON.stringify(p.theme));
       draft.effects = { ...p.theme.effects };
       applyDraft();
+      // T22: 套用 preset 后必须 flip dirty + sync saveBtn,否则 status 文本
+      //   写「还没保存」但 saveBtn 仍显「已保存」灰扁,user 困惑。
+      dirty = true;
+      syncSaveBtnState();
       status(`已套用「${p.label}」(还没保存)`, 'success');
     });
   }

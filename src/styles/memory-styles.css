@@ -745,6 +745,15 @@ body[data-mem-style="planner"] .memory-app-page .mem-score {
 body[data-mem-style="planner"] .memory-app-page .mem-char-chip {
   border-style: dashed;
 }
+/* T20: planner 头像方角 + 比默认稍大,跟手账"贴照片"质感对齐 */
+body[data-mem-style="planner"] .memory-app-page .mem-chip-avatar {
+  border-radius: 5px;
+  width: 28px;
+  height: 28px;
+}
+body[data-mem-style="planner"] .memory-app-page .mem-char-chip.active .mem-chip-avatar {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 50%, transparent);
+}
 
 /* cabinet — tier / tag 全部改 file-label:方角 + 大写 + 实色背景 + 白字 */
 body[data-mem-style="cabinet"] .memory-app-page .mem-chips > span {
@@ -790,6 +799,16 @@ body[data-mem-style="petal"] .memory-app-page .mem-char-chip {
   backdrop-filter: blur(6px);
   border: 1px solid color-mix(in srgb, var(--surface) 80%, transparent);
 }
+/* T20: petal 头像圆形 + accent glow(花瓣"光晕"质感) */
+body[data-mem-style="petal"] .memory-app-page .mem-chip-avatar {
+  width: 30px;
+  height: 30px;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+body[data-mem-style="petal"] .memory-app-page .mem-char-chip.active .mem-chip-avatar {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent),
+              0 4px 12px color-mix(in srgb, var(--accent) 40%, transparent);
+}
 
 /* film — meta 独立行(monospace 暗底 label),chips 显在齿孔下方第一行
    原 ma-row-meta 已 monospace + 反色,这里加 chip 的胶片风:小、方角、灰底 */
@@ -810,6 +829,28 @@ body[data-mem-style="film"] .memory-app-page .mem-tier {
   background: var(--fg);
   color: var(--surface);
   border: none;
+}
+/* T20: film 头像 polaroid 风 — 方角 + 白边 + 深阴影,胶片照片质感 */
+body[data-mem-style="film"] .memory-app-page .mem-char-chip {
+  background: transparent;
+  border: none;
+  padding: 4px 8px 4px 4px;
+  gap: 8px;
+}
+body[data-mem-style="film"] .memory-app-page .mem-char-chip.active {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+body[data-mem-style="film"] .memory-app-page .mem-chip-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 3px;
+  border: 3px solid var(--surface);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+body[data-mem-style="film"] .memory-app-page .mem-char-chip.active .mem-chip-avatar {
+  border-color: var(--accent);
 }
 
 /* cosmic — 每条 row 前加 6px 发光圆点(用 ::before;原来 planner 也用了
@@ -850,6 +891,16 @@ body[data-mem-style="cosmic"] .memory-app-page .mem-char-chip {
   background: color-mix(in srgb, var(--accent) 16%, #000);
   border-color: color-mix(in srgb, var(--accent) 30%, transparent);
   color: color-mix(in srgb, var(--accent) 25%, #fff);
+}
+/* T20: cosmic 头像圆形 + accent 边 + glow(星际"星球"质感) */
+body[data-mem-style="cosmic"] .memory-app-page .mem-chip-avatar {
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, #000);
+  color: color-mix(in srgb, var(--accent) 30%, #fff);
+}
+body[data-mem-style="cosmic"] .memory-app-page .mem-char-chip.active .mem-chip-avatar {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 body[data-mem-style="cosmic"] .memory-app-page .mem-folder {
   background: color-mix(in srgb, var(--accent) 14%, #000);
