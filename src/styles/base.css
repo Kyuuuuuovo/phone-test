@@ -4116,18 +4116,18 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
   padding-left: 9px;
 }
 .memory-card .memory-quotes {
-  margin-top: 6px;
-  padding-top: 6px;
+  margin-top: 4px;
+  padding-top: 4px;
   border-top: 1px dashed var(--border);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.4;
 }
 .memory-card .memory-quotes-label {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--muted);
-  margin-bottom: 3px;
+  margin-bottom: 2px;
 }
 .memory-card .memory-quote {
   color: color-mix(in srgb, var(--fg) 80%, var(--muted));
@@ -4136,8 +4136,8 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
 }
 /* V4 「这次发生了」事件链 — 手机原生 actions plain chip */
 .memory-card .memory-events {
-  margin-top: 6px;
-  padding-top: 6px;
+  margin-top: 4px;
+  padding-top: 4px;
   border-top: 1px dashed var(--border);
 }
 .memory-card .memory-events-label {
@@ -4145,7 +4145,7 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--muted);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 .memory-card .memory-events-chips {
   display: flex;

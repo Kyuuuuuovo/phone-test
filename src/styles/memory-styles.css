@@ -138,18 +138,18 @@ body[data-mono="1"] .memory-app-page .mem-chips {
 
 /* V4 多卡 — 关键原话区(默认展开,跟参考站一致) */
 .memory-app-page .ma-row-quotes {
-  margin-top: 6px;
-  padding-top: 6px;
+  margin-top: 4px;
+  padding-top: 4px;
   border-top: 1px dashed var(--border);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.4;
 }
 .memory-app-page .ma-row-quotes-label {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--muted);
-  margin-bottom: 3px;
+  margin-bottom: 2px;
 }
 .memory-app-page .ma-row-quote {
   color: color-mix(in srgb, var(--fg) 80%, var(--muted));
@@ -170,8 +170,8 @@ body[data-mono="1"] .memory-app-page .mem-chips {
    红包/转账/语音/照片/撤回/位置/计划/解封)。chip 风,跟现有 mem-chips 一脉
    但 accent 色更浅、不显 high-importance 红框,纯客观事件不强调情绪。 */
 .memory-app-page .ma-row-events {
-  margin-top: 6px;
-  padding-top: 6px;
+  margin-top: 4px;
+  padding-top: 4px;
   border-top: 1px dashed var(--border);
 }
 .memory-app-page .ma-row-events-label {
@@ -179,7 +179,7 @@ body[data-mono="1"] .memory-app-page .mem-chips {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--muted);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 .memory-app-page .ma-row-events-chips {
   display: flex;

@@ -720,7 +720,10 @@ export async function mountMemoryApp(container, params, router) {
             <details class="ma-session-group" open>
               <summary>${esc(c?.name || s?.title || '(未知会话)')} · ${g.mems.length} 条</summary>
               ${g.mems.map(m => buildMemCard({
-                meta: [formatDate(m.createdAt)],
+                // T31 polish: 不传 meta 行(timerange chip 已包含日期信息更
+                // 精确;原 meta 是 createdAt = 这条 row 生成时间,跟覆盖的
+                // 对话时间是俩概念,显示在一起反而误导)。
+                meta: [],
                 body: normalizeMemorySummary(m.summary),
                 tier: m.tier,
                 timeRange: timeRangeOf(m, msgIdx),
