@@ -1007,22 +1007,19 @@ export async function mountMemoryApp(container, params, router) {
           await db.del('timeline', tlRow.dataset.tlId);
           await render();
         } else if (memoryRow) {
-          // T29 memory 删 — 同时 unarchive 指向这条 memory 的所有 chatMessages
-          //   (否则那些消息永远不显示)。embedding 也清掉,避免向量表孤儿。
+          // 删 memory + 删 embeddings,但**不 unarchive 原始 chatMessages**。
+          //   user 反馈:"我只是在编辑总结,不要把原文释放回来"。原 T29 逻辑
+          //   是 unarchive 以防"消息消失",但 user 接受"AI 看不到这段"作为
+          //   有意为之的副作用。chat.js renderArchiveBanner 不 lookup memory,
+          //   只用 group.msgs 数,所以 dangling archivedIntoMemoryId 安全 —
+          //   banner 仍正常显示折叠。
+          //   后果:那段对话从此 AI 不可见(archived 状态 + 无对应 memory),
+          //   maybeCompressMemory 也 filter 了 archived 不会重新压缩。
           if (!await openConfirm(container, {
-            title: '删除记忆', message: '确定删除这条记忆?\n\n原本被它压缩进来的那段聊天会重新展开显示(否则那部分对话就消失了 — 它们当时被折叠是因为有这条记忆代替它们注入 prompt)。\n\nAI 下次回复时,这段就当作未压缩看待,等再次触发压缩会重新生成新的记忆。',
+            title: '删除记忆', message: '确定删除这条记忆?\n\n聊天框里被它压缩的那段对话**保持折叠不动**(原文不会重新展开)。但这段对话从此 AI 看不到了(原文已折叠 + 摘要已删 = 上下文丢失)。\n\n如果你想让 AI 重新读到这段,要先去聊天框点开折叠条手动恢复原文,再触发压缩重新生成记忆。',
             confirmLabel: '删除', danger: true,
           })) return;
           const memId = memoryRow.dataset.memoryId;
-          const msgs = await db.getAll('chatMessages');
-          for (const m of msgs) {
-            if (m.archivedIntoMemoryId === memId) {
-              delete m.archived;
-              delete m.archivedAt;
-              delete m.archivedIntoMemoryId;
-              await db.set('chatMessages', m);
-            }
-          }
           const embs = await db.query('embeddings', 'sourceId', memId);
           for (const e of embs) await db.del('embeddings', e.id);
           await db.del('memories', memId);
