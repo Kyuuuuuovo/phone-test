@@ -3584,6 +3584,11 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
    强制让 user-row 整体内容从 row 左 52px 开始,actions 内 bubble 永远不会跑到
    char-row avatar 区域。box-sizing border-box 保证 padding 不撑大 row。 */
 .msg-row.user { padding-inline-start: 52px; }
+/* 对称:char-row 长 bubble 不能撑到行右末端,否则视觉上落在下条 user-row
+   头像那侧的对称列里(看起来"延伸到我头像下方")。镜像 padding-inline-end
+   52px(= user avatar 36 + gap 8 + buffer 8),跟 user-row 那条同源思路。
+   box-sizing border-box 保证 padding 不撑大 row。 */
+.msg-row.char { padding-inline-end: 52px; }
 .msg-row .msg-actions {
   display: flex;
   flex-direction: column;
