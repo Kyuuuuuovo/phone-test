@@ -324,6 +324,39 @@
   写入第一张卡(多卡共享 overflow 时间窗,事件链是窗口级 metadata 不是卡片级,挂多张会重复);events 字段不进 prompt(summary 已覆盖);
   `buildMemCard` 加 `events` 参数,渲染「这次发生了」section,quotes 下方 dashed 分隔,chip 是 accent 浅底圆角药丸;chat 内 memory-manage 同款 `.memory-events` 渲染。差异化效果:酒馆站不能有这些手机原生事件,一眼区分
 
+*T30-T35 记忆 app 视觉打磨 + timeline 时刻化 + 字体回归修*
+> 一轮密集 UI 反馈:卡片对齐、按钮位置、tab 换行、tag 颜色冲突、字体加载、film 反色条 inline pill 化等。共 11 个 commit,跨 4-5 个迭代收敛到稳定视觉。
+
+- ✅ **T30 timeline HH:MM 时刻** `core/timeline.js#formatMsgForTimeline` 给每条消息拼 `[HH:MM]` 时间戳让 AI 知道每行事件几点发生。`DEFAULT_TIMELINE_SYS` 要求每行 `HH:MM 事件` 开头(带示例);`MERGE_SYS` 跨天用 `MM-DD HH:MM`。`splitTimelineEvents` 去编号正则改成只匹配 `1.` / `(1)` / `1)` 等明显格式,**不再吞 `09:23` 这种时间前缀**(原 `\d+[.、)]?` 正则把 `09:` 当编号砍掉)。`MAX_SUMMARY_LEN` clamp 25 字不算 HH:MM 前缀,事件正文留满预算。
+- ✅ **T30 timeline 多事件每条 row** 渲染时 `meta = [formatTimeRangeFull(t.fromTs, t.toTs), labelFor(t.sessionId)]`(timerange 全天 + 角色名),body 显示带 HH:MM 前缀的单事件
+- ✅ **T31 memory app 角色 chip filter** timeline/milestones/summary tab 顶部 character select(横向 chip + 全部 chip)
+- ✅ **T32 film 手机端减压** `@media (max-width: 440px) body[data-mem-style="film"]` 缩字号/gap/齿孔条,padding 走桌面统一 12px 不动(防止 mobile 和桌面 padding 不一致导致视觉错位)
+- ✅ **T32 cosmic 星河深夜化** 基底固定深紫黑渐变 `#0d0a1e → #1a1232`(不依赖 --accent),文字月光米白 `#e6dfc8`(暖白不刺眼),柔紫次色,半透白叠加卡片(玻璃感)。星点 / hover glow 保留 accent 联动。原 `color-mix(--accent 25%, #fff)` 在浅 accent 主题下接近纯白刺眼 → 固定米白
+- ✅ **T32 字体自定义无效回归修** `core/theme.js#ensureFontLink` 删 `link.crossOrigin = 'anonymous'` — 第三方字体 CDN(zeoseven 等)没配 CORS Access-Control-Allow-Origin header 会被浏览器整个拒绝。stylesheet `<link>` 加载字体根本不需要 anonymous CORS。Google Fonts 没这个 attr 也正常。**这是回归** — 9c87adb 初始就 set 了 anonymous,Google Fonts 工作所以一直没发现 zeoseven 失败
+- ✅ **T32 字体 family 输入 sanitize** `sanitizeFamilyInput()` 按逗号切只取第一 token + strip 外引号 — user 经常误填 `"Font", sans-serif` 整段 stack 进 family 字段,sanitize 比报错友好
+- ✅ **T32 settings → 记忆总结 加 2 个 toggle** `memoryShowQuotes` / `memoryShowEvents` 控制记忆卡片是否渲染「节选」/「这次发生了」区段(默认开,关掉只让卡片瘦身,memory 数据仍写入)。memory-app + chat memory-manage mount 时读 flags
+- ✅ **T32 memory prompt quotes 1-5 条** `MEMORY_OUTPUT_RULES` 改 "最多 3 条" → "1-5 条"
+- ✅ **T32 「关键原话」→「节选」** memory-app + chat memory-manage 两处同步;搜索栏左侧"搜索" label 删(placeholder 已暗示功能)
+- ✅ **T33 搜索栏去外框** `.mem-vector-hits` 原 accent 浅底 + 边 + 12px 圆角让搜索栏比下面真记忆卡还显眼。改 transparent / 无边 / 零 padding,只 input pill + 浅底,焦点态 accent 边框;cosmic 同步改
+- ✅ **T34 ✎× 按钮挪进卡片 inline** 原 `absolute top-right` 跟 meta/chips 抢位置 user 多次反馈"放上面或里面"。改成 `.ma-row-meta-row` flex 容器内右端,跟 meta(日期·角色名)同行(meta 有时);meta 空时 fallback 跟 chips 同行(`.ma-row-header`)。`buildMemCard` 加 `tools` 参数,4 处调用点拆 buttons → tools。base.css 删 absolute 样式
+- ✅ **T34 「这次发生了」chip 离底** `.ma-row-events` 加 margin-bottom 4 + padding-bottom 2;film 风格 `.ma-row` 加 padding-bottom 8。chip 不再紧贴卡片底
+- ✅ **T35 tab 中文不换行** base `.ma-tab { white-space: nowrap }` 防中文按字断行("时间线" 断成 "时间/线");cabinet/petal tab padding `14 → 10`、petal margin `3 → 2`,让 5 个 tab 在 phone-frame 380px 内排得下
+- ✅ **T35 planner tab "黑粉冲突" 修** 原 active tab 同时有 solid 灰边框 + accent 底部 inset 阴影双重指示。删 border + box-shadow,只用 accent `border-bottom` 跟其他风格统一;inactive tab 删 dashed border(顶/左右),保留容器底部 dashed 体现纸纹辨识
+- ✅ **T35 planner char chip dashed 改 solid** user 反馈"虚线丑",改 solid 1px 灰 18% 收敛视觉但保留 planner 辨识
+- ✅ **T35 planner chip 不再 rotate** 原 `transform: rotate(-1.2deg)`(纸胶带美学)让 chip 视觉歪斜跟 title 看不齐(boundingRect 数据上对齐但人眼不齐),删旋转
+- ✅ **T35 花瓣 letter-spacing 收** `.ma-session-group summary` 原 `letter-spacing: 4px` 把"问影渠"撑成"问 影 渠"显凌乱,改 1px 保留字距但不松散
+- ✅ **T35 timeline tab body 居中** `.ma-row[data-tl-id] .ma-row-body { text-align: center }` — 每条 ≤25 字短事件居中更易读;summary/milestone/profile 仍左对齐
+- ✅ **T35 meta-row 改 inline pill** `.ma-row-meta-row { display: inline-flex; align-self: flex-start; background; padding; border-radius }` 自然宽不撑满 row(被 `align-self: flex-start` 防 stretch;flex item display inline-flex 被浏览器 blockify 成 flex 但 align-self 仍生效)。所有风格通用浅灰底 pill,film 风格 override 反色 fg/surface 配色 + 减矮 padding 1px + margin 对称 8/8。tools 包在 pill 内
+- ✅ **L1 chip 对齐 — 4 次迭代收敛**:
+  1. 第 1 次:planner chip `transform: rotate(-1.2deg)` 让 chip 视觉歪斜 → 删 rotate
+  2. 第 2 次:user 反馈仍"偏右" → chips margin-left `-7px` 让 chip text 跟 title 对齐(残留 1px 偏差因 planner chip padding 8 不是 7)
+  3. 第 3 次:user 反馈仍"还有空隙" → 各风格 specific margin override planner/cabinet `-8`、film `-6` 让 chip text 完全跟 title 文字同位置(56 = 56)
+  4. 第 4 次:user 反馈 chip 框比 title 偏左 8px(因为 negative margin 让 frame 突出 row.content-left)→ 试 `第一个 chip padding-left 0` 让 frame + text 都跟 title 对齐
+  5. 第 5 次:user 反馈 L1 "在框里贴左侧应该居中" → 删 first-child padding override,恢复对称 padding,chip 内 text 自然居中 chip frame。**最终态:chips margin 0 + 各 chip 对称 padding,chip frame outer-left 跟 title text-left 对齐(56=56),chip 内 text 偏右 7-8px(对称 padding 不可避免)**
+- ✅ **按钮重叠 → 间距修** 原 `.ma-row-edit right: 32px` 跟 del 按钮(占 right [6, 36])重叠 4px,改 `right: 40px` 留 9px 视觉间距(后来按钮整体改 inline 这条作废)
+- ✅ **film 卡片字对齐统一** `.ma-row` padding 0(齿孔条 + 反色 meta 布局必需)+ 各子元素 inline padding 不一(chips 12 / body 14 / title 0 / quotes 0)导致左对齐错位。统一 title / body / quotes / events / header padding-left/right 12px,跟 chips/meta margin 12 对齐
+- ✅ **film 反色条延伸到 ✎× 后面** background/color 从 `.ma-row-meta` 挪到 `.ma-row-meta-row` 容器,整 meta-row 反色;tools 在 fg 暗底用 surface 浅色 + hover 加浅底强调
+
 ---
 
 ### TODO 待办
