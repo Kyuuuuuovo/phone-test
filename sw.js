@@ -24,7 +24,7 @@
 // 看不到新版。只改 sw.js 注释也不行 — 改 CACHE 字符串(用户能看到的视觉
 // 变化:cache key 名变了)是最稳的触发方式。
 
-const CACHE = 'phone-app-v1';
+const CACHE = 'phone-app-v2';
 
 self.addEventListener('install', () => {
   // 不预 cache 任何文件 — 让 runtime 边用边缓存,免维护 asset manifest
