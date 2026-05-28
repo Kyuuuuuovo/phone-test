@@ -1474,10 +1474,19 @@ export async function maybeCompressMemory(sessionId, opts = {}) {
       .catch(e => console.warn('[context] profile patch merge failed:', e));
   }
 
+  // 「这次发生了」事件链 — 扫 overflow 的非 text/reply actions(零 AI 成本)。
+  // 跟参考酒馆站差异化:她总结的是"戏剧章节",我们多了一层"手机事件"维度
+  // (红包/转账/语音/照片/撤回/位置/计划/解封)。同 overflow 范围内只挂在
+  // 第一张卡(避免多卡同一段时间显示重复的事件)。
+  const events = extractMemoryEvents(overflow);
+
+  const stamp = Date.now();
+
   // Timeline v3 — 模型在 raw 末尾输出 [TIMELINE] 单行块,直接写一行 timeline。
   //   跟现有 generateMissingDays 的多事件 dayKey 行格式不同(那种留作老数据
   //   兼容);新格式 = 一段对话压缩 → 一行 timeline,fromTs/toTs 共享 overflow
   //   时间窗。写完后检查总数是否超阈值,超了触发 auto merge 最老的几条。
+  //   注意 stamp 必须先声明 — 顺序敏感。
   const tlLine = parseTimelineBlock(raw);
   if (tlLine) {
     const tlRow = {
@@ -1493,13 +1502,6 @@ export async function maybeCompressMemory(sessionId, opts = {}) {
       .catch(e => console.warn('[context] timeline write failed:', e));
   }
 
-  // 「这次发生了」事件链 — 扫 overflow 的非 text/reply actions(零 AI 成本)。
-  // 跟参考酒馆站差异化:她总结的是"戏剧章节",我们多了一层"手机事件"维度
-  // (红包/转账/语音/照片/撤回/位置/计划/解封)。同 overflow 范围内只挂在
-  // 第一张卡(避免多卡同一段时间显示重复的事件)。
-  const events = extractMemoryEvents(overflow);
-
-  const stamp = Date.now();
   const groupId = cards.length > 1 ? db.newId() : null;
   const newMems = cards.map((card, cardIdx) => ({
     id: db.newId(),
