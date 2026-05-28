@@ -171,28 +171,39 @@ export async function mountChatInfo(container, params, router) {
       router.navigate('memory-manage', { sessionId });
 
     } else if (action === 'force-compress') {
-      // T14 + T17:强制压缩 — 不等 active.length > threshold,把"今天以外"
-      //   的所有活跃消息按 dayKey 分组,压最旧一天。如果"完结的天"还有多
-      //   天,用户多点几次按钮逐天消化(每点一次跑一次 API,user 看得见进度)。
+      // T14 + T17:强制压缩 — 不等 active.length > threshold,按 dayKey 分组,
+      //   压最旧一天。循环跑直到 settings.memoryForceBatchLimit 上限或
+      //   maybeCompressMemory 返回 null(没东西可压)。label 实时显示进度。
+      const settings = (await db.get('settings', 'default')) || {};
+      const batchLimit = Number.isFinite(settings.memoryForceBatchLimit) && settings.memoryForceBatchLimit > 0
+        ? settings.memoryForceBatchLimit : 5;
       if (!await openConfirm(container, {
         title: '立即提取记忆',
-        message: '把"今天以外"的活跃消息按天分组,压最旧的一天。如果有多天没压,你可能要多点几次。会调用 AI(可能慢)。继续?',
+        message: `把"今天以外"的活跃消息按天分组逐天压缩,本次最多压 ${batchLimit} 天(在「设置 → 记忆总结」可调)。会连续调用 AI,可能慢。继续?`,
         confirmLabel: '提取',
       })) return;
       const labelEl = item.querySelector('.settings-label');
       const origLabel = labelEl.textContent;
-      labelEl.textContent = 'AI 压缩中…';
+      let done = 0;
+      let stoppedReason = 'limit';
       try {
-        const memId = await context.maybeCompressMemory(sessionId, { force: true });
+        for (let i = 0; i < batchLimit; i++) {
+          labelEl.textContent = `AI 压缩中… ${i + 1}/${batchLimit}`;
+          const memId = await context.maybeCompressMemory(sessionId, { force: true });
+          if (!memId) { stoppedReason = 'empty'; break; }
+          done++;
+        }
         labelEl.textContent = origLabel;
-        if (memId) {
-          await openAlert(container, { title: '已提取', message: '压完最旧那一天。如果还有更早的天没压,可以再点一次。' });
-        } else {
+        if (done === 0) {
           await openAlert(container, { title: '没东西可压', message: '今天以外没有未压缩的消息。' });
+        } else if (stoppedReason === 'empty') {
+          await openAlert(container, { title: '已全部提取', message: `共压了 ${done} 天,今天以外没有更早的活跃消息了。` });
+        } else {
+          await openAlert(container, { title: '已达上限', message: `共压了 ${done} 天(上限 ${batchLimit})。还有更早的天没压,可以再点一次继续。` });
         }
       } catch (e) {
         labelEl.textContent = origLabel;
-        await openAlert(container, { title: '失败', message: String(e).slice(0, 200), danger: true });
+        await openAlert(container, { title: `失败(已压 ${done} 天)`, message: String(e).slice(0, 200), danger: true });
       }
 
     } else if (action === 'character') {
