@@ -751,15 +751,23 @@ body[data-mem-style="planner"] .memory-app-page .mem-score {
 }
 body[data-mem-style="planner"] .memory-app-page .mem-char-chip {
   border-style: dashed;
+  padding: 3px 8px 3px 3px;
+  gap: 5px;
 }
-/* T20: planner 头像方角 + 比默认稍大,跟手账"贴照片"质感对齐 */
+body[data-mem-style="planner"] .memory-app-page .mem-chip-name {
+  font-size: 11px;
+}
+/* T32: planner 头像方角,尺寸从 28 → 22px(active 态 box-shadow 跟 dashed
+   外边距挨太紧 user 反馈"挤");active 态 box-shadow 2 → 1px 也精简,跟新
+   尺寸视觉平衡。 */
 body[data-mem-style="planner"] .memory-app-page .mem-chip-avatar {
-  border-radius: 5px;
-  width: 28px;
-  height: 28px;
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
 }
 body[data-mem-style="planner"] .memory-app-page .mem-char-chip.active .mem-chip-avatar {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 50%, transparent);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 /* cabinet — tier / tag 全部改 file-label:方角 + 大写 + 实色背景 + 白字 */
