@@ -5720,18 +5720,27 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
 }
 .memory-app-page .ms-row { cursor: pointer; }
 .memory-app-page .ms-row:hover { background: var(--bubble-char); }
-/* T34: ✎ × 按钮重排 — 原 absolute right top 跟 meta/chips 抢位置 user 不满。
-   改成 .ma-row-header 内 flex 右端,跟 chips 同一行 inline,跟内容一起在
-   flow 里。chips 在左 flex:1 撑开,tools 在右 flex-end 自然落位。 */
-.memory-app-page .ma-row-header {
+/* T34 v2: ✎ × 按钮跟 meta(日期·角色名)行同行 — user 反馈"放日期名字那行"。
+   meta 有时走 .ma-row-meta-row(timeline/milestones/profile),meta 空时
+   fallback 到 chips 行(summary tab 卡片)。两种 layout 都用 flex。 */
+.memory-app-page .ma-row-header,
+.memory-app-page .ma-row-meta-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 4px;
 }
+.memory-app-page .ma-row-header { margin-bottom: 4px; }
 .memory-app-page .ma-row-header .mem-chips {
   flex: 1;
   margin-bottom: 0;
+}
+/* meta 自然宽,tools 用 margin-left:auto 推到右端 — 保留 film 风格 meta
+   反色 inline-block label 的视觉(不被 flex:1 拉伸) */
+.memory-app-page .ma-row-meta-row > .ma-row-meta {
+  min-width: 0;
+}
+.memory-app-page .ma-row-meta-row > .ma-row-tools {
+  margin-left: auto;
 }
 .memory-app-page .ma-row-tools {
   display: flex;

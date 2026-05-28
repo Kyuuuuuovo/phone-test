@@ -659,8 +659,12 @@ body[data-mem-style="film"] .memory-app-page .ma-row-meta {
   color: var(--surface);
   padding: 3px 10px;
   display: inline-block;
-  margin: 10px 12px 6px;
   letter-spacing: 0.06em;
+}
+/* T34 v2: meta 在 .ma-row-meta-row flex 容器内时,margin 挪到容器 (避免
+   嵌套 margin) — 容器加 10px/6px 上下间距,meta 自身 margin 0。 */
+body[data-mem-style="film"] .memory-app-page .ma-row-meta-row {
+  margin: 10px 0 6px;
 }
 body[data-mem-style="film"] .memory-app-page .ma-row-body {
   padding: 0 12px 12px;
@@ -670,8 +674,9 @@ body[data-mem-style="film"] .memory-app-page .ma-row-body {
 }
 /* T33/T34: film 子元素统一 inline padding 12px — 跟 chips / meta margin / body
    对齐。.ma-row 自身 padding 0(齿孔条 + 反色 meta label 布局必需),所以
-   header / title / quotes / events 必须自己 padding,否则贴左跟其他元素错开。 */
+   header / meta-row / title / quotes / events 必须自己 padding。 */
 body[data-mem-style="film"] .memory-app-page .ma-row-header,
+body[data-mem-style="film"] .memory-app-page .ma-row-meta-row,
 body[data-mem-style="film"] .memory-app-page .ma-row-title,
 body[data-mem-style="film"] .memory-app-page .ma-row-quotes,
 body[data-mem-style="film"] .memory-app-page .ma-row-events {

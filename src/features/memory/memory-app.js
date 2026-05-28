@@ -175,11 +175,21 @@ export async function mountMemoryApp(container, params, router) {
     const scoreChip  = (score != null) ? `<span class="mem-score">${Math.round(score * 100)}%</span>` : '';
     const impChip    = importance === 'high' ? `<span class="mem-imp mem-imp-high">重要</span>` : '';
     const chips = [tierChip, impChip, timeChip, tagChip, scoreChip].filter(Boolean).join('');
-    // header — chips 在左占 flex:1,tools(按钮)在右 flex-end。任一存在就渲染。
-    const headerHtml = (chips || tools) ? `
+    // T34 v2: tools 挪到 meta(日期·角色名)行 — user 反馈"放日期名字那行"。
+    //   meta 有内容时跟 meta 同行;meta 空时(summary tab 不传 meta)fallback
+    //   跟 chips 同行 — summary 卡片的 chips 包含日期 chip,信息密度等价。
+    const toolsWithMeta  = tools && meta.length > 0;
+    const toolsWithChips = tools && !toolsWithMeta;
+    const chipsBlock = (chips || toolsWithChips) ? `
       <div class="ma-row-header">
         <div class="mem-chips">${chips}</div>
-        ${tools ? `<div class="ma-row-tools">${tools}</div>` : ''}
+        ${toolsWithChips ? `<div class="ma-row-tools">${tools}</div>` : ''}
+      </div>
+    ` : '';
+    const metaBlock = meta.length > 0 ? `
+      <div class="ma-row-meta-row">
+        <div class="ma-row-meta">${meta.map(esc).join(' · ')}</div>
+        ${toolsWithMeta ? `<div class="ma-row-tools">${tools}</div>` : ''}
       </div>
     ` : '';
     const titleHtml = title ? `<div class="ma-row-title">${esc(title)}</div>` : '';
@@ -203,8 +213,8 @@ export async function mountMemoryApp(container, params, router) {
     const cardClasses = [cardClass, importance === 'high' ? 'ma-row-imp-high' : ''].filter(Boolean).join(' ');
     return `
       <div class="ma-row${cardClasses ? ' ' + cardClasses : ''}"${dataAttrs ? ' ' + dataAttrs : ''}>
-        ${headerHtml}
-        ${meta.length > 0 ? `<div class="ma-row-meta">${meta.map(esc).join(' · ')}</div>` : ''}
+        ${chipsBlock}
+        ${metaBlock}
         ${titleHtml}
         <div class="ma-row-body">${esc(body || '(空)')}</div>
         ${quotesHtml}
