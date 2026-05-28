@@ -289,41 +289,50 @@ body[data-mono="1"] .memory-app-page .mem-chips {
 /* ─────────────────────────────────────────────────────────────────────
    通用:语义检索命中区(summary tab 顶部,embedding 启用才显)
    ───────────────────────────────────────────────────────────────────── */
+/* T34: 搜索栏去外框 — 原 accent 浅底 + accent 边 + 12px 圆角让搜索栏看着
+   比下面真记忆卡片还显眼。改成无外框工具条:透明底、无边框、零 padding,
+   靠 input 自身的细边 + 浅底体现"输入区"。命中区列表 (.mem-vh-list) 后
+   续紧跟,跟主内容流融合不抢视觉。 */
 .memory-app-page .mem-vector-hits {
-  background: color-mix(in srgb, var(--accent) 6%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
-  border-radius: 12px;
-  padding: 10px 12px;
-  margin-bottom: 14px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  margin-bottom: 10px;
 }
 .memory-app-page .mem-vh-head {
   display: flex;
   gap: 6px;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 .memory-app-page .mem-vh-label {
   font-size: 11px;
   color: var(--muted);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-right: 4px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  margin-right: 2px;
 }
 .memory-app-page .mem-vh-input {
   flex: 1;
   /* 16px 是 iOS Safari 不触发 focus auto-zoom 的最小尺寸,小于这个就强行
      放大整个视口。其他平台无影响。 */
   font-size: 16px;
-  padding: 4px 8px;
+  padding: 5px 10px;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
   color: var(--fg);
 }
+.memory-app-page .mem-vh-input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  background: var(--surface);
+}
 .memory-app-page .mem-vh-search {
-  padding: 4px 10px;
+  padding: 5px 12px;
   font-size: 12px;
+  border-radius: 999px;
 }
 .memory-app-page .mem-vh-empty {
   font-size: 12px;
@@ -1079,14 +1088,18 @@ body[data-mem-style="cosmic"] .memory-app-page .mem-folder {
 body[data-mem-style="cosmic"] .memory-app-page .mem-folder.active {
   background: color-mix(in srgb, var(--accent) 20%, rgba(255, 255, 255, 0.05));
 }
-body[data-mem-style="cosmic"] .memory-app-page .mem-vector-hits {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.12);
-}
+/* T34: cosmic 搜索栏跟通用一样无外框,只 input 微亮以区分输入区 */
 body[data-mem-style="cosmic"] .memory-app-page .mem-vh-input {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.15);
   color: #e6dfc8;
+}
+body[data-mem-style="cosmic"] .memory-app-page .mem-vh-input:focus {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: color-mix(in srgb, var(--accent) 60%, rgba(255, 255, 255, 0.15));
+}
+body[data-mem-style="cosmic"] .memory-app-page .mem-vh-label {
+  color: #8c80a8;
 }
 
 /* ═════════════════════════════════════════════════════════════════════
