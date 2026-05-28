@@ -5650,19 +5650,26 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
 }
 .memory-app-page .ms-row { cursor: pointer; padding-right: 32px; }
 .memory-app-page .ms-row:hover { background: var(--bubble-char); }
-.memory-app-page .ma-row-del {
+.memory-app-page .ma-row-del,
+.memory-app-page .ma-row-edit {
   position: absolute;
   top: 8px;
-  right: 8px;
   background: none;
   border: none;
   color: var(--muted);
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
   cursor: pointer;
   padding: 4px 6px;
 }
+.memory-app-page .ma-row-del { right: 6px; font-size: 18px; }
+.memory-app-page .ma-row-edit { right: 32px; }
 .memory-app-page .ma-row-del:hover { color: var(--danger); }
+.memory-app-page .ma-row-edit:hover { color: var(--accent); }
+/* timeline / memory row 有 edit + del 两个按钮 — body 留够右 padding 不
+   被按钮挡住 */
+.memory-app-page .ma-row[data-tl-id],
+.memory-app-page .ma-row[data-memory-id] { padding-right: 60px; }
 
 .ma-ms-head { margin-bottom: 12px; }
 .ma-ms-new { padding: 8px 14px; font-size: 13px; }

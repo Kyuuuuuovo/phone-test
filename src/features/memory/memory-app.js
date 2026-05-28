@@ -17,7 +17,7 @@
 import * as db from '../../core/db.js';
 import * as timeline from '../../core/timeline.js';
 import * as embedding from '../../core/embedding.js';
-import { openConfirm } from '../../core/modal.js';
+import { openConfirm, openModal } from '../../core/modal.js';
 import { normalizeMemorySummary } from '../../core/context.js';
 
 // 5 风格 + 默认。default = 不挂 body[data-mem-style](回退到 base.css 的 .ma-row),
@@ -139,8 +139,10 @@ export async function mountMemoryApp(container, params, router) {
       const color = stableColor(id || 'all');
       const active = (id || '') === filterCharId ? ' active' : '';
       const initial = (name || '?').slice(0, 1);
+      // T29 All chip 视觉跟人物 chip 完全统一 — 同 stableColor 底色,内容用
+      //   SVG 4 圆点(代表"多个角色")替代 "All" 字样,跟头像视觉同质。
       const avatarHtml = isAll
-        ? `<span class="mem-chip-avatar mem-chip-avatar-all">All</span>`
+        ? `<span class="mem-chip-avatar mem-chip-avatar-all" style="background:${color}"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><circle cx="7" cy="7" r="2"/><circle cx="17" cy="7" r="2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg></span>`
         : avatar
           ? `<span class="mem-chip-avatar"><img src="${esc(avatar)}" alt=""></span>`
           : `<span class="mem-chip-avatar" style="background:${color}">${esc(initial)}</span>`;
@@ -358,11 +360,14 @@ export async function mountMemoryApp(container, params, router) {
           const meta = [t.dayKey || '', labelFor(t.sessionId)];
           if (t.mergedFrom) meta.push(`合并(${t.mergedFrom.length})`);
           // T28: timeline 不再打 tag — user 反馈"不打标",timeline 只显日期+事件
+          // T29: 每行加 edit + del 按钮 — user 反馈"时间线和记忆没有修改键"
+          const rowExtras = `<button class="ma-row-edit" type="button" title="编辑">✎</button><button class="ma-row-del" type="button" title="删除">×</button>${mergedDetail}`;
           return buildMemCard({
             meta,
             body: t.summary,
-            extras: mergedDetail,
+            extras: rowExtras,
             cardClass: t.mergedFrom ? 'merged-row' : '',
+            dataAttrs: `data-tl-id="${esc(t.id)}"`,
           });
         }).join('')}
       </div>
@@ -607,16 +612,16 @@ export async function mountMemoryApp(container, params, router) {
     const msgIdx = new Map(allMsgs.map(m => [m.id, m]));
 
     // vector hits 区块 — embedding 没开就 hint,开了就显输入框 + 命中卡片
+    // T29:user 反馈 label「语义检索命中」拗口,改成「搜索」;空状态 hint
+    //   「输入关键词或想表达的情境...」删掉(input placeholder 已经够了)。
     const vectorBlock = embEnabled ? `
       <div class="mem-vector-hits">
         <div class="mem-vh-head">
-          <span class="mem-vh-label">语义检索命中</span>
+          <span class="mem-vh-label">搜索</span>
           <input type="text" class="mem-vh-input" placeholder="想找跟什么相关的记忆?" value="${esc(vectorQuery)}" ${vectorBusy ? 'disabled' : ''}>
           <button type="button" class="mem-vh-search btn" ${vectorBusy ? 'disabled' : ''}>${vectorBusy ? '搜索中…' : '搜索'}</button>
         </div>
-        ${vectorHits === null ? `
-          <div class="mem-vh-empty">输入关键词或想表达的情境,Enter 或点搜索。</div>
-        ` : vectorHits.length === 0 ? `
+        ${vectorHits === null ? '' : vectorHits.length === 0 ? `
           <div class="mem-vh-empty">没有命中(阈值 0.35,试试换个表达?)</div>
         ` : `
           <div class="ma-list mem-vh-list">
@@ -639,15 +644,8 @@ export async function mountMemoryApp(container, params, router) {
       </div>
     ` : '';
 
-    // 补齐缺失 tag 按钮 — 只在有 memory 但部分没 tag 时显示。把 saved tag
-    // 缺的逐条 AI 分类。
-    const untaggedCount = allMems.filter(m => !m.tag).length;
-    const backfillBlock = untaggedCount > 0 ? `
-      <div class="ma-tl-head">
-        <button class="ma-tag-backfill btn" type="button"${backfillBusy ? ' disabled' : ''}>${backfillBusy ? '打标中…' : `补齐 ${untaggedCount} 条缺失的 tag`}</button>
-        <span class="ma-tl-status${backfillStatus.cls || ''}">${esc(backfillStatus.text || '')}</span>
-      </div>
-    ` : '';
+    // T29: 「补齐缺失 tag」按钮删了 — user 反馈"不知道这个补齐有什么意义"。
+    //   老 memory 没 tag 也无所谓,heuristicTag 渲染时兜底,新生成的有 tag。
 
     if (allMems.length === 0) {
       return vectorBlock + `<p class="hint">还没有总结。在某个会话里聊到超过 threshold(设置 → 记忆总结)后会自动生成。</p>`;
@@ -661,7 +659,7 @@ export async function mountMemoryApp(container, params, router) {
     const groups = [...bySession.entries()]
       .map(([sid, mems]) => ({ sid, mems, latest: mems[0]?.createdAt || 0 }))
       .sort((a, b) => b.latest - a.latest);
-    return vectorBlock + backfillBlock + `
+    return vectorBlock + `
       <div class="ma-list">
         ${groups.map(g => {
           const s = sessions.find(x => x.id === g.sid);
@@ -675,6 +673,8 @@ export async function mountMemoryApp(container, params, router) {
                 tier: m.tier,
                 timeRange: timeRangeOf(m, msgIdx),
                 tag: tagOf(m),
+                extras: `<button class="ma-row-edit" type="button" title="编辑">✎</button><button class="ma-row-del" type="button" title="删除">×</button>`,
+                dataAttrs: `data-memory-id="${esc(m.id)}"`,
               })).join('')}
             </details>
           `;
@@ -865,6 +865,8 @@ export async function mountMemoryApp(container, params, router) {
         e.stopPropagation();
         const msRow = btn.closest('[data-ms-id]');
         const profileRow = btn.closest('[data-profile-id]');
+        const tlRow = btn.closest('[data-tl-id]');
+        const memoryRow = btn.closest('[data-memory-id]');
         if (msRow) {
           if (!await openConfirm(container, {
             title: '删除纪念日', message: '确定删除这条纪念日?',
@@ -878,6 +880,80 @@ export async function mountMemoryApp(container, params, router) {
             confirmLabel: '删除', danger: true,
           })) return;
           await db.del('userProfiles', profileRow.dataset.profileId);
+          await render();
+        } else if (tlRow) {
+          // T29 timeline 删 — 单纯删 timeline row,聊天消息不动,下次「扫描并
+          //   生成缺失天」会重新跑出这一天(如果该天有消息)。
+          if (!await openConfirm(container, {
+            title: '删除时间线', message: '确定删除这一天的时间线总结?对应日期的聊天记录不受影响,后续可重新扫描生成。',
+            confirmLabel: '删除', danger: true,
+          })) return;
+          await db.del('timeline', tlRow.dataset.tlId);
+          await render();
+        } else if (memoryRow) {
+          // T29 memory 删 — 同时 unarchive 指向这条 memory 的所有 chatMessages
+          //   (否则那些消息永远不显示)。embedding 也清掉,避免向量表孤儿。
+          if (!await openConfirm(container, {
+            title: '删除记忆', message: '确定删除这条总结?被压缩的聊天消息会恢复成正常聊天记录(不再折叠)。',
+            confirmLabel: '删除', danger: true,
+          })) return;
+          const memId = memoryRow.dataset.memoryId;
+          const msgs = await db.getAll('chatMessages');
+          for (const m of msgs) {
+            if (m.archivedIntoMemoryId === memId) {
+              delete m.archived;
+              delete m.archivedAt;
+              delete m.archivedIntoMemoryId;
+              await db.set('chatMessages', m);
+            }
+          }
+          const embs = await db.query('embeddings', 'sourceId', memId);
+          for (const e of embs) await db.del('embeddings', e.id);
+          await db.del('memories', memId);
+          await render();
+        }
+      });
+    });
+    // T29 ma-row-edit — timeline / memory 改 summary 文本。其它 row 类型暂不
+    //   编辑(纪念日有自己 edit modal、profile 有自己的)。
+    container.querySelectorAll('.ma-row-edit').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const tlRow = btn.closest('[data-tl-id]');
+        const memoryRow = btn.closest('[data-memory-id]');
+        if (tlRow) {
+          const id = tlRow.dataset.tlId;
+          const row = await db.get('timeline', id);
+          if (!row) return;
+          const result = await openModal(container, {
+            title: '编辑时间线',
+            fields: [
+              { name: 'summary', label: `${row.dayKey || ''} 这天的事件`, kind: 'textarea', defaultValue: row.summary || '', placeholder: '事件,事件,事件' },
+            ],
+            submitLabel: '保存',
+          });
+          if (!result) return;
+          const next = String(result.summary || '').trim();
+          if (!next) return;
+          row.summary = next;
+          await db.set('timeline', row);
+          await render();
+        } else if (memoryRow) {
+          const id = memoryRow.dataset.memoryId;
+          const row = await db.get('memories', id);
+          if (!row) return;
+          const result = await openModal(container, {
+            title: '编辑记忆',
+            fields: [
+              { name: 'summary', label: '摘要内容', kind: 'textarea', defaultValue: normalizeMemorySummary(row.summary) || '', placeholder: '把这段对话浓缩成几句话' },
+            ],
+            submitLabel: '保存',
+          });
+          if (!result) return;
+          const next = String(result.summary || '').trim();
+          if (!next) return;
+          row.summary = next;
+          await db.set('memories', row);
           await render();
         }
       });

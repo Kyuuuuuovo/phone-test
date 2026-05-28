@@ -166,18 +166,13 @@ body[data-mono="1"] .memory-app-page .mem-chips {
 .memory-app-page .mem-chip-avatar img {
   width: 100%; height: 100%; object-fit: cover;
 }
-/* T28: 「All」chip 跟角色 chip 同结构 — 有 avatar 块,内容是「All」字样,
-   各风格在自己 section 覆盖具体形状(方角 / 圆 / polaroid 等)。
-   avatar 块底色默认走 accent + muted 混合让它跟角色 chip 视觉区分。 */
+/* T29 All chip avatar — 跟人物 avatar 完全同结构(stableColor 底色),
+   内容是 SVG 4 圆点(.mem-chip-avatar-all 装 SVG 居中)。 */
 .memory-app-page .mem-chip-avatar-all {
-  background: linear-gradient(135deg,
-    color-mix(in srgb, var(--accent) 35%, var(--muted)),
-    color-mix(in srgb, var(--accent) 15%, var(--muted)));
   color: var(--surface);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
+}
+.memory-app-page .mem-chip-avatar-all svg {
+  display: block;
 }
 
 /* ─────────────────────────────────────────────────────────────────────
