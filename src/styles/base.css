@@ -3486,11 +3486,22 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
   gap: 8px;
   align-items: flex-start;
   max-width: 100%;
+  box-sizing: border-box;
 }
 /* #50: 已读标跟 actions 之间多 8px gap 太宽,user 反馈想更紧。.read-mark 单独
    negative margin 抵掉一半 gap,只对它生效不影响 avatar 那边。 */
 .msg-row .read-mark { margin-left: -4px; margin-right: -4px; }
 .msg-row.user { flex-direction: row-reverse; }
+/* 镜像 char-row 那侧的 avatar+gap 占位 — char-row 是 [avatar 36 + gap 8 + actions]
+   左对齐;user-row row-reverse 后是 [actions + gap 8 + avatar 36] 右对齐,但
+   actions 兄弟里多了一个 read-mark + 第二个 gap,导致 actions max-width: calc(100%
+   - 52px) 算出来的位置不再跟 char-row 的 avatar 右侧对齐 — bubble 左边界会
+   超过对方头像那侧的对称位置(尤其在 long content 时撑到 max,bubble 左可达
+   row left + 8px,比 char avatar 右 48px 还左 36px = 一个 avatar 宽度)。
+   修法:给 user-row 加 padding-inline-start 52px(= avatar 36 + gap 8 + buffer 8),
+   强制让 user-row 整体内容从 row 左 52px 开始,actions 内 bubble 永远不会跑到
+   char-row avatar 区域。box-sizing border-box 保证 padding 不撑大 row。 */
+.msg-row.user { padding-inline-start: 52px; }
 .msg-row .msg-actions {
   display: flex;
   flex-direction: column;
