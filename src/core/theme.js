@@ -737,6 +737,35 @@ function quoteIfNeeded(name) {
   return trimmed;
 }
 
+// Apply global app-icon style (radius / transparency / tilt) to :root CSS
+// vars. Reads settings.appIconStyle = { radius?, transparency?, tilt? }.
+// Each field individually optional — empty / undefined removes the var so
+// base.css falls back to default (radius var(--radius-lg), alpha 1, tilt 0).
+// Called at boot from main.js, and live from the app-icons settings page
+// while the user drags the sliders (so preview reflects immediately).
+//
+// transparency convention matches widget: 0-100, 100=完全不透明。这里转成
+// CSS opacity 0-1。0 = 全透明(几乎看不见),100 = 默认。
+export function applyAppIconStyle(style) {
+  const r = document.documentElement;
+  const s = style || {};
+  if (Number.isFinite(s.radius) && s.radius >= 0) {
+    r.style.setProperty('--app-icon-radius', `${s.radius}px`);
+  } else {
+    r.style.removeProperty('--app-icon-radius');
+  }
+  if (Number.isFinite(s.transparency) && s.transparency >= 0 && s.transparency <= 100) {
+    r.style.setProperty('--app-icon-alpha', String(s.transparency / 100));
+  } else {
+    r.style.removeProperty('--app-icon-alpha');
+  }
+  if (Number.isFinite(s.tilt) && s.tilt !== 0) {
+    r.style.setProperty('--app-icon-tilt', `${s.tilt}deg`);
+  } else {
+    r.style.removeProperty('--app-icon-tilt');
+  }
+}
+
 // Apply a wallpaper image to the .phone-frame so it shows through any
 // transparent surfaces (when effects.surfaceAlpha > 0 in particular).
 // Called once at boot from main.js and again whenever the user uploads

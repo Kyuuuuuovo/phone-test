@@ -4,7 +4,7 @@ import * as db from './core/db.js';
 import * as router from './core/router.js';
 import * as ai from './core/ai.js';
 import * as context from './core/context.js';
-import { applyTheme as applyThemeObj, applyWallpaper } from './core/theme.js';
+import { applyTheme as applyThemeObj, applyWallpaper, applyAppIconStyle } from './core/theme.js';
 import { openConfirm, openAlert, openModal } from './core/modal.js';
 import { esc } from './core/util.js';
 import { mountHome }        from './features/home/home.js';
@@ -139,6 +139,10 @@ async function applyTheme() {
   // reload 后壁纸不丢(之前 home.js own lifecycle 的设计,但 reload 时
   // home 还没 mount,壁纸就空着)。
   applyWallpaper(settings?.wallpaper || null);
+  // 全局 app 图标风格(radius / transparency / tilt) — 写 :root CSS var,
+  //   home 上所有 app icon 一并生效。boot 时调用一次足够;app-icons 页改
+  //   slider 时会再调一次同步预览(home re-mount 后仍然能读到最新值)。
+  applyAppIconStyle(settings?.appIconStyle);
 }
 
 async function boot() {

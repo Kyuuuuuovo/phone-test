@@ -78,10 +78,10 @@ function escHtml(s) {
   return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }
 
-function presetCardHtml(p, isUser) {
+function presetCardHtml(p, isUser, selected) {
   return `
     <div class="widget-preset-card-wrap" data-preset-id="${escHtml(p.id)}">
-      <button class="widget-preset-card" data-preset-id="${escHtml(p.id)}">
+      <button class="widget-preset-card${selected ? ' selected' : ''}" data-preset-id="${escHtml(p.id)}">
         <div class="widget-preset-swatch" style="background: ${p.sample.bg}; border-radius: ${p.sample.radius}px;"></div>
         <div class="widget-preset-label">${escHtml(p.label)}</div>
         <div class="widget-preset-hint">${escHtml(p.hint || '')}</div>
@@ -94,9 +94,31 @@ function presetCardHtml(p, isUser) {
 export async function mountWidgetPresets(container, params, router) {
   const settings = (await db.get('settings', 'default')) || {};
   let userPresets = Array.isArray(settings.widgetPresets) ? settings.widgetPresets : [];
+  // 预览状态 — 点 preset card 后切换。null = 没选,显示默认 widget 样式。
+  let previewPresetId = null;
 
   async function persistUserPresets() {
     await db.updateSettings(s => { s.widgetPresets = userPresets; });
+  }
+
+  function renderPreview() {
+    const all = [...BUILT_IN_PRESETS, ...userPresets];
+    const p = previewPresetId ? all.find(x => x.id === previewPresetId) : null;
+    // 没选 → 用默认 widget 样式(走 --surface);选了 → 用 preset.override 各字段
+    const bg = p?.override.bgColor || 'var(--surface)';
+    const radius = (Number.isFinite(p?.override.radius) ? p.override.radius : 16) + 'px';
+    const alpha = Number.isFinite(p?.override.transparency) ? p.override.transparency / 100 : 1;
+    const tilt = (Number.isFinite(p?.override.tilt) ? p.override.tilt : 0) + 'deg';
+    return `
+      <div class="widget-preset-preview">
+        <span class="preview-label">预览</span>
+        <div class="preview-widget" style="background:${bg};border-radius:${radius};opacity:${alpha};transform:rotate(${tilt});">
+          <div class="preview-widget-title">便签</div>
+          <div class="preview-widget-body">奶茶七分糖<br>记得倒垃圾</div>
+        </div>
+        <div class="preview-caption">${p ? `预览「${escHtml(p.label)}」` : '当前默认样式'}</div>
+      </div>
+    `;
   }
 
   function render() {
@@ -111,14 +133,18 @@ export async function mountWidgetPresets(container, params, router) {
           <div class="title">widget 风格</div>
         </header>
         <div class="page-body">
-          <div class="settings-hint">点一个风格 → 确认 → 套用到所有桌面装饰。已经手动改过的 widget 也会被覆盖。想给单个 widget 不一样,套完之后单独走 widget 编辑器调。</div>
+          <div class="settings-hint">点一个风格预览效果,再点底部「套用」覆盖所有桌面装饰。app 图标的透明度 / 圆角 / 倾斜在「设置 → app 图标」单独配。</div>
+          ${renderPreview()}
           <div class="widget-preset-grid">
-            ${allPresets.map(p => presetCardHtml(p, p._isUser)).join('')}
+            ${allPresets.map(p => presetCardHtml(p, p._isUser, p.id === previewPresetId)).join('')}
             <button class="widget-preset-card widget-preset-add" type="button" title="新建自定义预设">
               <div class="widget-preset-add-glyph">+</div>
               <div class="widget-preset-label">自定义</div>
               <div class="widget-preset-hint">自己调一组色 / 圆角 / 倾斜,存起来一键复用</div>
             </button>
+          </div>
+          <div class="form-actions" style="margin-top: 16px;">
+            <button type="button" class="btn apply-preset-btn"${previewPresetId ? '' : ' disabled'}>套用到所有 widget</button>
           </div>
         </div>
       </div>
@@ -242,9 +268,17 @@ export async function mountWidgetPresets(container, params, router) {
       openCustomPresetModal();
       return;
     }
+    // 套用按钮 — 把当前 previewPresetId 真的写入所有 widget
+    if (e.target.closest('.apply-preset-btn')) {
+      if (!previewPresetId) return;
+      await applyPreset(previewPresetId);
+      return;
+    }
+    // 点 preset card → 切预览,不立即套用
     const card = e.target.closest('.widget-preset-card');
     if (!card) return;
-    await applyPreset(card.dataset.presetId);
+    previewPresetId = card.dataset.presetId;
+    render();
   };
   container.addEventListener('click', onClick);
   return () => container.removeEventListener('click', onClick);

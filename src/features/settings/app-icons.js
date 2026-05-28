@@ -15,6 +15,7 @@
 
 import * as db from '../../core/db.js';
 import { openAlert } from '../../core/modal.js';
+import { applyAppIconStyle } from '../../core/theme.js';
 
 export const ICON_EMOJI_PRESETS = ['📞', '📷', '📌', '🎵', '💌', '☕', '📖', '🐱', '🌸', '🎮', '🎨', '📚'];
 
@@ -184,22 +185,78 @@ export async function openIconPicker(container, appId, onChanged) {
 // 设置 → app 图标 列表页 — 每行一个 app,点行打开 picker。
 // PAGES + DOCK_CATALOG 是 home.js 的常量,这里通过 home.js export 拿。
 // 列表渲染纯文本 + 当前 override 预览(没 override 时显示「默认」标签)。
+//
+// 顶部还有一段「全局风格」(透明度 / 圆角 / 倾斜)— 所有 app icon 一并生效,
+//   写 settings.appIconStyle。slider 拖动时实时 applyAppIconStyle 让 :root
+//   CSS var 同步,顶部 mini preview 立刻反映效果。保存按钮把 draft 落盘。
+//   离开页面没保存就走回路由,预览效果还在(因为 :root vars 已经设了)— 但
+//   reload 后会从 IDB 重新读 settings 应用,所以未保存的改动会丢。这个权衡:
+//   不强制 save 防止 user 改了忘按按钮,但也不 auto save 防止误调一档子又
+//   不想要。提示文案明示了。
 export async function mountAppIcons(container, params, router) {
   // 动态 import 避免循环依赖(home.js 也会反过来 import 这个 module)
   const { APP_REGISTRY } = await import('../home/home.js');
 
+  function renderMiniPreviewIcons() {
+    // 3 个示例 app icon — emoji 表示内容(实际生效的是全局风格,内容只是
+    //   占位让 user 看出"还是 app icon")。复用 .app-icon 现有 CSS。
+    const samples = [
+      { id: 'preview-1', label: '电话', emoji: '📞' },
+      { id: 'preview-2', label: '日记', emoji: '📓' },
+      { id: 'preview-3', label: '相册', emoji: '🖼' },
+    ];
+    return samples.map(s => `
+      <button class="app-icon" tabindex="-1">
+        <div class="icon"><span class="icon-emoji">${escHtml(s.emoji)}</span></div>
+        <div class="label">${escHtml(s.label)}</div>
+      </button>
+    `).join('');
+  }
+
   async function refresh() {
     const settings = (await db.get('settings', 'default')) || {};
     const overrides = settings.appIconOverrides || {};
+    const style = settings.appIconStyle || {};
+    // form 默认:transparency=100、radius 留空(跟主题默认)、tilt=0
+    const fTransparency = Number.isFinite(style.transparency) ? style.transparency : 100;
+    const fRadius = Number.isFinite(style.radius) ? style.radius : '';
+    const fTilt = Number.isFinite(style.tilt) ? style.tilt : 0;
 
     container.innerHTML = `
-      <div class="page">
+      <div class="page app-icons-page">
         <header class="page-header">
           <button class="back">‹ 返回</button>
           <div class="title">app 图标</div>
         </header>
         <div class="page-body">
-          <div class="settings-hint">点任意一项改它的图标,可以用 emoji / 文字 / 本地图片 / 图床 URL。</div>
+          <h3 class="settings-section-title">全局风格</h3>
+          <div class="settings-hint">下面拖动会即时反映在预览里,点保存才落盘。离开页面 reload 后未保存的会丢。</div>
+          <div class="app-icon-preview">
+            <span class="preview-label">预览</span>
+            ${renderMiniPreviewIcons()}
+          </div>
+          <form class="app-icon-style-form" autocomplete="off">
+            <label>
+              <div class="label-text">透明度:<span class="readout-transparency">${fTransparency}</span>%</div>
+              <input type="range" min="0" max="100" step="5" name="transparency" value="${fTransparency}">
+            </label>
+            <label>
+              <div class="label-text">圆角(px,最左 = 跟主题):<span class="readout-radius">${fRadius === '' ? '跟主题' : fRadius + ' px'}</span></div>
+              <input type="range" min="-1" max="40" step="1" name="radius" value="${fRadius === '' ? -1 : fRadius}">
+            </label>
+            <label>
+              <div class="label-text">倾斜:<span class="readout-tilt">${fTilt}</span>°</div>
+              <input type="range" min="-30" max="30" step="1" name="tilt" value="${fTilt}">
+            </label>
+            <div class="form-actions">
+              <button type="button" class="btn secondary reset-style">恢复默认</button>
+              <button type="submit" class="btn">保存</button>
+            </div>
+            <div class="form-status"></div>
+          </form>
+
+          <h3 class="settings-section-title">单个 app 图标</h3>
+          <div class="settings-hint">点任意一项改它的图标内容(emoji / 文字 / 本地图片 / 图床 URL)。风格(透明度/圆角/倾斜)上面统一控制。</div>
           <div class="settings-list app-icons-list">
             ${APP_REGISTRY.map(t => {
               const ov = overrides[t.id];
@@ -215,12 +272,70 @@ export async function mountAppIcons(container, params, router) {
         </div>
       </div>
     `;
+
+    // form 元素引用 + readout 实时同步 + applyAppIconStyle 即时预览
+    const form = container.querySelector('.app-icon-style-form');
+    const transInput = form.querySelector('[name=transparency]');
+    const radiusInput = form.querySelector('[name=radius]');
+    const tiltInput = form.querySelector('[name=tilt]');
+    const transReadout = form.querySelector('.readout-transparency');
+    const radiusReadout = form.querySelector('.readout-radius');
+    const tiltReadout = form.querySelector('.readout-tilt');
+    const status = form.querySelector('.form-status');
+
+    function liveApply() {
+      const transN = parseInt(transInput.value, 10);
+      const radiusN = parseInt(radiusInput.value, 10);
+      const tiltN = parseInt(tiltInput.value, 10) || 0;
+      const draftStyle = {
+        transparency: Number.isFinite(transN) ? transN : 100,
+        radius: Number.isFinite(radiusN) && radiusN >= 0 ? radiusN : undefined,
+        tilt: tiltN,
+      };
+      applyAppIconStyle(draftStyle);
+      transReadout.textContent = String(draftStyle.transparency);
+      radiusReadout.textContent = draftStyle.radius == null ? '跟主题' : draftStyle.radius + ' px';
+      tiltReadout.textContent = String(draftStyle.tilt);
+    }
+    form.addEventListener('input', liveApply);
+    // 初次也跑一次 — 保证 readout 跟当前 setting 一致(尤其 radius=-1 → 跟主题)
+    liveApply();
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const transN = parseInt(transInput.value, 10) || 100;
+      const radiusN = parseInt(radiusInput.value, 10);
+      const tiltN = parseInt(tiltInput.value, 10) || 0;
+      const newStyle = {};
+      if (Number.isFinite(transN) && transN >= 0 && transN < 100) newStyle.transparency = transN;
+      if (Number.isFinite(radiusN) && radiusN >= 0) newStyle.radius = radiusN;
+      if (tiltN !== 0) newStyle.tilt = tiltN;
+      await db.updateSettings(s => {
+        if (Object.keys(newStyle).length > 0) s.appIconStyle = newStyle;
+        else delete s.appIconStyle;
+      });
+      applyAppIconStyle(newStyle);
+      status.textContent = '已保存';
+      status.className = 'form-status success';
+    });
+
+    form.querySelector('.reset-style').addEventListener('click', async () => {
+      transInput.value = '100';
+      radiusInput.value = '-1';
+      tiltInput.value = '0';
+      liveApply();
+      await db.updateSettings(s => { delete s.appIconStyle; });
+      status.textContent = '已恢复默认';
+      status.className = 'form-status success';
+    });
   }
 
   await refresh();
 
   const onClick = async (e) => {
     if (e.target.closest('.back')) return router.back();
+    // form 内的 click(slider / button)交给 form handler,不进 picker
+    if (e.target.closest('.app-icon-style-form')) return;
     const row = e.target.closest('.app-icon-row');
     if (!row) return;
     const appId = row.dataset.appId;
