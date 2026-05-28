@@ -4,6 +4,7 @@
 
 import * as db from '../../core/db.js';
 import { openAlert } from '../../core/modal.js';
+import { esc } from '../../core/util.js';
 
 export async function mountWorldbookList(container, params, router) {
   container.innerHTML = `
@@ -178,8 +179,4 @@ function mapTavernPosition(p) {
   // 2/3 in ST are insertion before/after example chats — no equivalent here,
   // map to 'inline' as the safest default.
   return 'inline';
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

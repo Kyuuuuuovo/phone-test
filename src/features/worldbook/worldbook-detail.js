@@ -4,6 +4,7 @@
 import * as db from '../../core/db.js';
 import * as embedding from '../../core/embedding.js';
 import { openConfirm } from '../../core/modal.js';
+import { esc } from '../../core/util.js';
 
 export async function mountWorldbookDetail(container, params, router) {
   const id = params.id;
@@ -259,8 +260,4 @@ export async function mountWorldbookDetail(container, params, router) {
     entriesList.removeEventListener('blur',   onEntriesChange, true);
     entriesList.removeEventListener('click',  onEntriesClick);
   };
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

@@ -4,6 +4,7 @@ import * as db from '../../core/db.js';
 import * as notify from '../../core/notify.js';
 import { openAlert } from '../../core/modal.js';
 import { BEAR_CHARACTER_ID, DEFAULT_BEAR_AVATAR } from '../../core/pet.js';
+import { esc } from '../../core/util.js';
 
 export async function mountSettings(container, params, router) {
   const settings = (await db.get('settings', 'default')) || { id: 'default' };
@@ -260,8 +261,4 @@ function openChangeAvatarModal(container, onPick) {
       resolve(result);
     });
   });
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

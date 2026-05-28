@@ -4,6 +4,7 @@
 import * as db from '../../core/db.js';
 import * as context from '../../core/context.js';
 import { openConfirm, openAlert } from '../../core/modal.js';
+import { esc } from '../../core/util.js';
 
 export async function mountChatInfo(container, params, router) {
   const sessionId = params.sessionId;
@@ -298,10 +299,6 @@ function renderAvatar(c) {
   }
   const initial = (c?.name ?? '?').slice(0, 1);
   return `<div class="chat-info-avatar placeholder">${esc(initial)}</div>`;
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }
 
 // Bundle everything needed to recreate this session on another machine:

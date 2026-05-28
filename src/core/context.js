@@ -278,6 +278,16 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     editRoute: 'worldbook-list',
   });
   // 7. 远期 + 近期记忆
+  // 7a. 时间索引(timeline v3) — 在 mem-l2 之前注入,按老→新排序。每行
+  //   `YYYY-MM-DD HH:MM-HH:MM 真名 真名 事件`,作为时间锚点供模型定位
+  //   "什么时候发生了什么"。注入条数 / 自动合并阈值在 settings → 记忆总结。
+  parts.push({
+    key: 'timeline-index',
+    title: '# 时间索引(由老到新)',
+    body: await buildTimelineIndexLines(sessionId),
+    kind: 'data',
+    editRoute: 'memory',
+  });
   // 1a: 时间感知 on (默认) 时,每条 memory 前缀【M月D日–M月D日】给模型时
   // 间锚点。session.timeAwareness === 'off' 时退回 m.summary 裸文本。
   // 老 memory 没 fromTs/toTs → 用 createdAt fallback(单点而不是范围)。
@@ -503,6 +513,7 @@ const PART_GROUPS = {
   'wb-after':      'worldview',
   'vector-recall': 'memory',
   'wb-vector-recall': 'worldview',
+  'timeline-index':'memory',
   'mem-l2':        'memory',
   'mem-l1':        'memory',
   'current-time':  'state',
@@ -1108,7 +1119,17 @@ const MEMORY_OUTPUT_RULES = `
 喜欢: <一行一条;只填这段对话里新发现的;省略整行如果没有>
 不喜欢: <一行一条>
 你发现: <一行一条;其它非喜好类事实 — 职业/居住/性格/关系/习惯等>
-[/PROFILE_PATCH]`;
+[/PROFILE_PATCH]
+
+**时间索引(必填一行)**:
+在所有上述块之后,追加一个 [TIMELINE] 块,**单行**,作为这段对话在时间轴上的索引。注入 prompt 时用,保留更长时间作为时间锚点(可能很久后还会读)。格式:
+\`\`\`
+[TIMELINE]
+YYYY-MM-DD HH:MM-HH:MM ${'{真名+真名}'} 简短事件(≤30 字,中性叙述,不带"她/他",用对话双方真名)
+[/TIMELINE]
+\`\`\`
+例子: \`2026-05-22 14:30-15:30 问影渠 渠 咖啡馆聊到她哥哥的近况\`(personaName + charName 用空格分隔,或像例子那样自然写入)。
+时间从对话里 [HH:MM] 时间戳取首末时刻;日期是这段对话的实际日期。`;
 
 // 解析单个 CARD 块内容(不含 [CARD] / [/CARD] 标记),返回 {title?, summary,
 // quotes?, tag?, importance}。各字段缺失时省略(quotes 空数组也省略)。
@@ -1147,6 +1168,19 @@ function parseCardBlock(block) {
     if (v === 'high' || v === 'low') card.importance = v;
   }
   return card;
+}
+
+// Timeline 单行 — 从压缩输出里抽 [TIMELINE] 块,返回字符串(去前后空白)
+//   或 null(模型没输出)。格式应该是 "YYYY-MM-DD HH:MM-HH:MM ${真名} ${真名} 事件",
+//   但 LLM 实际可能漏掉或格式略乱 — 解析层只剥 block tag,内容原样存,
+//   用户能看到就行(注入 prompt 也按原样)。
+function parseTimelineBlock(raw) {
+  if (typeof raw !== 'string') return null;
+  const m = raw.match(/\[TIMELINE\]([\s\S]*?)\[\/TIMELINE\]/i);
+  if (!m) return null;
+  const line = m[1].trim().split('\n')[0].trim();  // 单行,多吐的行只取首条
+  if (!line || line.length > 200) return null;
+  return line;
 }
 
 // 用户画像 patch — 从压缩输出里抽 [PROFILE_PATCH] 块,返回 { likes, dislikes,
@@ -1440,6 +1474,25 @@ export async function maybeCompressMemory(sessionId, opts = {}) {
       .catch(e => console.warn('[context] profile patch merge failed:', e));
   }
 
+  // Timeline v3 — 模型在 raw 末尾输出 [TIMELINE] 单行块,直接写一行 timeline。
+  //   跟现有 generateMissingDays 的多事件 dayKey 行格式不同(那种留作老数据
+  //   兼容);新格式 = 一段对话压缩 → 一行 timeline,fromTs/toTs 共享 overflow
+  //   时间窗。写完后检查总数是否超阈值,超了触发 auto merge 最老的几条。
+  const tlLine = parseTimelineBlock(raw);
+  if (tlLine) {
+    const tlRow = {
+      id: db.newId(),
+      sessionId,
+      summary: tlLine,
+      fromTs: overflow[0].createdAt,
+      toTs:   overflow[overflow.length - 1].createdAt,
+      createdAt: stamp,
+    };
+    db.set('timeline', tlRow)
+      .then(() => maybeAutoMergeTimeline(sessionId))
+      .catch(e => console.warn('[context] timeline write failed:', e));
+  }
+
   // 「这次发生了」事件链 — 扫 overflow 的非 text/reply actions(零 AI 成本)。
   // 跟参考酒馆站差异化:她总结的是"戏剧章节",我们多了一层"手机事件"维度
   // (红包/转账/语音/照片/撤回/位置/计划/解封)。同 overflow 范围内只挂在
@@ -1486,9 +1539,74 @@ export async function maybeCompressMemory(sessionId, opts = {}) {
     embedding.embedMemory(m).catch(e => console.warn('[context] embed failed:', e));
   }
   await maybeRollupToL2(sessionId);
-  timeline.generateMissingDays(sessionId).catch(e =>
-    console.warn('[context] timeline gen failed (non-fatal):', e));
+  // timeline v3:在 [TIMELINE] 块解析时已经写一行 + 触发 auto merge,不再
+  //   独立调 generateMissingDays(那是老逻辑,只在 memory-app 手动扫描时用)。
   return newMems[0].id;
+}
+
+// Timeline v3 — auto merge oldest when total > threshold。把最老 N 条合并成
+//   一行(单次 AI 调用)。settings.timelineAutoMergeEnabled 关掉跳过;
+//   threshold 默认 30,合并批次 5 条;最终保留 ~threshold-(批次-1) 条。
+const TL_MERGE_BATCH = 5;
+const TL_MERGE_PROMPT = `把下面这几条时间线行合并成一行,提取最关键的弧线。
+保持格式:**YYYY-MM-DD HH:MM-HH:MM 真名 真名 简短事件**。
+时间窗用第一条开始 到 最后一条结束(可跨多天:YYYY-MM-DD HH:MM - YYYY-MM-DD HH:MM)。
+事件描述≤40 字。只输出这一行,不要解释、不要前缀、不要包裹。`;
+
+async function maybeAutoMergeTimeline(sessionId) {
+  const settings = (await db.get('settings', 'default')) || {};
+  if (settings.timelineAutoMergeEnabled === false) return;
+  const threshold = Number.isFinite(settings.timelineAutoMergeThreshold) && settings.timelineAutoMergeThreshold > 0
+    ? settings.timelineAutoMergeThreshold : 30;
+  let rows = (await db.query('timeline', 'sessionId', sessionId))
+    .filter(t => !t.mergedInto)
+    .sort((a, b) => (a.fromTs ?? a.createdAt ?? 0) - (b.fromTs ?? b.createdAt ?? 0));
+  // 多轮循环 — 每次超阈值就合并最老 5 条,直到不超
+  while (rows.length > threshold) {
+    const toMerge = rows.slice(0, TL_MERGE_BATCH);
+    const dump = toMerge.map(t => t.summary).join('\n');
+    let mergedLine;
+    try {
+      mergedLine = await ai.callAI({
+        systemPrompt: TL_MERGE_PROMPT,
+        messages: [{ role: 'user', content: dump }],
+        temperature: 0.3,
+      });
+      mergedLine = String(mergedLine || '').trim().split('\n')[0].trim();
+    } catch (e) {
+      console.warn('[context] timeline auto merge AI fail:', e);
+      return;  // 不抛,不卡 user 流程
+    }
+    if (!mergedLine) return;
+    const newRow = {
+      id: db.newId(),
+      sessionId,
+      summary: mergedLine,
+      fromTs: toMerge[0].fromTs ?? toMerge[0].createdAt,
+      toTs:   toMerge[toMerge.length - 1].toTs ?? toMerge[toMerge.length - 1].createdAt,
+      mergedFrom: toMerge.map(t => t.id),
+      createdAt: Date.now(),
+    };
+    await db.set('timeline', newRow);
+    for (const t of toMerge) await db.del('timeline', t.id);
+    rows = (await db.query('timeline', 'sessionId', sessionId))
+      .filter(t => !t.mergedInto)
+      .sort((a, b) => (a.fromTs ?? a.createdAt ?? 0) - (b.fromTs ?? b.createdAt ?? 0));
+  }
+}
+
+// Timeline 注入 prompt 段 — 拿最近 N 条(settings.timelineInjectCount 默认 20)
+//   按时间升序(老→新),join 成多行字符串。空就返回空字符串。
+async function buildTimelineIndexLines(sessionId) {
+  const settings = (await db.get('settings', 'default')) || {};
+  const injectCount = Number.isFinite(settings.timelineInjectCount) && settings.timelineInjectCount > 0
+    ? settings.timelineInjectCount : 20;
+  const rows = (await db.query('timeline', 'sessionId', sessionId))
+    .filter(t => !t.mergedInto)
+    .sort((a, b) => (a.fromTs ?? a.createdAt ?? 0) - (b.fromTs ?? b.createdAt ?? 0));
+  if (rows.length === 0) return '';
+  // 取最新的 N 条(slice 末尾),但仍按老→新顺序输出
+  return rows.slice(-injectCount).map(t => t.summary).join('\n');
 }
 
 // L2 rollup: when tier-1 summaries exceed L1_KEEP_RECENT, fold the oldest

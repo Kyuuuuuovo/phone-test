@@ -20,6 +20,7 @@
 
 import * as db from '../../core/db.js';
 import { openConfirm, openModal } from '../../core/modal.js';
+import { esc } from '../../core/util.js';
 import {
   DEFAULT_THEME, FONT_OPTIONS, TEXTURE_OPTIONS, GLASS_OPTIONS, THEME_PRESETS,
   normalizeTheme, applyTheme, applyWallpaper,
@@ -582,8 +583,4 @@ export async function mountTheme(container, params, router) {
 // '.' + '_' here (e.g. "effects.gradientTo"). Escape '.' so QSA matches.
 function cssEscape(s) {
   return s.replace(/\./g, '\\.');
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

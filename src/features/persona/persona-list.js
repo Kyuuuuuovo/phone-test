@@ -1,6 +1,7 @@
 // Player persona list.
 
 import * as db from '../../core/db.js';
+import { esc } from '../../core/util.js';
 
 export async function mountPersonaList(container, params, router) {
   container.innerHTML = `
@@ -71,8 +72,4 @@ export async function mountPersonaList(container, params, router) {
   };
   container.addEventListener('click', onClick);
   return () => container.removeEventListener('click', onClick);
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

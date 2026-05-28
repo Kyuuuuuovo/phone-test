@@ -14,6 +14,7 @@
 import * as db from '../../core/db.js';
 import * as surveillance from '../../core/surveillance.js';
 import { openAlert } from '../../core/modal.js';
+import { esc } from '../../core/util.js';
 
 const SPY_PLACEHOLDERS = ['卧室', '客厅', '浴室', '书房', '厨房'];
 
@@ -293,8 +294,4 @@ function renderAvatar(c) {
   }
   const initial = (c?.name ?? '?').slice(0, 1);
   return `<div class="session-avatar">${esc(initial)}</div>`;
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

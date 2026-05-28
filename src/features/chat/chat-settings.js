@@ -8,6 +8,7 @@
 
 import * as db from '../../core/db.js';
 import { CITIES, getCityByKey, citiesGroupedByOffset } from '../../core/cities.js';
+import { esc } from '../../core/util.js';
 
 export async function mountChatSettings(container, params, router) {
   const sessionId = params.sessionId;
@@ -65,7 +66,7 @@ export async function mountChatSettings(container, params, router) {
         </label>
         <label class="checkbox-row">
           <input type="checkbox" data-key="${who}-loc"${init.loc ? ' checked' : ''}>
-          <span>AI 可读${label}所在地名(只是城市名,不查 API)</span>
+          <span>AI 可知${label}所在城市(注入到 system prompt 的「# 当前地点」段,模型不用调工具)</span>
         </label>
         <div class="city-picker" data-who="${who}">
           <div class="label-text">${label}所在地</div>
@@ -204,8 +205,4 @@ export async function mountChatSettings(container, params, router) {
     backBtn.removeEventListener('click', onBack);
     form.removeEventListener('submit', onSubmit);
   };
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

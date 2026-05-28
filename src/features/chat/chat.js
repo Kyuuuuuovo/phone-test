@@ -6,6 +6,7 @@ import * as ai from '../../core/ai.js';
 import * as context from '../../core/context.js';
 import * as notify from '../../core/notify.js';
 import { openConfirm, openAlert, openModal } from '../../core/modal.js';
+import { esc } from '../../core/util.js';
 
 const SVG = {
   plus:  `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>`,
@@ -1436,10 +1437,6 @@ function renderMoneyBubble({ kind, a, side, attrs, label, verb, verbDone }) {
     </div>
     <div class="money-state">${stateLabel}</div>
   </div>`;
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }
 
 // Escape a URL for use inside CSS url(...). Wrap in quotes and escape inner quotes.

@@ -2,6 +2,7 @@
 // Click row to edit. "+" creates a new blank config and navigates to detail.
 
 import * as db from '../../core/db.js';
+import { esc } from '../../core/util.js';
 
 export async function mountApiSettings(container, params, router) {
   container.innerHTML = `
@@ -71,7 +72,4 @@ export async function mountApiSettings(container, params, router) {
 function truncate(s, n) {
   s = String(s || '');
   return s.length > n ? s.slice(0, n - 1) + '…' : s;
-}
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

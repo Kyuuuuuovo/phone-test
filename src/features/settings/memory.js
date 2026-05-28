@@ -21,6 +21,12 @@ export async function mountMemorySettings(container, params, router) {
     ? settings.memoryThreshold : DEFAULT_THRESHOLD;
   const batchLimit = Number.isFinite(settings.memoryForceBatchLimit) && settings.memoryForceBatchLimit > 0
     ? settings.memoryForceBatchLimit : DEFAULT_BATCH_LIMIT;
+  // Timeline v3 — 注入 prompt 的最近 N 条 + 自动合并阈值 + auto merge 开关
+  const tlInject = Number.isFinite(settings.timelineInjectCount) && settings.timelineInjectCount > 0
+    ? settings.timelineInjectCount : 20;
+  const tlMergeThreshold = Number.isFinite(settings.timelineAutoMergeThreshold) && settings.timelineAutoMergeThreshold > 0
+    ? settings.timelineAutoMergeThreshold : 30;
+  const tlAutoMerge = settings.timelineAutoMergeEnabled !== false;
   // T34: 记忆卡片显示控制 — 默认都开,user 想瘦身记忆卡片就关掉。
   const showQuotes = settings.memoryShowQuotes !== false;
   const showEvents = settings.memoryShowEvents !== false;
@@ -56,6 +62,21 @@ export async function mountMemorySettings(container, params, router) {
             <div class="label-text">「立即提取记忆」单次最多提取几天(默认 ${DEFAULT_BATCH_LIMIT})</div>
             <input type="number" name="batchLimit" min="1" max="30" step="1" value="${batchLimit}">
             <p class="hint" style="margin-top: 4px;">聊天框 ⋯ → 「立即提取记忆」按钮跑一次,自动循环压最旧的天,达到这个上限或全部压完才停。一次几天就要多少次 API 调用,值太大可能撞速率限制 / 烧 token,达到上限后会提示「还剩 N 天再点一次继续」。</p>
+          </label>
+          <h3 class="section-title" style="margin-top: 18px;">时间索引(timeline)</h3>
+          <p class="hint">时间索引是一行简短的"什么时候发生了什么"记录,跟着每次记忆压缩自动生成。会**注入到 system prompt 的「# 时间索引」段**作为时间锚点(memory 卡是故事内容,时间索引是时间轴)。</p>
+          <label>
+            <div class="label-text">注入 prompt 的最近 N 条(默认 20)</div>
+            <input type="number" name="timelineInjectCount" min="1" max="50" step="1" value="${tlInject}">
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" name="timelineAutoMergeEnabled"${tlAutoMerge ? ' checked' : ''}>
+            <span>超过阈值自动合并最老的几条(每次合并 5 条 → 1 条)</span>
+          </label>
+          <label>
+            <div class="label-text">自动合并阈值(超过这么多条触发合并,默认 30)</div>
+            <input type="number" name="timelineAutoMergeThreshold" min="5" max="100" step="1" value="${tlMergeThreshold}">
+            <p class="hint" style="margin-top: 4px;">关掉上面的开关时这值不生效。合并会调用 1 次 AI(把最老 5 条合成 1 条),所以阈值不要设太低(频繁烧 token)。</p>
           </label>
           <h3 class="section-title" style="margin-top: 18px;">记忆卡片显示</h3>
           <p class="hint">控制记忆 app 和聊天内总结里,每张卡片是否显示这两个区段。关掉只让卡片更简洁,不影响生成 — 数据仍写入 memory,改回开就能看到。</p>
@@ -98,10 +119,15 @@ export async function mountMemorySettings(container, params, router) {
       return;
     }
     const bl = parseInt(String(fd.get('batchLimit') || '0'), 10) || DEFAULT_BATCH_LIMIT;
+    const tlInj = parseInt(String(fd.get('timelineInjectCount') || '0'), 10) || 20;
+    const tlThr = parseInt(String(fd.get('timelineAutoMergeThreshold') || '0'), 10) || 30;
     const s = (await db.get('settings', 'default')) || { id: 'default' };
     s.memoryEnabled = en;
     s.memoryThreshold = t;
     s.memoryForceBatchLimit = Math.max(1, Math.min(30, bl));
+    s.timelineInjectCount = Math.max(1, Math.min(50, tlInj));
+    s.timelineAutoMergeThreshold = Math.max(5, Math.min(100, tlThr));
+    s.timelineAutoMergeEnabled = !!fd.get('timelineAutoMergeEnabled');
     s.memoryShowQuotes = !!fd.get('showQuotes');
     s.memoryShowEvents = !!fd.get('showEvents');
     // T17: memoryBatchSize 字段废弃 — 新规则按 dayKey 分组,每天一条 memory,

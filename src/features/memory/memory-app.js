@@ -19,6 +19,7 @@ import * as timeline from '../../core/timeline.js';
 import * as embedding from '../../core/embedding.js';
 import { openConfirm, openModal } from '../../core/modal.js';
 import { normalizeMemorySummary } from '../../core/context.js';
+import { esc, dayKeyOf } from '../../core/util.js';
 
 // 5 风格 + 默认。default = 不挂 body[data-mem-style](回退到 base.css 的 .ma-row),
 // 其余 5 个由 src/styles/memory-styles.css 的 scope 接管 .mem-card 样式。
@@ -438,16 +439,11 @@ export async function mountMemoryApp(container, params, router) {
       const c = chars.find(x => x.id === s.characterId);
       return c?.name || s.title || '(未命名)';
     };
-    // Header: scan-and-gen button + status. Survives re-render via the
-    // mountMemoryApp closure (tlGenBusy / tlStatus).
-    const head = `
-      <div class="ma-tl-head">
-        <button class="ma-tl-gen btn" type="button"${tlGenBusy ? ' disabled' : ''}>${tlGenBusy ? '生成中…' : '扫描并生成缺失天'}</button>
-        <span class="ma-tl-status${tlStatus.cls || ''}">${esc(tlStatus.text || '')}</span>
-      </div>
-    `;
+    // 「扫描并生成缺失天」按钮已删 — timeline v3 改造后,timeline 在 L1 记忆
+    //   压缩时通过 [TIMELINE] 块自动同步生成,不需要独立扫描。runTimelineGen
+    //   / tlGenBusy / tlStatus 暂留(closure 状态),没人调,后续清理。
     if (topLevel.length === 0) {
-      return head + `<p class="hint">还没有时间线条目。点击上方按钮扫描各会话的对话历史,自动生成每天的一句话总结(不含今天)。</p>`;
+      return `<p class="hint">还没有时间线条目。继续聊天,触发记忆压缩时会自动生成一行时间索引。</p>`;
     }
     // T27: 时间线 tab 装饰 — petal 加章节 divider,cosmic 加 glow-line。
     // film 的 filmstrip 装饰在 CSS 上(.ma-row::after),不需要 HTML 改。
@@ -455,7 +451,7 @@ export async function mountMemoryApp(container, params, router) {
       memoryStyle === 'petal'  ? `<div class="ma-section-divider">时间线</div>` :
       memoryStyle === 'cosmic' ? `<div class="ma-glow-line"></div>` :
       '';
-    return head + styleDecor + `
+    return styleDecor + `
       <div class="ma-list">
         ${topLevel.map(t => {
           const mergedDetail = (Array.isArray(t.mergedFrom) && t.mergedFrom.length > 0)
@@ -959,7 +955,8 @@ export async function mountMemoryApp(container, params, router) {
       c.addEventListener('click', () => openDayModal(c.dataset.dayKey));
     });
 
-    container.querySelector('.ma-tl-gen')?.addEventListener('click', runTimelineGen);
+    // 「扫描并生成缺失天」按钮已删,wire 跟着删。runTimelineGen function 留作
+    //   死代码不删(没人调,改 timeline 数据时可能手动复活)。
 
     container.querySelector('.ma-ms-new')?.addEventListener('click', () => openMilestoneEditor(null));
     container.querySelectorAll('.ms-row').forEach(r => {
@@ -1212,10 +1209,7 @@ function applyMemoryStyleToBody(style) {
   }
 }
 
-function dayKeyOf(ts) {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
+// dayKeyOf 已从 util.js import,本地实现删
 
 // dayKey "YYYY-MM-DD" → 当天 0 点本地时间戳。给 milestones 算月相用 — dayKey
 // 是字符串,moonPhaseOf 要 ts,这是桥。
@@ -1243,8 +1237,4 @@ function formatDate(ts) {
   if (!ts) return '';
   const d = new Date(ts);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

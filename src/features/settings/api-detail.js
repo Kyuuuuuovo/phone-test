@@ -8,6 +8,7 @@ import * as db from '../../core/db.js';
 import { openConfirm } from '../../core/modal.js';
 import * as ai from '../../core/ai.js';
 import { bindFormDirty } from '../../core/form-helpers.js';
+import { esc } from '../../core/util.js';
 
 export async function mountApiDetail(container, params, router) {
   const id = params.id;
@@ -233,8 +234,4 @@ export async function mountApiDetail(container, params, router) {
     setActive.removeEventListener('click', onSetActive);
     deleteBtn.removeEventListener('click', onDelete);
   };
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

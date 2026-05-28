@@ -8,6 +8,7 @@ import * as db from '../../core/db.js';
 import * as embedding from '../../core/embedding.js';
 import { openAlert } from '../../core/modal.js';
 import { bindFormDirty } from '../../core/form-helpers.js';
+import { esc } from '../../core/util.js';
 
 const PRESETS = [
   { label: 'OpenAI', urlTemplate: 'https://api.openai.com/v1', modelName: 'text-embedding-3-small' },
@@ -325,8 +326,4 @@ export async function mountEmbeddingSettings(container, params, router) {
   });
 
   return () => {};
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

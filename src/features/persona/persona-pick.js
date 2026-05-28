@@ -3,6 +3,7 @@
 // pick this up (chat-list.js's createSessionForCharacter reads it).
 
 import * as db from '../../core/db.js';
+import { esc } from '../../core/util.js';
 
 export async function mountPersonaPick(container, params, router) {
   async function render() {
@@ -68,8 +69,4 @@ export async function mountPersonaPick(container, params, router) {
 
   await render();
   return () => {};
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

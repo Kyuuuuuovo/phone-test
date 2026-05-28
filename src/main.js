@@ -5,7 +5,8 @@ import * as router from './core/router.js';
 import * as ai from './core/ai.js';
 import * as context from './core/context.js';
 import { applyTheme as applyThemeObj, applyWallpaper } from './core/theme.js';
-import { openConfirm, openAlert } from './core/modal.js';
+import { openConfirm, openAlert, openModal } from './core/modal.js';
+import { esc } from './core/util.js';
 import { mountHome }        from './features/home/home.js';
 import { mountSettings }    from './features/settings/settings.js';
 import { mountApiSettings } from './features/settings/api-settings.js';
@@ -511,8 +512,6 @@ async function openMemoryHelperPanel(sessionId) {
     const mems = (await db.query('memories', 'sessionId', sessionId))
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-    const esc = (s) => String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
-
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop memory-helper-backdrop';
     backdrop.innerHTML = `
@@ -638,18 +637,15 @@ async function openMemoryHelperPanel(sessionId) {
       });
     });
 
-    // 重置记忆 — 清 memories + 反 archive 所有消息 + 清相关 embeddings。
-    // 不立即压缩,让用户接下来自己决定要不要继续聊或手动「重新提取」。
+    // 重置记忆 — 弹 4 个 checkbox 选删什么(故事卡/时间线/画像/向量)。
+    //   不立即压缩,让用户接下来自己决定要不要继续聊或手动「重新提取」。
     const statusEl = backdrop.querySelector('.mh-mem-status');
     backdrop.querySelector('.mh-reset-btn')?.addEventListener('click', async () => {
-      if (!await openConfirm(frame, {
-        title: '重置当前记忆',
-        message: '会删除本会话所有总结、把之前被压缩的消息恢复成正常聊天记录。不会立即重新生成总结。确定继续?',
-        confirmLabel: '重置', danger: true,
-      })) return;
+      const opts = await pickResetOptions(frame, '重置当前记忆');
+      if (!opts) return;
       statusEl.textContent = '重置中…';
       try {
-        await resetMemoriesForSession(sessionId);
+        await resetMemoriesForSession(sessionId, opts);
         statusEl.textContent = '已重置';
         setTimeout(() => { close(); openMemoryHelperPanel(sessionId); }, 600);
       } catch (e) {
@@ -658,16 +654,13 @@ async function openMemoryHelperPanel(sessionId) {
     });
 
     // 重新提取 — reset + 立即 maybeCompressMemory。一锤定音,基于当前所有
-    // 消息从头压缩。会调 AI(可能慢),用户得明白这点。
+    //   消息从头压缩。会调 AI(可能慢)。重置选项同样让 user 选。
     backdrop.querySelector('.mh-resummarize-btn')?.addEventListener('click', async () => {
-      if (!await openConfirm(frame, {
-        title: '重新提取记忆',
-        message: '会删除现有总结、恢复被压缩的消息,然后基于当前所有消息重新生成总结。会调用 AI(可能慢)。确定继续?',
-        confirmLabel: '重新提取', danger: true,
-      })) return;
+      const opts = await pickResetOptions(frame, '重新提取记忆(先重置)');
+      if (!opts) return;
       statusEl.textContent = '重置 + AI 生成中…';
       try {
-        await resetMemoriesForSession(sessionId);
+        await resetMemoriesForSession(sessionId, opts);
         await context.maybeCompressMemory(sessionId);
         statusEl.textContent = '已重新提取';
         setTimeout(() => { close(); openMemoryHelperPanel(sessionId); }, 800);
@@ -688,8 +681,6 @@ async function openCrossSessionMemoryPanel() {
   const frame = document.querySelector('.phone-frame');
   if (!frame) return;
   document.querySelector('.memory-helper-backdrop')?.remove();
-
-  const esc = (s) => String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 
   async function render() {
     const allSessions = await db.getAll('chatSessions');
@@ -750,14 +741,11 @@ async function openCrossSessionMemoryPanel() {
         const row = btn.closest('[data-session-id]');
         const sid = row?.dataset.sessionId;
         if (!sid) return;
-        if (!await openConfirm(frame, {
-          title: '重置该会话记忆',
-          message: '会删除这个会话的所有总结、把被压缩的消息恢复成正常聊天记录。不会立即重新生成。继续?',
-          confirmLabel: '重置', danger: true,
-        })) return;
+        const opts = await pickResetOptions(frame, '重置该会话记忆');
+        if (!opts) return;
         statusEl.textContent = '重置中…';
         try {
-          await resetMemoriesForSession(sid);
+          await resetMemoriesForSession(sid, opts);
           statusEl.textContent = '已重置';
           setTimeout(() => { close(); openCrossSessionMemoryPanel(); }, 600);
         } catch (e) {
@@ -771,14 +759,11 @@ async function openCrossSessionMemoryPanel() {
         const row = btn.closest('[data-session-id]');
         const sid = row?.dataset.sessionId;
         if (!sid) return;
-        if (!await openConfirm(frame, {
-          title: '重新提取该会话记忆',
-          message: '会删现有总结、恢复被压消息,然后基于当前所有消息重新生成总结。会调用 AI(可能慢)。继续?',
-          confirmLabel: '重新提取', danger: true,
-        })) return;
+        const opts = await pickResetOptions(frame, '重新提取该会话记忆(先重置)');
+        if (!opts) return;
         statusEl.textContent = '重置 + AI 生成中…';
         try {
-          await resetMemoriesForSession(sid);
+          await resetMemoriesForSession(sid, opts);
           await context.maybeCompressMemory(sid);
           statusEl.textContent = '已重新提取';
           setTimeout(() => { close(); openCrossSessionMemoryPanel(); }, 800);
@@ -882,34 +867,69 @@ async function migrateCycleToCheckin() {
   console.log(`[migrate] cycle→checkin: 1 type + ${(cycle.history?.length || 0)} 段 history + ${symptoms.length} 症状 已迁`);
 }
 
-// 重置一个会话的所有记忆 — 四件事原子心态(逐项 await 但不放一个 tx 里,
-// 因为跨 4 个 store + maybeCompressMemory 后续也要写,大事务持有时间过长):
-//   1. 删 memories(L1 + L2)
-//   2. unarchive 所有 chatMessages(让被压缩进总结的消息恢复成活跃)
-//   3. 删该会话的 memory-source embeddings(否则向量表留孤儿,以后再压缩
-//      会重复 embed)
-//   4. 删该会话的 timeline rows — 记忆压缩末尾 fire-and-forget 调
-//      generateMissingDays 生成 timeline,跟 memory 是同源数据。重置 memory
-//      时 timeline 不清,会留下"已生成"标记,下次重新压缩后扫描 generateMissingDays
-//      看 dayKey 已存在就 skip,等于老 timeline 留着不刷新。
-async function resetMemoriesForSession(sessionId) {
-  const mems = await db.query('memories', 'sessionId', sessionId);
-  for (const m of mems) await db.del('memories', m.id);
-  const msgs = await db.query('chatMessages', 'sessionId', sessionId);
-  for (const m of msgs) {
-    if (m.archived) {
-      delete m.archived;
-      delete m.archivedAt;
-      delete m.archivedIntoMemoryId;
-      await db.set('chatMessages', m);
+// 重置一个会话的记忆 — 支持 opts 让 user 选删什么(memories / timeline /
+//   profiles / embeddings,默认全 true 兼容老 caller)。
+//   - memories=true 还会 unarchive 所有 chatMessages,让被压缩的消息恢复
+//   - profiles 是 character-level 不是 session-level — 删该 session 角色的
+//     所有 userProfiles(charId|*),会影响同角色其他 session
+async function resetMemoriesForSession(sessionId, opts = {}) {
+  const {
+    memories: delMems   = true,
+    timeline: delTl     = true,
+    profiles: delProfs  = true,
+    embeddings: delEmbs = true,
+  } = opts;
+  if (delMems) {
+    const mems = await db.query('memories', 'sessionId', sessionId);
+    for (const m of mems) await db.del('memories', m.id);
+    const msgs = await db.query('chatMessages', 'sessionId', sessionId);
+    for (const m of msgs) {
+      if (m.archived) {
+        delete m.archived;
+        delete m.archivedAt;
+        delete m.archivedIntoMemoryId;
+        await db.set('chatMessages', m);
+      }
     }
   }
-  const embs = await db.query('embeddings', 'sessionId', sessionId);
-  for (const e of embs) {
-    if (e.sourceType === 'memory') await db.del('embeddings', e.id);
+  if (delEmbs) {
+    const embs = await db.query('embeddings', 'sessionId', sessionId);
+    for (const e of embs) {
+      if (e.sourceType === 'memory') await db.del('embeddings', e.id);
+    }
   }
-  const tls = await db.query('timeline', 'sessionId', sessionId);
-  for (const t of tls) await db.del('timeline', t.id);
+  if (delTl) {
+    const tls = await db.query('timeline', 'sessionId', sessionId);
+    for (const t of tls) await db.del('timeline', t.id);
+  }
+  if (delProfs) {
+    const sess = await db.get('chatSessions', sessionId);
+    if (sess?.characterId) {
+      const allProfs = await db.getAll('userProfiles');
+      for (const p of allProfs) {
+        if (p.characterId === sess.characterId) await db.del('userProfiles', p.id);
+      }
+    }
+  }
+}
+
+// 重置选项收集器 — 弹 openModal 4 个 checkbox,default 全勾。返回 opts
+//   或 null(用户取消)。共享给 chat-info reset 按钮和跨 session 重置按钮。
+async function pickResetOptions(frame, title = '重置记忆') {
+  const result = await openModal(frame, {
+    title,
+    fields: [
+      { name: 'memories', label: '故事卡 / 总结 memories(同时把被压缩的消息恢复)', kind: 'checkbox', defaultValue: true },
+      { name: 'timeline', label: '时间线 timeline', kind: 'checkbox', defaultValue: true },
+      { name: 'profiles', label: '用户画像 userProfiles(影响该角色所有会话)', kind: 'checkbox', defaultValue: true },
+      { name: 'embeddings', label: '向量索引 embeddings(配置了向量记忆才有)', kind: 'checkbox', defaultValue: true },
+    ],
+    submitLabel: '重置',
+  });
+  if (!result) return null;
+  // 全部都没勾 = 等于取消
+  if (!result.memories && !result.timeline && !result.profiles && !result.embeddings) return null;
+  return result;
 }
 
 boot().catch(err => console.error('[boot] failed:', err));

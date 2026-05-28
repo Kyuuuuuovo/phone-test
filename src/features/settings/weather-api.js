@@ -5,6 +5,7 @@
 import * as db from '../../core/db.js';
 import { PRESET_TEMPLATES, fetchWeather } from '../../core/weather.js';
 import { bindFormDirty } from '../../core/form-helpers.js';
+import { esc } from '../../core/util.js';
 
 export async function mountWeatherApi(container, params, router) {
   const settings = (await db.get('settings', 'default')) || { id: 'default' };
@@ -138,8 +139,4 @@ function migrateConfig(stored) {
     return { urlTemplate: preset?.urlTemplate || '', apiKey: stored.apiKey || '' };
   }
   return { urlTemplate: '', apiKey: stored.apiKey || '' };
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

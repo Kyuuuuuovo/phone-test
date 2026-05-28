@@ -4,6 +4,7 @@
 // Blocked characters are shown but visually muted.
 
 import * as db from '../../core/db.js';
+import { esc } from '../../core/util.js';
 
 export async function mountContacts(container, params, router) {
   container.innerHTML = `<div class="contacts-body"></div>`;
@@ -106,8 +107,4 @@ function firstLetter(name, collator) {
     }
   }
   return '#';
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

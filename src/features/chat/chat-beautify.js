@@ -8,6 +8,7 @@
 // apply 到 .chat-page,见那里的 T25 注释段。
 
 import * as db from '../../core/db.js';
+import { esc } from '../../core/util.js';
 
 const BUBBLE_PRESETS = [
   { id: '',            label: '默认',     hint: '跟主题走' },
@@ -217,8 +218,4 @@ function renderChatBgPreview(data) {
     return `<div class="avatar-preview chatbg-preview"><img src="${esc(data)}" alt=""></div>`;
   }
   return `<div class="avatar-preview placeholder chatbg-preview">无</div>`;
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

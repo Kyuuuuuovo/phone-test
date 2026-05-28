@@ -18,6 +18,7 @@
 import * as db from '../../core/db.js';
 import * as surveillance from '../../core/surveillance.js';
 import { openConfirm, openAlert } from '../../core/modal.js';
+import { esc } from '../../core/util.js';
 
 export async function mountMonitorView(container, params, router) {
   const cameraId = params?.cameraId;
@@ -169,10 +170,6 @@ function formatTime(ts) {
   const d = new Date(ts);
   const pad = (n) => String(n).padStart(2, '0');
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }
 
 // Change room: keeps the same camera (and mode) but moves it to a different

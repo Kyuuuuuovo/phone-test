@@ -13,6 +13,7 @@ import * as db from '../../core/db.js';
 import { DEFAULT_MEMORY_SYS } from '../../core/context.js';
 import * as timeline from '../../core/timeline.js';
 import { openConfirm } from '../../core/modal.js';
+import { esc } from '../../core/util.js';
 
 export async function mountMemoryManage(container, params, router) {
   const sessionId = params.sessionId;
@@ -388,8 +389,4 @@ function formatTime(ts) {
   const d = new Date(ts);
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

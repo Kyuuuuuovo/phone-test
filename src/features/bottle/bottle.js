@@ -27,6 +27,7 @@ import * as db   from '../../core/db.js';
 import * as ai   from '../../core/ai.js';
 import * as bottleCore from '../../core/bottle.js';
 import { openAlert } from '../../core/modal.js';
+import { esc } from '../../core/util.js';
 
 export async function mountBottle(container, params, router) {
   // On open: lazy-generate replies for any drifting bottles whose
@@ -289,8 +290,4 @@ function formatRelative(ts) {
   if (min < 60) return `${min} 分钟`;
   const h = Math.round(min / 60);
   return `${h} 小时`;
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

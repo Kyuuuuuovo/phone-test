@@ -5,6 +5,7 @@
 import * as db from '../../core/db.js';
 import { openConfirm } from '../../core/modal.js';
 import { bindFormDirty } from '../../core/form-helpers.js';
+import { esc } from '../../core/util.js';
 
 export async function mountPersonaDetail(container, params, router) {
   const id = params.id;
@@ -189,10 +190,6 @@ function renderAvatarPreview(data, name) {
   }
   const initial = (name || '?').slice(0, 1);
   return `<div class="avatar-preview placeholder">${esc(initial)}</div>`;
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }
 
 // 跟 me.js 用的同款相对时间 humanizer,但持有在本文件就不强 coupling。

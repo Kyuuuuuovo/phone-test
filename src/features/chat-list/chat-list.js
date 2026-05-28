@@ -10,6 +10,7 @@
 
 import * as db from '../../core/db.js';
 import { openConfirm, openAlert } from '../../core/modal.js';
+import { esc } from '../../core/util.js';
 
 const ACTION_WIDTH = 144;  // 2 buttons × 72px — kept in sync with CSS
 
@@ -613,8 +614,4 @@ function formatTime(ts) {
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
   return `${d.getMonth() + 1}/${d.getDate()}`;
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

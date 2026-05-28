@@ -129,32 +129,8 @@ export function normalizeTheme(stored) {
   return merged;
 }
 
-// Color palettes for the two new presets. Kept as labeled objects rather
-// than inline literals so the values stay easy to tune in one place.
-//
-// Dark — full iOS-style dark inversion. Surfaces get the iOS dark-gray
-// stack (#1c1c1e / #2c2c2e) so secondary surfaces (bubble.char, pinned
-// rows) read distinct from primary surface.
-//
-// Pink — soft 嫩粉 palette tuned for the 液态金属 glass tier. The metal
-// effect lifts a sharp specular highlight off the surface; with a pink
-// palette behind it the result reads as rose-gold chrome (which is what
-// "嫩粉液态金属" maps to in real-world aesthetic terms — pink iPhones,
-// rose-gold MacBooks).
-const DARK_PALETTE = {
-  bg:           '#0F0F12',
-  fg:           '#F5F5F7',
-  surface:      '#1C1C1E',
-  accent:       '#0A84FF',
-  muted:        '#98989D',
-  border:       '#38383A',
-  bubbleUser:   '#0A84FF',
-  bubbleUserFg: '#FFFFFF',
-  bubbleChar:   '#2C2C2E',
-  bubbleCharFg: '#F5F5F7',
-  outsideBg:    '#000000',
-  bgPinned:     '#2C2C2E',
-};
+// PINK_PALETTE 给"嫩粉"预设(液态金属玫瑰金质感)。dark 预设 inline 后
+// DARK_PALETTE 已删,定义本身没用了。
 
 // Tender pink palette tuned down from the first pass — that version had
 // FF6699 accents + saturated #FFE9F0 surfaces and the user found it

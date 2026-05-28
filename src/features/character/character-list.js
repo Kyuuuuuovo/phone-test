@@ -1,6 +1,7 @@
 // Character list. Active chars first (by updatedAt desc), blocked at the bottom.
 
 import * as db from '../../core/db.js';
+import { esc } from '../../core/util.js';
 
 export async function mountCharacterList(container, params, router) {
   container.innerHTML = `
@@ -86,8 +87,4 @@ function renderAvatar(c) {
   }
   const initial = (c?.name ?? '?').slice(0, 1);
   return `<div class="entity-avatar">${esc(initial)}</div>`;
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

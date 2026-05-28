@@ -4,6 +4,7 @@
 // text, when saved.
 
 import * as db from '../../core/db.js';
+import { esc } from '../../core/util.js';
 
 export async function mountFavoritesList(container, params, router) {
   async function render() {
@@ -104,8 +105,4 @@ function formatTime(ts) {
   const now = new Date();
   if (d.toDateString() === now.toDateString()) return `今天 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   return `${d.getMonth()+1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }

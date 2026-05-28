@@ -8,6 +8,7 @@
 
 import * as db from '../../core/db.js';
 import { openAlert, openModal } from '../../core/modal.js';
+import { esc } from '../../core/util.js';
 
 export async function mountMe(container, params, router) {
   const settings = (await db.get('settings', 'default')) || {};
@@ -216,8 +217,4 @@ function renderAvatar(p) {
   }
   const initial = (p?.name ?? '我').slice(0, 1);
   return `<div class="me-avatar">${esc(initial)}</div>`;
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
 }
