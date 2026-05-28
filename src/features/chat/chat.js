@@ -161,6 +161,12 @@ export async function mountChat(container, params, router) {
     if (cb.bubblePadding) chatPage.style.setProperty('--chat-bubble-padding', cb.bubblePadding);
     if (cb.userBubbleColor) chatPage.style.setProperty('--chat-bubble-user-bg', cb.userBubbleColor);
     if (cb.charBubbleColor) chatPage.style.setProperty('--chat-bubble-char-bg', cb.charBubbleColor);
+    // 气泡透明度 — 0-100,100 不透明(默认,不注入)。< 100 时 data-bubble-alpha-on
+    //   触发 base.css 里的 color-mix override。CSS var 0-1。
+    if (Number.isFinite(cb.bubbleAlpha) && cb.bubbleAlpha < 100) {
+      chatPage.dataset.bubbleAlphaOn = '1';
+      chatPage.style.setProperty('--chat-bubble-alpha', String(Math.max(0, cb.bubbleAlpha) / 100));
+    }
     if (cb.customCss && cb.customCss.trim()) {
       const styleEl = document.createElement('style');
       styleEl.className = 'chat-custom-css';

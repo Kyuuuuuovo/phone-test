@@ -6217,6 +6217,84 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
   border-radius: var(--chat-bubble-radius, 18px);
 }
 
+/* 气泡透明度 — character.chatBubbleStyle.bubbleAlpha (0-100) → chat.js apply
+   设 data-bubble-alpha-on=1 + --chat-bubble-alpha (0-1)。用 color-mix 让原色
+   按比例 + transparent 补足。
+   ⚠ 已知 caveat:--bubble-user 在某些 theme(弥撒 / 荷紫)是 linear-gradient,
+   color-mix 只接受 <color> 不接受 gradient,这种情况下 background 解析失败回
+   退到原 gradient(等效 alpha=100)。chatBubbleStyle.userBubbleColor 自填的
+   是 hex/rgba 就正常生效。 */
+.chat-page[data-bubble-alpha-on="1"] .bubble.user {
+  background: color-mix(in srgb,
+    var(--chat-bubble-user-bg, var(--bubble-user)) calc(var(--chat-bubble-alpha, 1) * 100%),
+    transparent);
+}
+.chat-page[data-bubble-alpha-on="1"] .bubble.char {
+  background: color-mix(in srgb,
+    var(--chat-bubble-char-bg, var(--bubble-char)) calc(var(--chat-bubble-alpha, 1) * 100%),
+    transparent);
+}
+
+/* 聊天美化页 — 实时预览容器。复用 .chat-page selectors 让 preset / 字段 var
+   一并生效,user 调任何参数当场看到差异不用回聊天页验证。pointer-events
+   关掉防止误触,scope `--chat-bubble-*` var 写在 mount 元素上自然只影响预览。 */
+.chat-beautify-preview {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  margin: 8px 0 18px;
+  background: var(--surface);
+  position: relative;
+}
+.chat-beautify-preview .preview-label {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.chat-beautify-preview .chat-page {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: auto;
+  background: transparent;
+  pointer-events: none;
+  padding: 4px 0;
+}
+.chat-beautify-preview .bubble {
+  font-size: 13px;
+  margin: 0;
+  max-width: 75%;
+  line-height: 1.5;
+}
+.chat-beautify-preview .bubble.char { align-self: flex-start; }
+.chat-beautify-preview .bubble.user { align-self: flex-end; }
+.chat-beautify-preview .preview-bg-layer {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+  background-size: cover;
+  background-position: center;
+  pointer-events: none;
+  z-index: 0;
+}
+.chat-beautify-preview .preview-bg-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  pointer-events: none;
+  z-index: 1;
+}
+.chat-beautify-preview .chat-page,
+.chat-beautify-preview .preview-label {
+  position: relative;
+  z-index: 2;
+}
+
 /* T18 PWA 新版本提示 banner — SW updatefound 触发后顶部 slide-in,user 点
    重启 = location.reload。视觉跟 schedule-banner 风格对齐但走 accent 色
    (不是 danger),因为这是"好消息有更新"不是"出错了"。 */

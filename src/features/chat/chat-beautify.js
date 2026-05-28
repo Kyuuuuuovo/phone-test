@@ -51,6 +51,17 @@ export async function mountChatBeautify(container, params, router) {
         <div class="page-body">
           <p class="hint">这些设置只在和「${esc(character.name || '这个角色')}」的聊天里生效。改了之后回到聊天页就会看到。</p>
 
+          <div class="chat-beautify-preview">
+            <span class="preview-label">预览</span>
+            <div class="preview-bg-layer"></div>
+            <div class="preview-bg-overlay"></div>
+            <div class="chat-page preview-chat-page"${bubblePreset ? ` data-bubble-preset="${esc(bubblePreset)}"` : ''}>
+              <div class="bubble char">在的,刚去倒了杯水</div>
+              <div class="bubble user">好,你说</div>
+              <div class="bubble char">明天还是同样的时间?</div>
+            </div>
+          </div>
+
           <div class="label-text">聊天背景</div>
           <div class="avatar-uploader chat-bg-uploader">
             ${renderChatBgPreview(chatBgData)}
@@ -100,6 +111,11 @@ export async function mountChatBeautify(container, params, router) {
             <input type="text" name="charBubbleColor" value="${esc(initialBubble.charBubbleColor || '')}" placeholder="#e9e9eb 或 hsl(0, 0%, 92%)">
           </label>
           <label>
+            <div class="label-text">气泡透明度:<span class="bubble-alpha-readout">${Number.isFinite(initialBubble.bubbleAlpha) ? initialBubble.bubbleAlpha : 100}</span>%</div>
+            <input type="range" min="0" max="100" step="5" name="bubbleAlpha" value="${Number.isFinite(initialBubble.bubbleAlpha) ? initialBubble.bubbleAlpha : 100}">
+            <p class="hint">100% = 完全不透明(默认),数字越小气泡背景越透,字保持清晰。⚠ 主题里气泡用渐变(弥撒 / 荷紫)时这条不生效 — color-mix 不支持 gradient。</p>
+          </label>
+          <label>
             <div class="label-text">自由 CSS(高级 · 留空不注入)</div>
             <textarea name="customCss" rows="6" placeholder=".chat-page .bubble.user { font-style: italic; }&#10;.chat-page .bubble.char::before { content: '◆ '; opacity: .5; }">${esc(initialBubble.customCss || '')}</textarea>
             <p class="hint">写完整 CSS rule(选择器 + { ... })。自己写 <code>.chat-page</code> 前缀,会全局生效但只在打开聊天页时存在。</p>
@@ -133,6 +149,63 @@ export async function mountChatBeautify(container, params, router) {
     const fsReadout = container.querySelector('.chat-fontsize-readout');
     const saveBtn = container.querySelector('.save-btn');
     const presetGrid = container.querySelector('.bubble-preset-grid');
+    const previewWrap = container.querySelector('.chat-beautify-preview');
+    const previewPage = previewWrap.querySelector('.preview-chat-page');
+    const previewBg = previewWrap.querySelector('.preview-bg-layer');
+    const previewOverlay = previewWrap.querySelector('.preview-bg-overlay');
+
+    // 实时预览 — 收集当前 form 值 + 把 CSS var / dataset 同步到预览 chat-page。
+    //   每条 input/change 事件都调用一次。chat.js 实际 apply 的逻辑这里同步
+    //   复制一份(不复用避免循环 import + 预览有些字段是从 form 现读而非
+    //   从 character 读)。
+    function applyPreview() {
+      // Preset attr
+      if (bubblePreset) previewPage.dataset.bubblePreset = bubblePreset;
+      else              delete previewPage.dataset.bubblePreset;
+      // 字段 var
+      const radiusV = container.querySelector('[name=bubbleRadius]')?.value.trim();
+      const paddingV = container.querySelector('[name=bubblePadding]')?.value.trim();
+      const userColor = container.querySelector('[name=userBubbleColor]')?.value.trim();
+      const charColor = container.querySelector('[name=charBubbleColor]')?.value.trim();
+      const alpha = parseInt(container.querySelector('[name=bubbleAlpha]')?.value || '100', 10);
+      const radiusNum = parseInt(radiusV, 10);
+      if (Number.isFinite(radiusNum) && radiusNum >= 0) {
+        previewPage.style.setProperty('--chat-bubble-radius', `${radiusNum}px`);
+      } else {
+        previewPage.style.removeProperty('--chat-bubble-radius');
+      }
+      if (paddingV) previewPage.style.setProperty('--chat-bubble-padding', paddingV);
+      else          previewPage.style.removeProperty('--chat-bubble-padding');
+      if (userColor) previewPage.style.setProperty('--chat-bubble-user-bg', userColor);
+      else           previewPage.style.removeProperty('--chat-bubble-user-bg');
+      if (charColor) previewPage.style.setProperty('--chat-bubble-char-bg', charColor);
+      else           previewPage.style.removeProperty('--chat-bubble-char-bg');
+      // Alpha
+      if (Number.isFinite(alpha) && alpha < 100) {
+        previewPage.dataset.bubbleAlphaOn = '1';
+        previewPage.style.setProperty('--chat-bubble-alpha', String(Math.max(0, alpha) / 100));
+      } else {
+        delete previewPage.dataset.bubbleAlphaOn;
+        previewPage.style.removeProperty('--chat-bubble-alpha');
+      }
+      // 背景图 + overlay
+      if (chatBgData) {
+        previewBg.style.backgroundImage = `url("${chatBgData}")`;
+      } else {
+        previewBg.style.backgroundImage = '';
+      }
+      const overlayV = parseInt(container.querySelector('[name=chatBgOverlay]')?.value || '0', 10) || 0;
+      previewOverlay.style.opacity = chatBgData ? String(overlayV / 100) : '1';
+      // 字号
+      const fsV = parseInt(container.querySelector('[name=chatFontSize]')?.value || '0', 10) || 0;
+      if (fsV > 0) previewPage.style.setProperty('font-size', `${fsV}px`);
+      else         previewPage.style.removeProperty('font-size');
+    }
+
+    // 所有 input/change 一律刷新预览。用 form-level delegation 一行搞定,
+    //   不用对每个 input 单独注册。
+    container.querySelector('.page-body').addEventListener('input', applyPreview);
+    container.querySelector('.page-body').addEventListener('change', applyPreview);
 
     backBtn.addEventListener('click', () => router.back());
 
@@ -154,6 +227,7 @@ export async function mountChatBeautify(container, params, router) {
         old.replaceWith(fresh.firstElementChild);
         clearBtn.disabled = false;
         status('背景已加载,点保存写入', 'success');
+        applyPreview();
       };
       reader.onerror = () => status('读取图片失败', 'error');
       reader.readAsDataURL(file);
@@ -167,6 +241,7 @@ export async function mountChatBeautify(container, params, router) {
       old.replaceWith(fresh.firstElementChild);
       clearBtn.disabled = true;
       status('背景已清除,点保存写入', 'success');
+      applyPreview();
     });
 
     fsInput.addEventListener('input', () => {
@@ -174,7 +249,7 @@ export async function mountChatBeautify(container, params, router) {
       fsReadout.textContent = v > 0 ? `${v} px` : '跟随全局';
     });
 
-    // preset 选择 — 切 active class + 记 bubblePreset
+    // preset 选择 — 切 active class + 记 bubblePreset + 立刻刷新预览
     presetGrid.addEventListener('click', (e) => {
       const card = e.target.closest('.bubble-preset-card');
       if (!card) return;
@@ -182,6 +257,7 @@ export async function mountChatBeautify(container, params, router) {
       presetGrid.querySelectorAll('.bubble-preset-card').forEach(c => {
         c.classList.toggle('active', c.dataset.presetId === bubblePreset);
       });
+      applyPreview();
     });
 
     // 背景遮罩 — live readout 跟字号同模式
@@ -190,6 +266,16 @@ export async function mountChatBeautify(container, params, router) {
     overlayInput?.addEventListener('input', () => {
       if (overlayReadout) overlayReadout.textContent = overlayInput.value;
     });
+
+    // 气泡透明度 readout
+    const alphaInput = container.querySelector('input[name="bubbleAlpha"]');
+    const alphaReadout = container.querySelector('.bubble-alpha-readout');
+    alphaInput?.addEventListener('input', () => {
+      if (alphaReadout) alphaReadout.textContent = alphaInput.value;
+    });
+
+    // 初次进入即应用一次,让 user 看到当前已存设置的预览状态
+    applyPreview();
 
     saveBtn.addEventListener('click', async () => {
       const fsNum = parseInt(fsInput.value, 10) || 0;
@@ -205,6 +291,7 @@ export async function mountChatBeautify(container, params, router) {
       const rawUserColor = container.querySelector('[name=userBubbleColor]').value.trim();
       const rawCharColor = container.querySelector('[name=charBubbleColor]').value.trim();
       const rawCustomCss = container.querySelector('[name=customCss]').value;
+      const rawAlpha = container.querySelector('[name=bubbleAlpha]').value;
       const bubbleStyle = {};
       if (bubblePreset) bubbleStyle.preset = bubblePreset;
       const radiusNum = parseInt(rawRadius, 10);
@@ -213,6 +300,11 @@ export async function mountChatBeautify(container, params, router) {
       if (rawUserColor) bubbleStyle.userBubbleColor = rawUserColor;
       if (rawCharColor) bubbleStyle.charBubbleColor = rawCharColor;
       if (rawCustomCss.trim()) bubbleStyle.customCss = rawCustomCss;
+      // alpha 100 = 默认不存(节省 IDB,等于没设置)
+      const alphaNum = parseInt(rawAlpha, 10);
+      if (Number.isFinite(alphaNum) && alphaNum >= 0 && alphaNum < 100) {
+        bubbleStyle.bubbleAlpha = alphaNum;
+      }
       // 整个 object 空 = 没设(后续 chat.js 检查会跳过 apply),删字段省 IDB
       if (Object.keys(bubbleStyle).length > 0) {
         fresh.chatBubbleStyle = bubbleStyle;
