@@ -2,6 +2,7 @@
 // Replaces the inline dropdown. Acts like WeChat's "聊天信息" page.
 
 import * as db from '../../core/db.js';
+import * as context from '../../core/context.js';
 import { openConfirm, openAlert } from '../../core/modal.js';
 
 export async function mountChatInfo(container, params, router) {
@@ -78,6 +79,10 @@ export async function mountChatInfo(container, params, router) {
           <button class="settings-item" data-action="memory">
             <span class="settings-label">记忆总结</span>
             <span class="settings-chevron">›</span>
+          </button>
+          <button class="settings-item" data-action="force-compress">
+            <span class="settings-label">立即提取记忆</span>
+            <span class="settings-value force-compress-hint">不等缓冲到阈值,现在就压一次</span>
           </button>
         </div>
 
@@ -164,6 +169,30 @@ export async function mountChatInfo(container, params, router) {
 
     } else if (action === 'memory') {
       router.navigate('memory-manage', { sessionId });
+
+    } else if (action === 'force-compress') {
+      // T14: 强制压缩 — 跳过 batchSize 门槛,只要有 overflow 就跑。threshold
+      //   保留(不能压光活跃缓冲)。会调 AI(可能慢),user 得点确认才跑。
+      if (!await openConfirm(container, {
+        title: '立即提取记忆',
+        message: '把缓冲外面的活跃消息现在就压成一条总结。会调用 AI(可能慢)。继续?',
+        confirmLabel: '提取',
+      })) return;
+      const labelEl = item.querySelector('.settings-label');
+      const origLabel = labelEl.textContent;
+      labelEl.textContent = 'AI 压缩中…';
+      try {
+        const memId = await context.maybeCompressMemory(sessionId, { force: true });
+        labelEl.textContent = origLabel;
+        if (memId) {
+          await openAlert(container, { title: '已提取', message: '生成了一条新记忆,被压缩的消息折叠到 banner 里了。' });
+        } else {
+          await openAlert(container, { title: '没东西可压', message: '活跃消息还在缓冲内,没有超出阈值的旧消息可以提取。先继续聊几条再来。' });
+        }
+      } catch (e) {
+        labelEl.textContent = origLabel;
+        await openAlert(container, { title: '失败', message: String(e).slice(0, 200), danger: true });
+      }
 
     } else if (action === 'character') {
       router.navigate('character-detail', { id: session.characterId });

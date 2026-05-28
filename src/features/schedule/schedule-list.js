@@ -621,8 +621,44 @@ export async function mountScheduleList(container, params, router) {
       submitBtn.disabled = true;
       submitBtn.textContent = 'AI 调用中…';
       status.textContent = ''; status.className = 'form-status';
-      const sys = '你是日程生成助手。基于人物的人设和指定的时间段,为 ta 生成一系列合理的日程。\n\n要求:\n- 只输出 JSON 数组,不要任何其他文字、不要 markdown 代码块包裹\n- 每项格式:{"startTs": ISO8601 字符串, "endTs": ISO8601 字符串(可选), "title": 简短标题, "desc": 描述(可选)}\n- 数量 3-8 条,时间必须落在指定区间内\n- 安排要符合人物身份、作息、性格(老师不会凌晨 3 点上课)\n- 标题简短(2-6 字),描述可以稍详(< 30 字)';
-      const userMsg = `人物名:${character.name || '(未命名)'}\n\n人设:\n${character.persona || '(无)'}\n\n时间区间:${new Date(startTs).toISOString()} 到 ${new Date(endTs).toISOString()}\n\n额外引导:${hint || '(无)'}`;
+      // T12: 引入 记忆(L1+L2) + 已有行程(同窗口内,任意角色) — 让 AI 知道
+      //   - 角色的长期状态(从总结里推出"最近在忙什么 / 关心什么")
+      //   - 同时段已有什么行程(避免硬冲突 / 跟 user 的行程协调)
+      //   memories 全部都拿(L1+L2 都喂,跨 session 通吃 — 这个角色所有的记忆),
+      //   schedule 窗口取生成区间 ± 1 天兜底跨界事件。每段限长防爆 token。
+      const memoriesAll = await db.getAll('memories');
+      const charSessions = (await db.getAll('chatSessions')).filter(s => s.characterId === charId);
+      const charSessionIds = new Set(charSessions.map(s => s.id));
+      const charMemories = memoriesAll.filter(m => charSessionIds.has(m.sessionId));
+      charMemories.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      const memoryBlock = charMemories.length === 0
+        ? ''
+        : `\n\n角色的历史记忆(由旧到新,可推断 ta 最近在做/关心什么):\n${
+            charMemories.map(m => {
+              const d = new Date(m.fromTs ?? m.createdAt);
+              const dateStr = `【${d.getMonth()+1}月${d.getDate()}日】`;
+              return `${dateStr} ${m.summary || ''}`.trim();
+            }).slice(-30).join('\n')  // 防爆 token, 最多 30 条
+          }`;
+      const winStart = startTs - 24 * 3600_000;
+      const winEnd   = endTs   + 24 * 3600_000;
+      const allSched = await db.getAll('schedule');
+      const nearbySched = allSched.filter(e => {
+        const eEnd = e.endTs || (e.startTs + 3600_000);
+        return eEnd >= winStart && e.startTs <= winEnd;
+      }).sort((a, b) => a.startTs - b.startTs);
+      const scheduleBlock = nearbySched.length === 0
+        ? ''
+        : `\n\n同窗口已有的行程(避免硬冲突 + 注意与之相邻 / 衔接):\n${
+            nearbySched.map(e => {
+              const who = e.who === 'user' ? '用户' : '另一个角色';
+              const startStr = new Date(e.startTs).toISOString();
+              const endStr   = e.endTs ? ` 到 ${new Date(e.endTs).toISOString()}` : '';
+              return `- ${who} · ${startStr}${endStr} · ${e.title || '(无题)'}${e.desc ? ' — ' + e.desc : ''}`;
+            }).join('\n')
+          }`;
+      const sys = '你是日程生成助手。基于人物的人设、ta 的历史记忆、同窗口已有的行程,为 ta 在指定时间段内生成一系列合理的日程。\n\n要求:\n- 只输出 JSON 数组,不要任何其他文字、不要 markdown 代码块包裹\n- 每项格式:{"startTs": ISO8601 字符串, "endTs": ISO8601 字符串(可选), "title": 简短标题, "desc": 描述(可选)}\n- 数量 3-8 条,时间必须落在指定区间内\n- 安排要符合人物身份、作息、性格(老师不会凌晨 3 点上课)\n- 充分利用提供的「角色历史记忆」推断 ta 最近的兴趣 / 关心 / 在做的项目,排出贴合状态的日程\n- 「同窗口已有的行程」是硬约束:不要跟 ta 同一时间段的安排冲突;跟 user 的行程可以协调(比如 user 那时在工作,角色就别安排"找 user 喝咖啡")\n- 标题简短(2-6 字),描述可以稍详(< 30 字)';
+      const userMsg = `人物名:${character.name || '(未命名)'}\n\n人设:\n${character.persona || '(无)'}\n\n时间区间:${new Date(startTs).toISOString()} 到 ${new Date(endTs).toISOString()}\n\n额外引导:${hint || '(无)'}${memoryBlock}${scheduleBlock}`;
       try {
         const raw = await ai.callAI({ systemPrompt: sys, messages: [{ role: 'user', content: userMsg }], temperature: 0.7 });
         const entries = parseTolerantJSON(raw, { expect: 'array' });

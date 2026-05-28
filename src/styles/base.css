@@ -5765,25 +5765,56 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
 
 /* Archive banner — collapsed-by-default stand-in for a run of consecutive
    archived msgs. Visually quiet so the active conversation reads first. */
+/* T13: archive banner 视觉强化 — 之前太弱 user 没注意到可点。改成显眼的
+   dashed-border 卡片 + 居中 CTA + chevron 旋转。展开后 dashed → solid 边框,
+   chevron 转 180° 提示状态变了。 */
 .archive-banner {
-  margin: 8px 0;
+  margin: 12px 0;
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--muted) 8%, transparent);
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 35%, transparent);
   cursor: pointer;
   user-select: none;
   overflow: hidden;
+  transition: background 0.15s, border-color 0.15s;
 }
-.archive-banner:hover { background: color-mix(in srgb, var(--muted) 14%, transparent); }
+.archive-banner:hover {
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
 .archive-banner-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  font-size: 12px;
-  color: var(--muted);
+  justify-content: center;  /* 居中,跟普通消息行视觉区分 */
+  gap: 6px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: color-mix(in srgb, var(--accent) 80%, var(--fg));
+  font-weight: 500;
 }
-.archive-banner-icon { font-size: 10px; opacity: 0.7; }
-.archive-banner.expanded .archive-banner-bar { background: color-mix(in srgb, var(--muted) 6%, transparent); }
+.archive-banner-chevron {
+  display: inline-flex;
+  align-items: center;
+  transition: transform 0.2s;
+}
+.archive-banner.expanded .archive-banner-chevron { transform: rotate(180deg); }
+.archive-banner.expanded {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.archive-banner.expanded .archive-banner-bar {
+  background: transparent;
+  border-bottom: 1px dashed color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+/* T14: chat-info「立即提取记忆」按钮的右侧 hint 副标题(普通 settings-item
+   没这个 — 这里需要解释"立即提取" vs "记忆总结"管理 的区别)。 */
+.force-compress-hint {
+  font-size: 11px;
+  color: var(--muted);
+  opacity: 0.85;
+}
 .archive-banner-content {
   padding: 8px 12px 12px;
   display: flex;

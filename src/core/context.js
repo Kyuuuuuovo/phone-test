@@ -1062,7 +1062,11 @@ tag 从下列 6 类挑 1 个:
 //   session.memoryPromptOverride → appended to DEFAULT_MEMORY_SYS as
 //   「# 风格补充」 so the model keeps the structural rules but adopts the
 //   user's preferred tone.
-export async function maybeCompressMemory(sessionId) {
+// opts.force = true:跳过 batchSize 门槛(只要有 1 条 overflow 就压),但
+// threshold 保留 — 不能把活跃缓冲压光,user 还得跟最近的消息接着聊。给
+// chat-info 「立即提取记忆」按钮用,user 不愿意等自然累积到 batch 也能强压。
+export async function maybeCompressMemory(sessionId, opts = {}) {
+  const { force = false } = opts;
   const settings = (await db.get('settings', 'default')) || {};
   if (settings.memoryEnabled === false) return null;
   const threshold = Number.isFinite(settings.memoryThreshold) && settings.memoryThreshold > 0
@@ -1084,7 +1088,10 @@ export async function maybeCompressMemory(sessionId) {
   // but only once we've accumulated `batchSize` overflowed messages so we
   // don't burn an API call on each single new message past the threshold.
   const overflow = all.slice(0, all.length - threshold);
-  if (overflow.length < batchSize) return null;
+  // force 模式只要 overflow ≥ 1 就跑;normal 模式仍要 ≥ batchSize 防止每条
+  // 消息触发一次 API 调用。
+  const minOverflow = force ? 1 : batchSize;
+  if (overflow.length < minOverflow) return null;
 
   // Pass quote-resolver into renderActionsAsText so reply 引用原文 inlined
   // in the dump too (B#8).

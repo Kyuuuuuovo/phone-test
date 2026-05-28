@@ -1206,11 +1206,19 @@ function renderArchiveBanner(group, expandedSet, ctx) {
   const inner = expanded
     ? group.msgs.map(m => renderMessageRow(m, ctx)).join('')
     : '';
+  // T13: 视觉强化 — 之前 banner 透明灰底太弱,user 不知道这是可点的。改成
+  // 显式 dashed 边框 + 居中 label + chevron 旋转动画。文案改成「点开看 N 条
+  // 被总结的聊天」的 CTA 形式,而不是中性的「已归档 X 条」。
+  const cta = expanded
+    ? `收起这 ${count} 条`
+    : `点开看被总结的 ${count} 条聊天`;
   return `
     <div class="archive-banner ${expanded ? 'expanded' : ''}" data-group-key="${esc(group.key)}">
       <div class="archive-banner-bar">
-        <span class="archive-banner-icon">${expanded ? '▼' : '▶'}</span>
-        <span class="archive-banner-label">已归档 ${count} 条 · ${expanded ? '点击收起' : '点击展开'}</span>
+        <span class="archive-banner-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </span>
+        <span class="archive-banner-label">${esc(cta)}</span>
       </div>
       ${expanded ? `<div class="archive-banner-content">${inner}</div>` : ''}
     </div>
