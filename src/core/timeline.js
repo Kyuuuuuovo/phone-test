@@ -47,9 +47,16 @@ export function dayKeyOf(ts) {
 const todayKey = () => dayKeyOf(Date.now());
 
 // Find days that have messages but no timeline row yet, then generate one
-// summary per missing day. Skips today. Returns { generated, skipped, errors,
-// remaining } — remaining 是被 maxDays cap 截掉的天数,UI 可据此提示用户「还
-// 有 N 天,再点一次继续生成」。
+// summary per missing day. Returns { generated, skipped, errors, remaining }
+// — remaining 是被 maxDays cap 截掉的天数,UI 可据此提示用户「还有 N 天,
+// 再点一次继续生成」。
+//
+// T16: 之前跳过当天(`k !== t`)— 默认假设 user 今天还在聊不要急着定稿。
+// 现在改成"当天也总结" — 跟 user 的明确意愿对齐:每次 memory 压缩自动跑
+// 一次 timeline,user 想看到当天有变化的反馈,即使后面继续聊会被覆盖。
+// 副作用:同一天可能被多次总结,但每 dayKey 只一行(existingKeys 守门),
+// 第一次跑写入后,后续 dayKey 命中就 skip 不会重复。要"用最新的对话刷新
+// 今天"得手动删 timeline 行再扫(memory app 的删按钮在)。
 //
 // maxDays(默认 30)防一次点扫描就 fire 200 个 API 请求 — 新用户开记忆 app
 // 点扫描,session 有 200 天历史就 200 次 callAI 串行,可能跑 5-10 分钟还烧
@@ -72,9 +79,8 @@ export async function generateMissingDays(sessionId, { onProgress, maxDays = 30 
   // now hidden behind a merged row — that would create a duplicate.
   const existingKeys = new Set(existing.map(t => t.dayKey));
 
-  const t = todayKey();
   const allTodoKeys = [...byDay.keys()]
-    .filter(k => k !== t && !existingKeys.has(k))
+    .filter(k => !existingKeys.has(k))
     .sort();
   // 取最近 maxDays 天优先生成(用户更可能关心近期的)。
   const todoKeys = allTodoKeys.slice(-maxDays);

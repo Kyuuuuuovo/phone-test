@@ -6,16 +6,15 @@
 import * as db from '../../core/db.js';
 import { bindFormDirty } from '../../core/form-helpers.js';
 
-const DEFAULT_THRESHOLD = 20;
-const DEFAULT_BATCH = 10;
+// T17: 默认缓冲从 20 改 30 — 跟 maybeCompressMemory 的 threshold 默认对齐。
+//   新规则只一个旋钮:超过缓冲就按天压最旧一天,不再有"一次压几条"概念。
+const DEFAULT_THRESHOLD = 30;
 
 export async function mountMemorySettings(container, params, router) {
   const settings = (await db.get('settings', 'default')) || { id: 'default' };
   const enabled = settings.memoryEnabled !== false;  // default on
   const threshold = Number.isFinite(settings.memoryThreshold) && settings.memoryThreshold > 0
     ? settings.memoryThreshold : DEFAULT_THRESHOLD;
-  const batchSize = Number.isFinite(settings.memoryBatchSize) && settings.memoryBatchSize > 0
-    ? settings.memoryBatchSize : DEFAULT_BATCH;
 
   container.innerHTML = `
     <div class="page">
@@ -25,31 +24,24 @@ export async function mountMemorySettings(container, params, router) {
       </header>
       <div class="page-body">
         <p class="hint">
-          两个旋钮决定什么时候开始总结:<br>
-          • <b>缓冲条数</b>:总结之后,最近这么多条永远不被压,留给 AI 当短期记忆<br>
-          • <b>一次总结条数</b>:每次触发要压多少条
+          <b>缓冲条数</b>:聊天活跃消息超过这么多条时,就开始把多余的较老消息按天分组压缩成记忆。
+          总结后被压的消息会折叠到聊天里的「点开看 N 条被总结的聊天」横条里,AI 只看到摘要。
         </p>
         <p class="hint">
-          触发点 = 缓冲 + 一次总结。<br>
-          举例:缓冲 <b>20</b>、一次总结 <b>50</b> → 活跃消息攒到 <b>70</b> 条时,把最早的 50 条压成一条记忆,
-          剩下 20 条继续活跃,等下次再到 70 条再压一次。<br>
-          默认:缓冲 ${DEFAULT_THRESHOLD}、一次总结 ${DEFAULT_BATCH} → 第 ${DEFAULT_THRESHOLD + DEFAULT_BATCH} 条到的时候压最早 ${DEFAULT_BATCH} 条。
+          压缩规则:活跃消息 > 缓冲条数 时,把<b>溢出的最旧那一天</b>的消息压成一条记忆。每次只压一天,渐进式消化 — 第一次压完后下次新消息再触发时再压下一天。
         </p>
-        <p class="hint">被压缩的消息<b>不会发给 AI 原文</b>,只发摘要。聊天界面里这些消息折叠成「已归档 N 条」横条,点击展开。</p>
-        <p class="hint">L1 摘要累积到 8 条以上,最老的 4 条再压成一条「远期 / 章节」摘要,注入 prompt 的「# 远期记忆」段。长线对话上下文不会无限涨。</p>
-        <p class="hint">关闭总结后:超出窗口的旧消息 AI 看不到原文,聊天界面照常保留。</p>
+        <p class="hint">
+          默认缓冲 ${DEFAULT_THRESHOLD} 条。L1 摘要累积到 8 条以上,最老的 4 条再压成一条「远期 / 章节」摘要,注入 prompt 的「# 远期记忆」段。长线对话上下文不会无限涨。
+        </p>
+        <p class="hint">关闭总结后:超出缓冲的旧消息 AI 看不到原文,聊天界面照常保留。</p>
         <form class="settings-form" autocomplete="off">
           <label class="checkbox-row">
             <input type="checkbox" name="enabled"${enabled ? ' checked' : ''}>
             <span>开启记忆总结</span>
           </label>
           <label>
-            <div class="label-text">缓冲条数(总结之后保留多少条活跃,默认 ${DEFAULT_THRESHOLD})</div>
+            <div class="label-text">缓冲条数(留多少条活跃不压,默认 ${DEFAULT_THRESHOLD})</div>
             <input type="number" name="threshold" min="5" max="200" step="1" value="${threshold}">
-          </label>
-          <label>
-            <div class="label-text">一次总结条数(每次触发压几条,默认 ${DEFAULT_BATCH})</div>
-            <input type="number" name="batch" min="1" max="100" step="1" value="${batchSize}">
           </label>
           <div class="form-actions">
             <button type="submit" class="btn">保存</button>
@@ -78,19 +70,15 @@ export async function mountMemorySettings(container, params, router) {
     const fd = new FormData(form);
     const en = !!fd.get('enabled');
     const t = parseInt(String(fd.get('threshold') || '0'), 10) || DEFAULT_THRESHOLD;
-    const b = parseInt(String(fd.get('batch') || '0'), 10) || DEFAULT_BATCH;
     if (t < 5) {
-      setStatus('触发轮数太小,建议 ≥ 5', 'error');
-      return;
-    }
-    if (b < 1) {
-      setStatus('压缩批量必须 ≥ 1', 'error');
+      setStatus('缓冲太小,建议 ≥ 5', 'error');
       return;
     }
     const s = (await db.get('settings', 'default')) || { id: 'default' };
     s.memoryEnabled = en;
     s.memoryThreshold = t;
-    s.memoryBatchSize = b;
+    // T17: memoryBatchSize 字段废弃 — 新规则按 dayKey 分组,每天一条 memory,
+    //   不再需要"一次总结 N 条"概念。老 settings 里的值留着不动也不读。
     await db.set('settings', s);
     setStatus('已保存', 'success');
     dirty.markSaved();

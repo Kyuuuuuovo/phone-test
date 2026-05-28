@@ -171,11 +171,12 @@ export async function mountChatInfo(container, params, router) {
       router.navigate('memory-manage', { sessionId });
 
     } else if (action === 'force-compress') {
-      // T14: 强制压缩 — 跳过 batchSize 门槛,只要有 overflow 就跑。threshold
-      //   保留(不能压光活跃缓冲)。会调 AI(可能慢),user 得点确认才跑。
+      // T14 + T17:强制压缩 — 不等 active.length > threshold,把"今天以外"
+      //   的所有活跃消息按 dayKey 分组,压最旧一天。如果"完结的天"还有多
+      //   天,用户多点几次按钮逐天消化(每点一次跑一次 API,user 看得见进度)。
       if (!await openConfirm(container, {
         title: '立即提取记忆',
-        message: '把缓冲外面的活跃消息现在就压成一条总结。会调用 AI(可能慢)。继续?',
+        message: '把"今天以外"的活跃消息按天分组,压最旧的一天。如果有多天没压,你可能要多点几次。会调用 AI(可能慢)。继续?',
         confirmLabel: '提取',
       })) return;
       const labelEl = item.querySelector('.settings-label');
@@ -185,9 +186,9 @@ export async function mountChatInfo(container, params, router) {
         const memId = await context.maybeCompressMemory(sessionId, { force: true });
         labelEl.textContent = origLabel;
         if (memId) {
-          await openAlert(container, { title: '已提取', message: '生成了一条新记忆,被压缩的消息折叠到 banner 里了。' });
+          await openAlert(container, { title: '已提取', message: '压完最旧那一天。如果还有更早的天没压,可以再点一次。' });
         } else {
-          await openAlert(container, { title: '没东西可压', message: '活跃消息还在缓冲内,没有超出阈值的旧消息可以提取。先继续聊几条再来。' });
+          await openAlert(container, { title: '没东西可压', message: '今天以外没有未压缩的消息。' });
         }
       } catch (e) {
         labelEl.textContent = origLabel;

@@ -74,7 +74,7 @@ export async function mountMemoryManage(container, params, router) {
                 <span>${esc(formatTime(m.createdAt))}${m.tier === 2 ? ' · 远期' : ''}</span>
                 <button type="button" class="memory-delete" title="删除这条总结">×</button>
               </div>
-              <div class="memory-summary">${esc(m.summary || '(空)')}</div>
+              <div class="memory-summary">${esc(normalizeMemorySummary(m.summary) || '(空)')}</div>
             </div>
           `).join('')}
         </div>
@@ -220,7 +220,7 @@ export async function mountMemoryManage(container, params, router) {
         const d = new Date(m.createdAt);
         const date = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
         const tier = m.tier === 2 ? '[远期 / 章节]' : '[近期 / 片段]';
-        return `${tier} #${i + 1} · ${date}\n${m.summary || '(空)'}`;
+        return `${tier} #${i + 1} · ${date}\n${normalizeMemorySummary(m.summary) || '(空)'}`;
       }).join('\n\n---\n\n');
       const text = header + body + '\n';
       const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });

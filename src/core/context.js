@@ -6,7 +6,7 @@ import { HUMANIZER_PROMPT } from './humanizer.js';
 import { BEHAVIOR_GUIDANCE } from './behavior.js';
 import * as embedding from './embedding.js';
 import * as timeline from './timeline.js';
-import { parseTolerantJSON } from './util.js';
+import { parseTolerantJSON, dayKeyOf } from './util.js';
 import { computeCycleStatus } from './cycle.js';
 
 // 向量打标 6 类固定 enum — 转折 / 亲密 / 冲突 / 发现 / 约定 / 日常。每条 L1
@@ -511,16 +511,18 @@ export const GROUP_LABELS = {
 // false 时直接返回 summary 不拼时间(架空场景 / 用户关掉时间感知 toggle)。
 // 老 memory 没 fromTs/toTs 时退回 createdAt 作单点。
 function formatMemoryWithDate(m, timeOn) {
-  if (!timeOn) return m.summary || '';
+  // T15 normalize:老 V2 数据 summary 可能是整段 JSON 字符串,剥离一下
+  const cleanSummary = normalizeMemorySummary(m.summary || '');
+  if (!timeOn) return cleanSummary;
   const fromTs = m.fromTs ?? m.createdAt;
   const toTs   = m.toTs   ?? m.createdAt;
-  if (!Number.isFinite(fromTs)) return m.summary || '';
+  if (!Number.isFinite(fromTs)) return cleanSummary;
   const fmt = (ts) => {
     const d = new Date(ts);
     return `${d.getMonth()+1}月${d.getDate()}日`;
   };
   const range = fmt(fromTs) === fmt(toTs) ? `【${fmt(fromTs)}】` : `【${fmt(fromTs)}–${fmt(toTs)}】`;
-  return `${range} ${m.summary || ''}`;
+  return `${range} ${cleanSummary}`;
 }
 
 // Anchor line for the "# 当前时间" segment. Mirrors surveillance.js's
@@ -1029,13 +1031,17 @@ function renderActionsAsText(actions, ctx) {
 // *style* of the summary (e.g. "以日记体" / "用第三人称冷淡口吻") without
 // having to re-specify the structural rules.
 // V1:纯文本 summary。V2:bundle 进 JSON {summary, tag},tag 用于检索 boost。
-// 切回 V1 的话:把 MEMORY_OUTPUT_RULES 留空 + 解析逻辑 fallback 到 plain text。
+// V1:纯文本 summary。V2 (JSON):bundle {summary, tag} JSON 输出 — 易被 LLM 在
+// summary 内容里用未 escape 的双引号(中文「他叫我"哥哥"」)破坏 JSON,fallback
+// 整段当 summary 存。V3 (行式):用 `摘要:` / `标签:` 两行,summary 里随便什么
+// 字符都不破坏 schema。这是当前版本。
 const DEFAULT_MEMORY_SYS = '你是对话压缩助手。把下面这段对话压成不超过 300 字的中文摘要,只保留关键信息(谁说了什么、做了什么、关系/情绪变化、约定、提到的人物或地点)。';
 const MEMORY_OUTPUT_RULES = `
-**输出格式严格 JSON**(不加 markdown 包裹、不加前后缀文字):
-{ "summary": "...摘要文本...", "tag": "<6 类之一>" }
+**输出格式严格按下面两行,不要 JSON、不要 markdown 包裹、不要前后缀文字**:
+摘要: <这一段对话的中文摘要,300 字内,可以放心使用任何标点符号包括双引号>
+标签: <6 类之一>
 
-tag 从下列 6 类挑 1 个:
+标签从下列 6 类挑 1 个:
 - 转折 — 关系的关键节点(初见 / 表白 / 误会冰释 / 分别 等)
 - 亲密 — 温柔、深入、暖的时刻
 - 冲突 — 摩擦、争吵、紧张
@@ -1044,6 +1050,60 @@ tag 从下列 6 类挑 1 个:
 - 日常 — 闲聊、未归类(兜底)
 
 拿不准就选「日常」。`;
+
+// V3 解析:按行式提取「摘要:」「标签:」。比 JSON.parse 鲁棒得多 —— summary
+// 内部 quote / 反斜杠 / 控制字符都不影响 schema。
+// 中英文冒号都接受(LLM 偶尔会输 ASCII `:`)。
+function parseMemoryOutput(raw) {
+  if (typeof raw !== 'string') return { summary: '', tag: '' };
+  const trimmed = raw.trim()
+    .replace(/^```(?:json|text)?\s*/i, '')
+    .replace(/\s*```\s*$/i, '')
+    .trim();
+  // 摘要从「摘要:」/「SUMMARY:」开始,到下一个「标签:」/「TAG:」之前 / 或文末。
+  const sumMatch = trimmed.match(/(?:^|\n)\s*(?:摘要|SUMMARY)[::]\s*([\s\S]*?)(?=\n\s*(?:标签|TAG)[::]|\s*$)/);
+  const tagMatch = trimmed.match(/(?:^|\n)\s*(?:标签|TAG)[::]\s*(\S+)/);
+  let summary = sumMatch ? sumMatch[1].trim() : '';
+  let tag = tagMatch ? tagMatch[1].trim() : '';
+  // tag 后可能粘了句号 / 多余文字 — 只取首段连续中英文字符
+  if (tag) {
+    const m = tag.match(/^[一-龥A-Za-z]+/);
+    tag = m ? m[0] : '';
+  }
+  // 都没匹配到 → 退回整段当 summary
+  if (!summary) summary = trimmed;
+  // 标签校验
+  if (!MEMORY_TAGS.includes(tag)) tag = '';
+  return { summary, tag };
+}
+
+// 老数据兜底:V2 时代生成的 memory.summary 字段可能存了整段 JSON 字符串
+// (LLM 在 summary 内容里用未 escape 的 " 让 JSON.parse 失败 → fallback 把
+// raw 整段写进 summary)。render 端调用此 helper 检测并剥离,不动 IDB
+// 数据 — 跑过的 memory 不重新压,只在显示时挽救。
+//
+// 检测条件:summary 以 `{` 开头并含 `"summary"`。不严格 JSON 验证,因为
+// 问题就出在「看起来像 JSON 但 parse 不通过」。
+// 提取方式:正则匹配 `"summary":"....","tag":...` 取中间内容。
+export function normalizeMemorySummary(summary) {
+  if (typeof summary !== 'string') return '';
+  const s = summary.trim();
+  if (!s.startsWith('{') || !s.includes('"summary"')) return s;
+  // 优先 JSON.parse(罕见情形:合法 JSON 因某种原因被整段当 summary 存了 —
+  // 我们能正确 unescape `\"` `\\` 等转义)。
+  try {
+    const parsed = JSON.parse(s);
+    if (parsed && typeof parsed.summary === 'string') return parsed.summary;
+  } catch (_) { /* JSON 解析失败,fall through 到 regex */ }
+  // 常见情形:LLM 在 summary 内用了未 escape 的双引号,JSON.parse 炸。正则
+  // 取 `"summary":"..."` 中间部分;不会 100% 正确(没可靠分隔符),但能取
+  // 到 LLM 那种 bad JSON 的主体内容。
+  const m = s.match(/"summary"\s*:\s*"([\s\S]*?)"\s*,\s*"tag"/);
+  if (m) return m[1];
+  const m2 = s.match(/"summary"\s*:\s*"([\s\S]*)"\s*\}?\s*$/);
+  if (m2) return m2[1];
+  return s;
+}
 
 // Compress oldest overflow messages into a memory summary, then delete them.
 // Returns the new memory id, or null if nothing to compress.
@@ -1062,17 +1122,25 @@ tag 从下列 6 类挑 1 个:
 //   session.memoryPromptOverride → appended to DEFAULT_MEMORY_SYS as
 //   「# 风格补充」 so the model keeps the structural rules but adopts the
 //   user's preferred tone.
-// opts.force = true:跳过 batchSize 门槛(只要有 1 条 overflow 就压),但
-// threshold 保留 — 不能把活跃缓冲压光,user 还得跟最近的消息接着聊。给
-// chat-info 「立即提取记忆」按钮用,user 不愿意等自然累积到 batch 也能强压。
+// T17: 新规则按 dayKey 分组,每天一条 memory(取代旧的 batchSize 阶梯)。
+//
+// 行为:
+//   - active = chatMessages 里没 archived 的,sort by createdAt
+//   - normal 模式:active > threshold(默认 30)时,把最早的 N 条溢出来,
+//     按 dayKey 分组,**只压最旧的一天**(剩下的天等下次再触发)
+//   - force 模式:跳过 threshold buffer,把"今天以外"的活跃消息按 dayKey
+//     分组压最旧一天。给 chat-info「立即提取记忆」按钮用。
+//   - settings.memoryBatchSize 字段保留兼容(老用户读到不报错),但不再用
+//
+// 为什么每次只压一天:连续多天的 overflow 一次性 N 次 API 调用太慢,user
+// 不愿意一直等。每次 AI 回复触发一次 maybeCompressMemory,渐进式消化 —
+// 第一次压最旧 A 天,active 收缩,下次压 B 天,以此类推。
 export async function maybeCompressMemory(sessionId, opts = {}) {
   const { force = false } = opts;
   const settings = (await db.get('settings', 'default')) || {};
   if (settings.memoryEnabled === false) return null;
   const threshold = Number.isFinite(settings.memoryThreshold) && settings.memoryThreshold > 0
-    ? settings.memoryThreshold : 20;
-  const batchSize = Number.isFinite(settings.memoryBatchSize) && settings.memoryBatchSize > 0
-    ? settings.memoryBatchSize : 10;
+    ? settings.memoryThreshold : 30;
 
   // Filter archived rows BEFORE the threshold check — without this, every
   // new message past threshold would re-include the already-archived rows
@@ -1082,16 +1150,32 @@ export async function maybeCompressMemory(sessionId, opts = {}) {
   // works when the threshold comparison is against active-only count.
   const all = (await db.query('chatMessages', 'sessionId', sessionId))
     .filter(m => !m.archived);
-  if (all.length <= threshold) return null;
+  if (all.length === 0) return null;
   all.sort((a, b) => a.createdAt - b.createdAt);
-  // Compress everything older than the most-recent `threshold` messages,
-  // but only once we've accumulated `batchSize` overflowed messages so we
-  // don't burn an API call on each single new message past the threshold.
-  const overflow = all.slice(0, all.length - threshold);
-  // force 模式只要 overflow ≥ 1 就跑;normal 模式仍要 ≥ batchSize 防止每条
-  // 消息触发一次 API 调用。
-  const minOverflow = force ? 1 : batchSize;
-  if (overflow.length < minOverflow) return null;
+
+  // 确定 candidate 集合(候选可压消息)
+  //   normal: 只看溢出 threshold 缓冲的那部分
+  //   force:  跳过 buffer 检查,把今天以外的全压
+  let candidates;
+  if (force) {
+    const tk = dayKeyOf(Date.now());
+    candidates = all.filter(m => dayKeyOf(m.createdAt) !== tk);
+  } else {
+    if (all.length <= threshold) return null;
+    candidates = all.slice(0, all.length - threshold);
+  }
+  if (candidates.length === 0) return null;
+
+  // 按 dayKey 分组,取最旧的一天 — 单次 API 调用压一天,渐进消化
+  const byDay = new Map();
+  for (const m of candidates) {
+    const k = dayKeyOf(m.createdAt);
+    if (!byDay.has(k)) byDay.set(k, []);
+    byDay.get(k).push(m);
+  }
+  const sortedDays = [...byDay.keys()].sort();
+  const oldestDay = sortedDays[0];
+  const overflow = byDay.get(oldestDay);
 
   // Pass quote-resolver into renderActionsAsText so reply 引用原文 inlined
   // in the dump too (B#8).
@@ -1116,18 +1200,9 @@ export async function maybeCompressMemory(sessionId, opts = {}) {
     temperature: 0.3,
   });
 
-  // 容错解析:JSON 失败 → 把 raw 当 summary 用,tag 留空(后续 memory-app 的
-  // 启发式 fallback 处理 / 用户可手动补)。
-  let summary = '', tag = '';
-  const parsed = parseTolerantJSON(raw, { expect: 'object' });
-  if (parsed && typeof parsed.summary === 'string' && parsed.summary.trim()) {
-    summary = parsed.summary.trim();
-    if (typeof parsed.tag === 'string' && MEMORY_TAGS.includes(parsed.tag.trim())) {
-      tag = parsed.tag.trim();
-    }
-  } else {
-    summary = String(raw || '').trim();
-  }
+  // V3 行式解析 — parseMemoryOutput 即使 summary 内有未转义引号也不会破坏
+  // schema。tag 不匹配 6 类时留空,memory app 启发式 fallback 处理。
+  const { summary, tag } = parseMemoryOutput(raw);
 
   const memId = db.newId();
   const newMem = {

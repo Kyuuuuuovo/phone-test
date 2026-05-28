@@ -18,6 +18,7 @@ import * as db from '../../core/db.js';
 import * as timeline from '../../core/timeline.js';
 import * as embedding from '../../core/embedding.js';
 import { openConfirm } from '../../core/modal.js';
+import { normalizeMemorySummary } from '../../core/context.js';
 
 // 5 风格 + 默认。default = 不挂 body[data-mem-style](回退到 base.css 的 .ma-row),
 // 其余 5 个由 src/styles/memory-styles.css 的 scope 接管 .mem-card 样式。
@@ -175,7 +176,7 @@ export async function mountMemoryApp(container, params, router) {
   // 启发式优先级:转折 > 冲突 > 亲密 > 发现 > 约定 > 日常(兜底)。
   function tagOf(m) {
     if (typeof m?.tag === 'string' && m.tag.trim()) return m.tag.trim();
-    return heuristicTag(m?.summary);
+    return heuristicTag(normalizeMemorySummary(m?.summary));
   }
   function heuristicTag(text) {
     const t = String(text || '');
@@ -606,7 +607,7 @@ export async function mountMemoryApp(container, params, router) {
               const meta = [formatDate(h.memory.createdAt), c?.name || s?.title || '(未知会话)'];
               return buildMemCard({
                 meta,
-                body: h.memory.summary,
+                body: normalizeMemorySummary(h.memory.summary),
                 tier: h.memory.tier,
                 timeRange: timeRangeOf(h.memory, msgIdx),
                 tag: tagOf(h.memory),
@@ -651,7 +652,7 @@ export async function mountMemoryApp(container, params, router) {
               <summary>${esc(c?.name || s?.title || '(未知会话)')} · ${g.mems.length} 条</summary>
               ${g.mems.map(m => buildMemCard({
                 meta: [formatDate(m.createdAt)],
-                body: m.summary,
+                body: normalizeMemorySummary(m.summary),
                 tier: m.tier,
                 timeRange: timeRangeOf(m, msgIdx),
                 tag: tagOf(m),
@@ -722,7 +723,7 @@ export async function mountMemoryApp(container, params, router) {
         try {
           const raw = await ai.callAI({
             systemPrompt: sys,
-            messages: [{ role: 'user', content: m.summary || '(空)' }],
+            messages: [{ role: 'user', content: normalizeMemorySummary(m.summary) || '(空)' }],
             temperature: 0.2,
           });
           const tag = String(raw || '').trim().slice(0, 4);  // 模型可能多吐字符,截 4 字内
@@ -889,7 +890,7 @@ export async function mountMemoryApp(container, params, router) {
     }
     if (allMems.length > 0) {
       sections.push(`<div class="ma-day-section"><h4>总结</h4>${allMems.map(m =>
-        `<div><b>${esc(labelFor(m.sessionId))}</b>${m.tier === 2 ? '(远期)' : ''}:${esc(m.summary)}</div>`
+        `<div><b>${esc(labelFor(m.sessionId))}</b>${m.tier === 2 ? '(远期)' : ''}:${esc(normalizeMemorySummary(m.summary))}</div>`
       ).join('')}</div>`);
     }
     const content = sections.length > 0
