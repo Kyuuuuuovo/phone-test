@@ -119,7 +119,7 @@ export async function mountChat(container, params, router) {
   if (character?.chatBackground) {
     // Layer a flat color overlay on top of the image so 「聊天背景遮罩」
     // (settings → 外观 → 透明度) can dim the wallpaper for legibility.
-    const overlayPct = await readOverlayPct();
+    const overlayPct = await readOverlayPct(character);
     const rgba = await readBgRgba(overlayPct);
     stream.style.backgroundImage = `linear-gradient(${rgba}, ${rgba}), url(${cssUrl(character.chatBackground)})`;
     stream.style.backgroundSize = 'cover, cover';
@@ -1444,7 +1444,13 @@ function cssUrl(s) {
   return `"${String(s).replace(/"/g, '\\"')}"`;
 }
 
-async function readOverlayPct() {
+async function readOverlayPct(character) {
+  // 优先 per-character chatBgOverlay(从聊天美化设置),fallback 全局
+  //   settings.theme.effects.transparency(老用户兼容)。character 可空 —
+  //   兜底退到全局。
+  if (character && Number.isFinite(character.chatBgOverlay)) {
+    return Math.max(0, Math.min(100, character.chatBgOverlay));
+  }
   const settings = await db.get('settings', 'default');
   const t = settings?.theme?.effects;
   const v = Number(t?.transparency ?? 0);

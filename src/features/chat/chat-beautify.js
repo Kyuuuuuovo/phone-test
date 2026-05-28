@@ -62,6 +62,12 @@ export async function mountChatBeautify(container, params, router) {
           </div>
 
           <label>
+            <div class="label-text">背景遮罩:<span class="chatbg-overlay-readout">${character.chatBgOverlay ?? 0}</span>%</div>
+            <input type="range" min="0" max="100" step="5" name="chatBgOverlay" value="${character.chatBgOverlay ?? 0}">
+            <p class="hint">页面背景色盖在聊天背景图上的不透明度。0% = 完全看到图片;100% = 页面背景色完全盖住图片(用来调暗背景让字读得清)。</p>
+          </label>
+
+          <label>
             <div class="label-text">字号 · 留空跟随全局(<span class="chat-fontsize-readout">${character.chatFontSize ? character.chatFontSize + ' px' : '跟随全局'}</span>)</div>
             <input type="range" min="0" max="22" step="1" name="chatFontSize" value="${character.chatFontSize || 0}">
           </label>
@@ -178,11 +184,21 @@ export async function mountChatBeautify(container, params, router) {
       });
     });
 
+    // 背景遮罩 — live readout 跟字号同模式
+    const overlayInput = container.querySelector('input[name="chatBgOverlay"]');
+    const overlayReadout = container.querySelector('.chatbg-overlay-readout');
+    overlayInput?.addEventListener('input', () => {
+      if (overlayReadout) overlayReadout.textContent = overlayInput.value;
+    });
+
     saveBtn.addEventListener('click', async () => {
       const fsNum = parseInt(fsInput.value, 10) || 0;
+      const overlayNum = parseInt(overlayInput?.value || '0', 10) || 0;
       const fresh = await db.get('characters', character.id);
       fresh.chatBackground = chatBgData;
       fresh.chatFontSize = fsNum > 0 ? fsNum : null;
+      // chatBgOverlay 0 = 透出图(默认),100 = 完全盖。0 也存(明确意图)
+      fresh.chatBgOverlay = Math.max(0, Math.min(100, overlayNum));
       // 收集气泡样式 — 空值 / 0 不存(走 preset / 主题默认)
       const rawRadius = container.querySelector('[name=bubbleRadius]').value.trim();
       const rawPadding = container.querySelector('[name=bubblePadding]').value.trim();

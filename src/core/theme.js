@@ -9,29 +9,49 @@
 // 字体库。每条带可选 importUrl(Google Fonts CSS2 endpoint),applyTheme 会
 // 自动 reconcile <link> 元素,user 选到这条字体就懒加载,不选不下载。
 // 系统已有的字体(serif / rounded / kaiti)不需要 importUrl。custom 用户自填。
+// 字段顺序统一:id → label → importUrl → stack(stack 是看着最长的放最后,
+//   importUrl 跟字体身份强相关 user 一眼能看到)。系统字体无 importUrl。
+//
+// 花体三套:Dancing Script + 龙藏(行书)/ Great Vibes + 龙藏(优雅长款)/
+//   Caveat + 马善政(随性手写)。中英文都有花体感,fallback 自动按 unicode
+//   覆盖回退(英文字符匹配西文花体,中文匹配中文行书 / 手写)。
+//   importUrl 用 Google Fonts CSS2 多 family 合并语法 ?family=A&family=B。
 export const FONT_OPTIONS = [
-  { id: 'system',  label: '系统默认',  stack: `-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif` },
-  { id: 'serif',   label: '宋体 / 衬线', stack: `"Songti SC", "SimSun", "Noto Serif SC", Georgia, serif` },
-  { id: 'crimson', label: 'Crimson × 思源宋体', stack: `"Crimson Pro", "Noto Serif SC", "Songti SC", Georgia, serif`,
-    importUrl: 'https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;1,400;1,600&family=Noto+Serif+SC:wght@400;600&display=swap' },
-  { id: 'rounded', label: '圆体',       stack: `"Hiragino Sans GB", "PingFang SC", "Microsoft YaHei", "Source Han Sans CN", system-ui, sans-serif` },
-  { id: 'kaiti',   label: '楷体',       stack: `"Kaiti SC", "STKaiti", "KaiTi", serif` },
-  { id: 'mono',    label: '等宽',       stack: `"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace`,
-    importUrl: 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap' },
+  { id: 'system',  label: '系统默认',
+    stack: `-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif` },
+  { id: 'serif',   label: '宋体 / 衬线',
+    stack: `"Songti SC", "SimSun", "Noto Serif SC", Georgia, serif` },
+  { id: 'crimson', label: 'Crimson × 思源宋体',
+    importUrl: 'https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;1,400;1,600&family=Noto+Serif+SC:wght@400;600&display=swap',
+    stack: `"Crimson Pro", "Noto Serif SC", "Songti SC", Georgia, serif` },
+  { id: 'rounded', label: '圆体',
+    stack: `"Hiragino Sans GB", "PingFang SC", "Microsoft YaHei", "Source Han Sans CN", system-ui, sans-serif` },
+  { id: 'kaiti',   label: '楷体',
+    stack: `"Kaiti SC", "STKaiti", "KaiTi", serif` },
+  { id: 'mono',    label: '等宽',
+    importUrl: 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap',
+    stack: `"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace` },
   // 萌系中文 — Google Fonts 提供,系统不一定装。importUrl 自动拉。
-  { id: 'zcool-kuaile', label: '站酷快乐体(萌系)', stack: `"ZCOOL KuaiLe", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif`,
-    importUrl: 'https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap' },
-  { id: 'ma-shan-zheng', label: '马善政(手写)', stack: `"Ma Shan Zheng", "Kaiti SC", "STKaiti", cursive`,
-    importUrl: 'https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&display=swap' },
-  { id: 'long-cang', label: '龙藏(行书)', stack: `"Long Cang", "Kaiti SC", "STKaiti", cursive`,
-    importUrl: 'https://fonts.googleapis.com/css2?family=Long+Cang&display=swap' },
-  // 花体英文 — 西文专用,中文会 fallback 到系统字体(stack 末尾)
-  { id: 'dancing-script', label: 'Dancing Script(花体英)', stack: `"Dancing Script", "PingFang SC", "Microsoft YaHei", cursive`,
-    importUrl: 'https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;600&display=swap' },
-  { id: 'great-vibes', label: 'Great Vibes(优雅花体)', stack: `"Great Vibes", "PingFang SC", "Microsoft YaHei", cursive`,
-    importUrl: 'https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap' },
-  { id: 'caveat', label: 'Caveat(随性手写)', stack: `"Caveat", "PingFang SC", "Microsoft YaHei", cursive`,
-    importUrl: 'https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&display=swap' },
+  { id: 'zcool-kuaile', label: '站酷快乐体(萌系)',
+    importUrl: 'https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap',
+    stack: `"ZCOOL KuaiLe", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif` },
+  { id: 'ma-shan-zheng', label: '马善政(手写)',
+    importUrl: 'https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&display=swap',
+    stack: `"Ma Shan Zheng", "Kaiti SC", "STKaiti", cursive` },
+  { id: 'long-cang', label: '龙藏(行书)',
+    importUrl: 'https://fonts.googleapis.com/css2?family=Long+Cang&display=swap',
+    stack: `"Long Cang", "Kaiti SC", "STKaiti", cursive` },
+  // 花体三套 — 中英双效果。中文 fallback 到中文行书 / 手写,跟英文气质同源。
+  //   importUrl 用多 family 合并 syntax 一次拉俩。
+  { id: 'dancing-script', label: 'Dancing Script(花体)',
+    importUrl: 'https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;600&family=Long+Cang&display=swap',
+    stack: `"Dancing Script", "Long Cang", "Kaiti SC", "STKaiti", cursive` },
+  { id: 'great-vibes', label: 'Great Vibes(优雅花体)',
+    importUrl: 'https://fonts.googleapis.com/css2?family=Great+Vibes&family=Long+Cang&display=swap',
+    stack: `"Great Vibes", "Long Cang", "Kaiti SC", "STKaiti", cursive` },
+  { id: 'caveat', label: 'Caveat(随性手写)',
+    importUrl: 'https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&family=Ma+Shan+Zheng&display=swap',
+    stack: `"Caveat", "Ma Shan Zheng", "Kaiti SC", "STKaiti", cursive` },
   { id: 'custom',  label: '自定义(中英双导)', stack: null },  // 用 customFontFamilyCn/En + URL
 ];
 

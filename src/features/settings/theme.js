@@ -241,11 +241,9 @@ export async function mountTheme(container, params, router) {
           ${TEXTURE_OPTIONS.map(t => `<option value="${t.id}"${t.id === draft.effects.texture ? ' selected' : ''}>${t.label}</option>`).join('')}
         </select>
       </label>
-      <label>
-        <div class="label-text">聊天背景遮罩:<span class="transparency-readout">${draft.effects.transparency}</span>%</div>
-        <input type="range" min="0" max="100" step="5" data-fx="transparency" value="${draft.effects.transparency}">
-        <p class="hint">在聊天页,「颜色」tab 里的「页面背景」色盖在「聊天美化」设的图片上的不透明度。0% = 完全看到图片;100% = 页面背景色完全盖住图片。</p>
-      </label>
+      <!-- 聊天背景遮罩从这里挪到「聊天美化」per-character — settings.theme.effects.transparency
+           字段保留作 fallback(老 user 的设置不丢),但 UI 入口删了。每个角色单独调更合理:
+           不同角色聊天背景不同,需要的遮罩强度也不同。 -->
     `;
   }
 
