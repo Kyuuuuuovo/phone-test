@@ -1168,6 +1168,67 @@ export function normalizeMemorySummary(summary) {
   return s;
 }
 
+// 扫 archived msgs 的 action 列表,生成「这次发生了」事件链 plain 文字 chip 数组。
+// 跟参考酒馆站的差异化:她总结的是"戏剧章节",我们多了一层"手机事件"维度
+// (红包/转账/语音/照片/撤回/位置/计划/解封)。零 AI 成本 — actions 数据已有。
+//
+// 聚合规则:
+//   - 红包 / 转账:每笔单独列(金额 + 方向 + 状态)
+//   - 位置 / 计划:每条单独列(目的地 / 计划标题)
+//   - 解封请求:列一条
+//   - 语音 / 照片 / 撤回:按类型计数合并("语音 4 条")
+//   - text / reply:跳过(已被 summary 覆盖)
+//
+// 返回 string[](可能为空)。每条 plain 中文,无 emoji。
+export function extractMemoryEvents(msgs) {
+  const events = [];
+  const counts = { voice: 0, image: 0, recall: 0 };
+  let voiceDuration = 0;
+  for (const msg of (msgs || [])) {
+    const dir = msg.role === 'user' ? '用户→角色' : (msg.role === 'character' ? '角色→用户' : '');
+    for (const a of (msg.actions || [])) {
+      switch (a.type) {
+        case 'voice':
+          counts.voice++;
+          voiceDuration += Number(a.duration) || 0;
+          break;
+        case 'image':
+          counts.image++;
+          break;
+        case 'recall':
+          counts.recall++;
+          break;
+        case 'red_packet': {
+          const status = a.claimed ? '已领' : (a.returned ? '已退回' : '未领');
+          events.push(`红包 ¥${a.amount || 0} ${dir} ${status}`);
+          break;
+        }
+        case 'transfer': {
+          const status = a.accepted ? '已收' : (a.returned ? '已退回' : '未收');
+          events.push(`转账 ¥${a.amount || 0} ${dir} ${status}`);
+          break;
+        }
+        case 'location':
+          if (a.name) events.push(`位置 ${a.name}`);
+          break;
+        case 'add_schedule_entry':
+          if (a.title) events.push(`定计划 ${a.title}`);
+          break;
+        case 'unblock_request':
+          events.push('请求解除拉黑');
+          break;
+        // text / reply: 已被 summary 覆盖,跳过避免噪音
+      }
+    }
+  }
+  if (counts.voice > 0) {
+    events.push(voiceDuration > 0 ? `语音 ${counts.voice} 条 共 ${voiceDuration}″` : `语音 ${counts.voice} 条`);
+  }
+  if (counts.image > 0) events.push(`照片 ${counts.image} 张`);
+  if (counts.recall > 0) events.push(`撤回 ${counts.recall} 次`);
+  return events;
+}
+
 // Compress oldest overflow messages into a memory summary, then delete them.
 // Returns the new memory id, or null if nothing to compress.
 // Behavior gated by settings:
@@ -1270,9 +1331,15 @@ export async function maybeCompressMemory(sessionId, opts = {}) {
     cards.push({ summary: (raw || '').trim() || '(空)', importance: 'low' });
   }
 
+  // 「这次发生了」事件链 — 扫 overflow 的非 text/reply actions(零 AI 成本)。
+  // 跟参考酒馆站差异化:她总结的是"戏剧章节",我们多了一层"手机事件"维度
+  // (红包/转账/语音/照片/撤回/位置/计划/解封)。同 overflow 范围内只挂在
+  // 第一张卡(避免多卡同一段时间显示重复的事件)。
+  const events = extractMemoryEvents(overflow);
+
   const stamp = Date.now();
   const groupId = cards.length > 1 ? db.newId() : null;
-  const newMems = cards.map(card => ({
+  const newMems = cards.map((card, cardIdx) => ({
     id: db.newId(),
     sessionId,
     tier: 1,
@@ -1282,6 +1349,9 @@ export async function maybeCompressMemory(sessionId, opts = {}) {
     ...(card.tag ? { tag: card.tag } : {}),
     importance: card.importance || 'low',
     ...(groupId ? { groupId } : {}),
+    // events 只挂第一张卡 — 多卡共享同一 overflow 时间窗,事件链是窗口级
+    // metadata 而非卡片级(每张卡的"戏剧"不同,但底层手机事件是同一批)。
+    ...(cardIdx === 0 && events.length > 0 ? { events } : {}),
     fromMsgId: overflow[0].id,
     toMsgId: overflow[overflow.length - 1].id,
     // 1a: 保留这段记忆覆盖的 wall-clock 时间范围。多卡同源 → 共享同一窗口

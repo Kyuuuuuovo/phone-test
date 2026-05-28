@@ -76,7 +76,7 @@
 | `personas` | `id` | — | 玩家人设库,字段 name / persona / signature / avatar / `statusText?` / `statusSetAt?` / createdAt。**statusText 一字段两入口**:微信「我」tab 状态卡 + persona 详情页都能编辑、读同一份。statusSetAt 只在 statusText 实际变化时 bump(避免每次保存 persona 都 reset 时间) |
 | `chatSessions` | `id` | characterId, lastMessageAt | 字段 characterId / personaId / title / createdAt / lastMessageAt / **isPinned** / `showReadReceipts`(默认 true)/ `readReceiptUpToTs` / `memoryPromptOverride`;会话感知 toggle:`{char,user}TzEnabled` / `*WeatherEnabled` / `*LocEnabled` + `*CityMode` / `*CityKey` / `*CityLabel` |
 | `chatMessages` | `id` | sessionId, createdAt | role(`user`/`character`/`system`)/ **actions[]** / createdAt |
-| `memories` | `id` | sessionId | 长对话压缩摘要,字段 sessionId / `tier`(1=近期 L1 / 2=远期 L2) / `title?` / summary / `quotes?: string[]`(关键原话,格式 `"说话人→对方: 内容"`)/ `tag?`(6 类:转折/亲密/冲突/发现/约定/日常)/ `importance?`(`'high' \| 'low'`,默认 low) / `groupId?`(V4 多卡一次压缩共享) / fromMsgId / toMsgId / `fromTs` / `toTs` / createdAt。**V4 多卡**:一次压缩可产出 1-3 张独立故事卡,共享 groupId;`title` / `quotes` / `importance` 都可空(老数据没有,渲染端兜底)。**importance 两档都注入 prompt**,只影响记忆 app 显示(high 加 accent 边)。**L2 删 L1 时同时清对应 embeddings 行**(否则 vector 表有孤儿)。**summary 字段渲染前要走 `normalizeMemorySummary()`** — 挽救 V2 时代存的 JSON 字符串老数据 |
+| `memories` | `id` | sessionId | 长对话压缩摘要,字段 sessionId / `tier`(1=近期 L1 / 2=远期 L2) / `title?` / summary / `quotes?: string[]`(关键原话,格式 `"说话人→对方: 内容"`)/ `events?: string[]`(「这次发生了」事件链,手机原生 actions 自动扫出 plain 文字 chip)/ `tag?`(6 类:转折/亲密/冲突/发现/约定/日常)/ `importance?`(`'high' \| 'low'`,默认 low) / `groupId?`(V4 多卡一次压缩共享) / fromMsgId / toMsgId / `fromTs` / `toTs` / createdAt。**V4 多卡**:一次压缩可产出 1-3 张独立故事卡,共享 groupId;`title` / `quotes` / `events` / `importance` 都可空(老数据没有,渲染端兜底)。**events 只挂第一张卡**(避免多卡同一 overflow 范围重复显示)。**importance 两档都注入 prompt**,只影响记忆 app 显示(high 加 accent 边)。events 不进 prompt(已在 summary 里覆盖)。**L2 删 L1 时同时清对应 embeddings 行**(否则 vector 表有孤儿)。**summary 字段渲染前要走 `normalizeMemorySummary()`** — 挽救 V2 时代存的 JSON 字符串老数据 |
 | `apiConfig` | `id` | — | 多条;每条 id / name / apiUrl / apiKey / modelName / temperature / maxTokens?。当前活跃由 `settings.activeApiConfigId` 指。**temperature input `step="0.001"`** 支持 3 位小数(0.75 / 0.123 等) |
 | `settings` | `id` | — | 单例 id=`default`。字段:`theme`(对象,见 [core/theme.js](src/core/theme.js),DEFAULT_THEME 是黑白灰系)/ `themePresets[]` / `widgetPresets[]`(user 自定义 widget 风格预设,每项 `{id, label, hint, sample:{bg,radius}, override:{bgColor,radius,transparency,tilt}}`)/ `wallpaper`(base64 桌面壁纸)/ `appIconOverrides: {[appId]: {kind: 'emoji'\|'text'\|'image'\|'url', value}}` / `activeApiConfigId` / `activePersonaId`(新建会话用)/ `weatherApi: {urlTemplate, apiKey}` / `memoryEnabled`(默认 true)/ `memoryThreshold`(默认 30,**缓冲条数** — 留多少条活跃不压;**T17 后新规则按 dayKey 分组每次压最旧一天,不再有"一次压几条"概念**)/ `memoryBatchSize`(**已废弃**,老 settings 留着不读)/ `petEnabled`(默认 true)/ `petX` / `petY` / `petLastBubbleAt` / `petDismissed: {triggerKey: ts}`(气泡冷却记录)/ `notifyOnReply`(全局通知 toggle,行程提醒 / 生理期提醒共用)/ `scheduleNotifiedIds[]`(行程通知 dedup,cap 50)/ `cycleNotifiedDayKey`(周期通知 dayKey 级 dedup,同一天只发一次)/ **`tileOrder`** / **`dockOrder`**(home 布局,见 home 段)/ `syncScheduleToChat`(默认 true)/ `syncMonitorToChat`(默认 false,opt-in)/ `devMode`(默认 false)/ `promptOverrides` / `promptOutputOverrides`(prompt 覆盖层)/ `embedding: {urlTemplate?, apiKey?, modelName?, enabled?, topK?, worldbookThreshold?}` / `memoryStyle`(`'default' \| 'planner' \| 'cabinet' \| 'petal' \| 'film' \| 'cosmic'`,默认 `'planner'`)/ `favoritesMigratedV1` / `unifiedGridV1`(home 一次性迁移 flag)。**所有 settings 修改用 `db.updateSettings(fn)` 原子化**,不要再 `get → 改 → set` 三连。`humanizerPrompt` 字段已废弃,在 `src/core/humanizer.js` 常量里 |
 | `wallet` | `id` | — | 单例 id=`default`,字段 balance。用户发红包/转账扣余额,领 AI 红包/转账加余额。充值在「我 → 钱包」 |
@@ -311,6 +311,18 @@
 - ✅ **memory-app 卡片渲染** `buildMemCard` 加 `title` / `quotes` / `importance` 三参数。title 渲染加粗标题,quotes 渲染「关键原话」section(dashed 边分隔,默认展开),importance=high 加 `ma-row-imp-high` 左 accent 边 + 「重要」红 chip。timeline 排序加 eventIdx 次级
 - ✅ **memory-manage 同步** chat 内 memory-manage 页同款渲染:`.memory-title` 加粗 + `.memory-imp-high` 红 chip + `.memory-quotes` dashed 分隔
 - ✅ **CSS** `memory-styles.css` 加 `.mem-imp-high` / `.ma-row-title` / `.ma-row-quotes` + `.ma-row-imp-high` 边色;`.ma-row-body` 加 `white-space: pre-line` 让 \n 渲染换行(merged timeline 多事件用);`base.css` 同样加 `.memory-card` 系列样式 + `.tl-row .tl-summary` pre-line
+
+*视觉 bug 修 + 「这次发生了」事件链(差异化关键)*
+> user 反馈记忆卡片结构跟参考酒馆站太像,想要"手机 app 维度"的差异化。她记的是 RP 戏剧章节;我们多一层手机原生 action 事件维度(红包/转账/语音/照片/撤回/位置/计划/解封),零 AI 成本(action 数据已在 chatMessages 里)。
+
+- ✅ **film 双胶片条码 bug** `.ma-row::before`(老 B/W 条纹)和 T27 加的 `.ma-row::after`(accent 点线)在 V4 多卡后视觉上叠在一起,删 `::before` 留 `::after` 单条
+- ✅ **petal 花瓣装饰位置 bug** `.ma-row::after` 的 ✿(\273F)从 top:8px 挪到 bottom:8px,跟新加的 title / 编辑×删除按钮 / chips 不再挤在顶部;字号 28→22,opacity 0.18→0.14 更隐
+- ✅ **「这次发生了」事件链** `core/context.js#extractMemoryEvents(msgs)` 扫 overflow 的非 text/reply actions 生成 plain 中文 chip(无 emoji):
+  - 红包/转账:每笔单独 + 金额 + 方向(用户→角色 / 角色→用户)+ 状态(已领/未领/已退回 / 已收/未收/已退回)
+  - 位置 / 定计划 / 请求解除拉黑:每条单独
+  - 语音 / 照片 / 撤回:按类型聚合计数(语音带总时长 `共 N″`)
+  写入第一张卡(多卡共享 overflow 时间窗,事件链是窗口级 metadata 不是卡片级,挂多张会重复);events 字段不进 prompt(summary 已覆盖);
+  `buildMemCard` 加 `events` 参数,渲染「这次发生了」section,quotes 下方 dashed 分隔,chip 是 accent 浅底圆角药丸;chat 内 memory-manage 同款 `.memory-events` 渲染。差异化效果:酒馆站不能有这些手机原生事件,一眼区分
 
 ---
 

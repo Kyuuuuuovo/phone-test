@@ -166,6 +166,37 @@ body[data-mono="1"] .memory-app-page .mem-chips {
 /* timeline 多事件 / 合并行 — body 用 pre-line 让 \n 渲染成换行 */
 .memory-app-page .ma-row-body { white-space: pre-line; }
 
+/* V4 「这次发生了」事件链 — 跟参考酒馆站差异化的关键(手机原生 actions:
+   红包/转账/语音/照片/撤回/位置/计划/解封)。chip 风,跟现有 mem-chips 一脉
+   但 accent 色更浅、不显 high-importance 红框,纯客观事件不强调情绪。 */
+.memory-app-page .ma-row-events {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+.memory-app-page .ma-row-events-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.memory-app-page .ma-row-events-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.memory-app-page .ma-row-event {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--accent) 70%, var(--fg));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* ─────────────────────────────────────────────────────────────────────
    通用:横向 chip 角色选择器(planner / petal / film / cosmic 共用)
    ───────────────────────────────────────────────────────────────────── */
@@ -527,13 +558,16 @@ body[data-mem-style="petal"] .memory-app-page .ma-row {
   position: relative;
   overflow: hidden;
 }
+/* 花瓣装饰挪到右下角,避免跟标题 / 编辑×删除按钮 / chips 在顶部挤一起。
+   字号缩到 22px(原 28),opacity 0.14(原 0.18)让装饰更隐;pointer-events
+   none 保证不挡互动。 */
 body[data-mem-style="petal"] .memory-app-page .ma-row::after {
   content: '\273F';
   position: absolute;
-  top: 8px;
-  right: 14px;
-  opacity: 0.18;
-  font-size: 28px;
+  bottom: 8px;
+  right: 12px;
+  opacity: 0.14;
+  font-size: 22px;
   color: var(--accent);
   pointer-events: none;
 }
@@ -605,19 +639,8 @@ body[data-mem-style="film"] .memory-app-page .ma-row {
   overflow: hidden;
   box-shadow: 0 1px 3px color-mix(in srgb, var(--fg) 10%, transparent);
 }
-/* 胶片齿孔条纹顶部:用 --fg / --surface 拼,深主题自动反相 */
-body[data-mem-style="film"] .memory-app-page .ma-row::before {
-  content: '';
-  display: block;
-  height: 6px;
-  background: repeating-linear-gradient(
-    90deg,
-    var(--fg) 0,
-    var(--fg) 4px,
-    var(--surface) 4px,
-    var(--surface) 8px
-  );
-}
+/* 胶片齿孔条纹顶部由 T27 的 ::after 提供(line 920+),老的 ::before 在
+   V4 多卡发布后跟 ::after 重叠成双条 — 删掉 ::before,留 ::after。 */
 body[data-mem-style="film"] .memory-app-page .ma-row-meta {
   font-family: 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
   font-size: 10px;

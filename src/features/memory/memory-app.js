@@ -160,8 +160,9 @@ export async function mountMemoryApp(container, params, router) {
   //   timeRange='5月22日'/'5月22日–5月23日'(可选)、tag='转折'等(可选)、
   //   score=0..1(可选,vector hits 用)、extras=尾部 HTML、dataAttrs=自定义属性。
   //   title=可选标题(V4 多卡:[CARD] 的「标题」字段)、quotes=string[](V4 关键原话)、
-  //   importance='high'|'low'(V4 重要度,high 加 accent 边)。
-  function buildMemCard({ meta = [], body, tier, timeRange, tag, score, extras = '', dataAttrs = '', cardClass = '', title, quotes, importance }) {
+  //   importance='high'|'low'(V4 重要度,high 加 accent 边)、
+  //   events=string[](「这次发生了」事件链,手机原生 action 自动扫出,无 AI 成本)。
+  function buildMemCard({ meta = [], body, tier, timeRange, tag, score, extras = '', dataAttrs = '', cardClass = '', title, quotes, importance, events }) {
     const tierChip = tier
       ? `<span class="mem-tier mem-tier-${tier === 2 ? 'l2' : 'l1'}">${tier === 2 ? 'L2' : 'L1'}</span>`
       : '';
@@ -178,6 +179,16 @@ export async function mountMemoryApp(container, params, router) {
         ${quotes.map(q => `<div class="ma-row-quote">${esc(q)}</div>`).join('')}
       </div>
     ` : '';
+    // 「这次发生了」事件链 — 手机原生 action 扫出来的 plain chip。差异化关键
+    // (酒馆站的剧情记忆不带这些手机维度)。
+    const eventsHtml = (Array.isArray(events) && events.length > 0) ? `
+      <div class="ma-row-events">
+        <div class="ma-row-events-label">这次发生了</div>
+        <div class="ma-row-events-chips">
+          ${events.map(e => `<span class="ma-row-event">${esc(e)}</span>`).join('')}
+        </div>
+      </div>
+    ` : '';
     const cardClasses = [cardClass, importance === 'high' ? 'ma-row-imp-high' : ''].filter(Boolean).join(' ');
     return `
       <div class="ma-row${cardClasses ? ' ' + cardClasses : ''}"${dataAttrs ? ' ' + dataAttrs : ''}>
@@ -186,6 +197,7 @@ export async function mountMemoryApp(container, params, router) {
         ${titleHtml}
         <div class="ma-row-body">${esc(body || '(空)')}</div>
         ${quotesHtml}
+        ${eventsHtml}
         ${extras}
       </div>
     `;
@@ -675,6 +687,7 @@ export async function mountMemoryApp(container, params, router) {
                 title: h.memory.title,
                 quotes: h.memory.quotes,
                 importance: h.memory.importance,
+                events: h.memory.events,
                 cardClass: 'vh-row',
               });
             }).join('')}
@@ -715,6 +728,7 @@ export async function mountMemoryApp(container, params, router) {
                 title: m.title,
                 quotes: m.quotes,
                 importance: m.importance,
+                events: m.events,
                 extras: `<button class="ma-row-edit" type="button" title="编辑">✎</button><button class="ma-row-del" type="button" title="删除">×</button>`,
                 dataAttrs: `data-memory-id="${esc(m.id)}"`,
               })).join('')}

@@ -77,6 +77,14 @@ export async function mountMemoryManage(container, params, router) {
                 ${m.quotes.map(q => `<div class="memory-quote">${esc(q)}</div>`).join('')}
               </div>
             ` : '';
+            const eventsHtml = (Array.isArray(m.events) && m.events.length > 0) ? `
+              <div class="memory-events">
+                <div class="memory-events-label">这次发生了</div>
+                <div class="memory-events-chips">
+                  ${m.events.map(e => `<span class="memory-event">${esc(e)}</span>`).join('')}
+                </div>
+              </div>
+            ` : '';
             const cardCls = m.importance === 'high' ? 'memory-card memory-card-imp-high' : 'memory-card';
             return `
               <div class="${cardCls}" data-mem-id="${esc(m.id)}">
@@ -87,6 +95,7 @@ export async function mountMemoryManage(container, params, router) {
                 ${titleHtml}
                 <div class="memory-summary">${esc(normalizeMemorySummary(m.summary) || '(空)')}</div>
                 ${quotesHtml}
+                ${eventsHtml}
               </div>
             `;
           }).join('')}
