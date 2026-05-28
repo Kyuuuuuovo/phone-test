@@ -360,7 +360,7 @@
 *M1-M9 记忆系统优化 batch(DB_VERSION 15→16)*
 > 一轮系统性梳理:vector 召回每轮重复 embed query、boost 阶段 N 次串行 db.get、世界书 vector 走 `db.getAll('embeddings')` 全表扫(累积越来越多 memory 向量)、linear + vector 注入同一段 summary 重复、L2 还是单段文本没 V4 结构、profile patch unbounded append、fire-and-forget embed 失败永久丢、force 模式 UI 反馈弱。
 
-- ✅ **M1 query embed LRU cache** `embedding.js` 加 `_queryCache` LRU(cap 50,key=url+model+text)。`embedText` / `embedTextForSummary` 顶部先查 cache,命中直接返回,miss 才打 API。`buildVectorRecallLines` + `buildWorldbookVectorLines` 一轮 query 同文本两次走两路 cfg,user 没单独配 summary cfg 时两边落到同一 endpoint → cache 完美命中,每轮省 1 次 embedding API 调用
+- ✅ **M1 query embed LRU cache** `embedding.js` 加 `_queryCache` LRU(cap 50,key=url+model+text)。`embedText` 顶部先查 cache,命中直接返回,miss 才打 API。`buildVectorRecallLines` + `buildWorldbookVectorLines` 一轮 query 同文本两次都走主 embedding,LRU 第二次命中 → 每轮省 1 次 embedding API 调用。(早期还有 `embeddingSummary` 独立端点,后来 user 定下"向量模型始终一个",删了这条路径;`embeddingSummary` IDB 字段留着不读,代码 path 全归一到 `embedText`。)
 - ✅ **M2 vector + linear 去重** `topKMemoriesForQuery(sessionId, query, k, {excludeIds})` 接 Set/Array,buildSystemPromptParts 把 `[...l1Mem, ...l2Mem].map(m=>m.id)` 传进去 — linear 段全量注入的 memory id 自动从 vector 召回结果排除,prompt 不再同段 summary 出现两次
 - ✅ **M3 embedMemory 失败异步补齐** `topKMemoriesForQuery` 头部检测「session 有 memory 但没 vector」→ 模块级 `_backfillInflight` Set dedup,异步调 `embedMemory` 补 1-2 条(限速防 burst)。fire-and-forget 失败的孤儿 memory 每轮 reply 都尝试自愈,user 不用手动按「补齐旧总结」
 - ✅ **M4 boost 阶段批量 lookup** 原 `for (s of preWindow) await db.get('memories', sourceId)` 是 N 次串行往返,改成一次 `db.query('memories','sessionId')` 建 Map,boost 阶段 O(1) lookup

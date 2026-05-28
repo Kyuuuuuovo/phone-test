@@ -55,23 +55,14 @@ async function callEmbeddingAPI({ urlTemplate, apiKey, modelName, input }) {
   return new Float32Array(vec);
 }
 
-// 解析当前生效的 embedding cfg。两套 profile:
-//   - settings.embedding(主):给 worldbook entries 用,默认所有调用 fallback
-//   - settings.embeddingSummary(总结专属):给 memory 写 + memory query 用
+// 解析当前生效的 embedding cfg。只有一套:settings.embedding(主)。所有
+// 调用(memory 写 / memory query / worldbook 查)走同一 endpoint,LRU
+// cache 自动 dedup 跨 caller 的同 text 调用。
 //
-// resolveSummaryCfg:summary 启用就用 summary,否则 fallback 主 embedding
-//   (主 embedding 也没启用时返回 null cfg — embedText 会返回 null,跳过)
-// resolveMainCfg:只看主 embedding
-//
-// 为啥总结要单独 cfg:summary 是"长期记忆"(写一次查很多次,精度要高)、
-// worldbook 是"设定参考"(精度要求低),不同模型 trade-off 不同。两套各
-// 独立 enabled toggle 给 user 灵活选(不开 summary 时仍走主端点,保留向后
-// 兼容)。
-function resolveSummaryCfg(settings) {
-  const s = settings.embeddingSummary || {};
-  if (s.enabled === true && s.urlTemplate && s.apiKey && s.modelName) return s;
-  return resolveMainCfg(settings);
-}
+// 历史:曾经有过 `settings.embeddingSummary` 子端点,设计意图是让 user
+// 给 memory 总结挑高精度模型 / worldbook 用便宜模型。user 后来定下"向量
+// 模型始终一个"的方向,这条路径删了。老 user 写入的 `embeddingSummary`
+// row 留在 IDB 里不动也不读,以后想恢复也方便。
 function resolveMainCfg(settings) {
   const m = settings.embedding || {};
   if (m.enabled === true && m.urlTemplate && m.apiKey && m.modelName) return m;
@@ -124,9 +115,9 @@ function _cacheSet(cfg, text, vec) {
   }
 }
 
-// One-shot text → vector,走**主 embedding**(worldbook 等场景默认入口)。
-// Returns null (not throw) when embedding is disabled or unconfigured —
-// caller treats it as "no vector available, skip retrieval".
+// One-shot text → vector,走主 embedding(memory 写 / memory query / worldbook
+// 查统一这个入口)。Returns null (not throw) when embedding is disabled or
+// unconfigured — caller treats it as "no vector available, skip retrieval".
 // LRU-cached: same text + cfg returns the cached vector (no API call).
 export async function embedText(text) {
   const settings = (await db.get('settings', 'default')) || {};
@@ -141,20 +132,11 @@ export async function embedText(text) {
   return vec;
 }
 
-// Memory 专属入口 — 优先 settings.embeddingSummary,fallback 主 embedding。
-// embedMemory + topKMemoriesForQuery 都用这条,保证写 / 查同源(同 model
-// 出的向量才能 cosine 比较)。同样 LRU-cached。
+// Memory 专属入口 — 历史上指过 embeddingSummary 独立端点,user 后来统一
+// 改成单一 embedding 模型。仍保留这个 export 防止 caller 大改;内部等同
+// embedText。如果以后又分,这一层是统一的接入点。
 export async function embedTextForSummary(text) {
-  const settings = (await db.get('settings', 'default')) || {};
-  const cfg = resolveSummaryCfg(settings);
-  if (!cfg) return null;
-  const trimmed = (text || '').trim();
-  if (!trimmed) return null;
-  const cached = _cacheGet(cfg, trimmed);
-  if (cached) return cached;
-  const vec = await embedTextWith(cfg, trimmed);
-  if (vec) _cacheSet(cfg, trimmed, vec);
-  return vec;
+  return embedText(text);
 }
 
 // Cosine similarity. Assumes both vectors are same length and not zero.
@@ -182,16 +164,14 @@ export async function embedMemory(memory) {
   if (existing.length > 0) return existing[0].id;
   let vec;
   try {
-    vec = await embedTextForSummary(memory.summary);
+    vec = await embedText(memory.summary);
   } catch (e) {
     console.warn('[embedding] embedMemory failed (non-fatal):', e);
     return null;
   }
   if (!vec) return null;
   const settings = (await db.get('settings', 'default')) || {};
-  const cfg = settings.embeddingSummary?.enabled === true
-    ? settings.embeddingSummary
-    : settings.embedding;
+  const cfg = settings.embedding;
   const id = db.newId();
   await db.set('embeddings', {
     id,
@@ -226,15 +206,15 @@ const MIN_SIMILARITY = 0.35;
 //   vec skips the LRU lookup entirely and avoids one extra await.
 export async function topKMemoriesForQuery(sessionId, queryText, k, opts = {}) {
   const settings = (await db.get('settings', 'default')) || {};
-  // memory query 走 summary cfg(优先 embeddingSummary,fallback 主 embedding),
-  //   跟 embedMemory 写时同源 — 否则不同 model 出的向量空间不一致召不回。
-  const cfg = resolveSummaryCfg(settings);
+  // 单一 embedding 端点 — embedMemory 写 vector 和这里 query embed 同源,
+  // 同 model 出的向量才能 cosine 比较。
+  const cfg = resolveMainCfg(settings);
   if (!cfg) return [];
   const topK = Number.isFinite(k) ? k : (Number.isFinite(cfg.topK) ? cfg.topK : 5);
   let qvec = opts.queryVec;
   if (!qvec) {
     try {
-      qvec = await embedTextForSummary(queryText);
+      qvec = await embedText(queryText);
     } catch (e) {
       console.warn('[embedding] query embed failed (non-fatal):', e);
       return [];
@@ -443,17 +423,11 @@ const BACKFILL_DELAY_MS = 150;
 // Serial (one at a time) + paced — providers rate-limit hard on bursts.
 export async function backfillSessionMemories(sessionId) {
   const settings = (await db.get('settings', 'default')) || {};
-  // 任一 cfg(主 embedding 或 summary 独立端点)启用就允许 — embedMemory 内
-  //   走 embedTextForSummary 自动 fallback。
-  const summaryOk = settings.embeddingSummary?.enabled === true
-    && settings.embeddingSummary.urlTemplate
-    && settings.embeddingSummary.apiKey
-    && settings.embeddingSummary.modelName;
   const mainOk = settings.embedding?.enabled === true
     && settings.embedding.urlTemplate
     && settings.embedding.apiKey
     && settings.embedding.modelName;
-  if (!summaryOk && !mainOk) return { embedded: 0, skipped: 0 };
+  if (!mainOk) return { embedded: 0, skipped: 0 };
   const memories = await db.query('memories', 'sessionId', sessionId);
   const existingEmbs = await db.query('embeddings', 'sessionId', sessionId);
   const haveEmbed = new Set(existingEmbs.map(e => e.sourceId));
