@@ -132,23 +132,16 @@ export async function mountMemoryApp(container, params, router) {
       return `<div class="mem-folder-list">${all}${rows}</div>`;
     }
     // 默认 / planner / petal / film / cosmic — 横向 chip
-    // 「All」chip(空 id)有自己 avatar 块,内容是「All」文字,各风格 CSS
-    // 覆盖给它跟该风格其它 avatar 一致的视觉(方角 / 圆 / 白边 / glow 等)。
+    // 「全部」chip(空 id)走跟人物 chip 完全相同的渲染逻辑:stableColor 底色 +
+    // 首字 fallback("全"),不加 mem-char-chip-all 特殊 class。
     const chip = (id, name, avatar) => {
-      const isAll = !id;
       const color = stableColor(id || 'all');
       const active = (id || '') === filterCharId ? ' active' : '';
       const initial = (name || '?').slice(0, 1);
-      // T29 All chip 视觉跟人物 chip 完全统一 — 同 stableColor 底色,内容用
-      //   SVG 4 圆点(代表"多个角色")替代 "All" 字样,跟头像视觉同质。
-      const avatarHtml = isAll
-        ? `<span class="mem-chip-avatar mem-chip-avatar-all" style="background:${color}"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><circle cx="7" cy="7" r="2"/><circle cx="17" cy="7" r="2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg></span>`
-        : avatar
-          ? `<span class="mem-chip-avatar"><img src="${esc(avatar)}" alt=""></span>`
-          : `<span class="mem-chip-avatar" style="background:${color}">${esc(initial)}</span>`;
-      const cls = isAll ? 'mem-char-chip mem-char-chip-all' : 'mem-char-chip';
-      const label = isAll ? '全部' : name;
-      return `<button class="${cls}${active}" data-char-id="${esc(id || '')}" type="button">${avatarHtml}<span class="mem-chip-name">${esc(label)}</span></button>`;
+      const avatarHtml = avatar
+        ? `<span class="mem-chip-avatar"><img src="${esc(avatar)}" alt=""></span>`
+        : `<span class="mem-chip-avatar" style="background:${color}">${esc(initial)}</span>`;
+      return `<button class="mem-char-chip${active}" data-char-id="${esc(id || '')}" type="button">${avatarHtml}<span class="mem-chip-name">${esc(name)}</span></button>`;
     };
     return `
       <div class="mem-char-chips">
