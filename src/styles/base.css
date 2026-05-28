@@ -5721,6 +5721,11 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
   line-height: 1.45;
   word-break: break-word;
 }
+/* T35: 时间线 tab 的事件正文居中 — 每条是 "HH:MM 短事件"(≤25 字),
+   居中更易读。其他 row(summary / milestone / profile)保持左对齐。 */
+.memory-app-page .ma-row[data-tl-id] .ma-row-body {
+  text-align: center;
+}
 .memory-app-page .ms-row { cursor: pointer; }
 .memory-app-page .ms-row:hover { background: var(--bubble-char); }
 /* T34 v2: ✎ × 按钮跟 meta(日期·角色名)行同行 — user 反馈"放日期名字那行"。
@@ -5737,9 +5742,9 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
   flex: 1;
   margin-bottom: 0;
   /* T34 v3: chip 内 padding 7-8px 让 chip 文字比 row 其他内容 inset,user
-     反馈"L1 跟下面 title 没对齐,L1 偏右"。负 margin 抵消 chip padding 让
-     第一个 chip 内文字回到 row content left。-7px 通用值(各风格 chip
-     padding 6-8,偏差 ≤1 视觉不察觉)。 */
+     反馈"L1 跟下面 title 没对齐"。负 margin 抵消 chip padding 让第一个
+     chip 内文字回到 row content left。各风格 chip padding 不同时 specific
+     scope 再 override(见 memory-styles.css)。 */
   margin-left: -7px;
 }
 /* T34 v3: meta 在 meta-row 内 flex:1 撑满到 tools 旁 — user 反馈"时间日期
