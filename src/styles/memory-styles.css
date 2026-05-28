@@ -69,6 +69,14 @@
 .ma-style-opt-desc { font-size: 11px; color: var(--muted); }
 
 /* ─────────────────────────────────────────────────────────────────────
+   通用:可选装饰元素 — film 的「印样条帧号」+ planner 的「日期凸耳」
+   默认隐藏,各风格自己 display:* + 排版。memory-app.js 总是输出这两个
+   元素(buildMemCard 里),由 CSS 决定显不显示,不需要 JS 端按风格分支。
+   ───────────────────────────────────────────────────────────────────── */
+.memory-app-page .mem-frameno { display: none; }
+.memory-app-page .mem-day-tab { display: none; }
+
+/* ─────────────────────────────────────────────────────────────────────
    通用:卡片 chip 区(tier / 时间范围 / tag / score)
    5 风格共用结构,各 scope 用 ::before / 颜色细调辨识。
    ───────────────────────────────────────────────────────────────────── */
@@ -374,34 +382,68 @@ body[data-mem-style="planner"] .memory-app-page .ma-tab.active {
   font-weight: 600;
   border-bottom-color: var(--accent);
 }
+/* planner v3「活页夹」浅色版 — user demo .planB:卡片白底 + border + 圆角 +
+   左侧 dotted 竖线 + accent 圆点时间轴 + 右上角日期凸耳。padding-left 26
+   给虚线 + 圆点留位。 */
 body[data-mem-style="planner"] .memory-app-page .ma-row {
-  background: transparent;
-  border: none;
-  border-left: 3px solid var(--accent);
-  border-radius: 0;
-  padding: 8px 12px 8px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 14px 14px 26px;
   position: relative;
-  margin-left: 6px;
+  margin-left: 0;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--fg) 6%, transparent);
 }
-/* 时间轴圆点 — 跨在左边竖线上,边缘留 --bg 一圈描边把纸纹线遮住 */
+/* 左竖 dotted 线 — 活页夹"穿绳子"装饰,自顶到底 */
 body[data-mem-style="planner"] .memory-app-page .ma-row::before {
   content: '';
   position: absolute;
-  left: -5.5px;
-  top: 14px;
-  width: 8px;
-  height: 8px;
+  left: 14px;
+  top: 12px;
+  bottom: 12px;
+  width: 0;
+  border-left: 2px dotted color-mix(in srgb, var(--accent) 45%, transparent);
+}
+/* 时间轴圆点 — 落在虚线上 top 18,外圈 surface 3px 给"穿绳子"感 */
+body[data-mem-style="planner"] .memory-app-page .ma-row::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 18px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 0 2px var(--bg);
+  box-shadow: 0 0 0 3px var(--surface);
+}
+/* 日期凸耳 — 右上角贴顶,半圆下角(底部 border-radius),accent 实心白字 */
+body[data-mem-style="planner"] .memory-app-page .mem-day-tab {
+  display: inline-block;
+  position: absolute;
+  top: -1px;
+  right: 14px;
+  background: var(--accent);
+  color: #fff;
+  font-family: 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 3px 9px 4px;
+  border-radius: 0 0 6px 6px;
+  font-weight: 500;
 }
 body[data-mem-style="planner"] .memory-app-page .ma-row-meta {
   color: var(--muted);
   font-size: 11px;
-  font-style: italic;
+}
+body[data-mem-style="planner"] .memory-app-page .ma-row-title {
+  font-family: 'Noto Serif SC', serif;
+  font-weight: 600;
+  font-size: 15px;
 }
 body[data-mem-style="planner"] .memory-app-page .ma-row-body {
   color: var(--fg);
+  font-size: 13.5px;
+  line-height: 1.7;
 }
 body[data-mem-style="planner"] .memory-app-page .ma-cell {
   background: var(--surface);
@@ -639,11 +681,13 @@ body[data-mem-style="film"] .memory-app-page .ma-tab.active {
   color: var(--fg);
   font-weight: 600;
 }
+/* film v3「印样条」浅色版 — user demo .filmC:浅色奶白卡片 + 顶/底双齿孔条 +
+   monospace 帧号 #024(accent 色)+ meta 普通 muted(去 T35 反色暗条)+
+   L1 chip 实心 accent + 节选引文左 accent 边。 */
 body[data-mem-style="film"] .memory-app-page .ma-row {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 2px;
-  padding: 0;
   overflow: hidden;
   box-shadow: 0 1px 3px color-mix(in srgb, var(--fg) 10%, transparent);
 }
@@ -657,34 +701,38 @@ body[data-mem-style="film"] .memory-app-page .ma-row-meta {
   font-family: 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
   font-size: 10px;
   letter-spacing: 0.06em;
-  /* background / color 移到 .ma-row-meta-row */
+  color: var(--muted);
+}
+/* 帧号 — film v3 印样条标识。monospace + accent 色编号,跟 meta 同色系
+   一起在卡片顶部第一行(meta-row 下一行)。 */
+body[data-mem-style="film"] .memory-app-page .mem-frameno {
+  display: block;
+  padding: 12px 12px 2px;
+  font-family: 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  font-weight: 700;
 }
 /* T35 v2: meta-row 改 inline-flex + align-self flex-start — user 反馈
    "反色阴影不是占满,是一条,和四周有空隙"。inline-flex 让宽度 fit
    content(包 meta + tools)。
    T35 v4: padding 上下从 3 → 1(user 反馈"太他妈高了"),margin 上下
    对称 8px(原 10/6 不对称 user 反馈"上下没对齐")。 */
+/* meta-row 简洁化 — 去 T35 反色暗条,改普通 monospace muted。 */
 body[data-mem-style="film"] .memory-app-page .ma-row-meta-row {
-  display: inline-flex;
-  align-self: flex-start;
-  margin: 8px 12px;
-  background: var(--fg);
-  color: var(--surface);
-  padding: 1px 10px;
+  display: flex;
+  align-items: center;
   gap: 8px;
+  margin: 0;
+  padding: 0 12px;
+  background: none;
+  color: var(--muted);
 }
-/* tools 在 fg 暗底上,默认 --muted 看不见;改 surface 浅色 */
+/* tools 回归默认 muted — 没反色暗底了 */
 body[data-mem-style="film"] .memory-app-page .ma-row-meta-row .ma-row-edit,
 body[data-mem-style="film"] .memory-app-page .ma-row-meta-row .ma-row-del {
-  color: color-mix(in srgb, var(--surface) 75%, transparent);
-}
-body[data-mem-style="film"] .memory-app-page .ma-row-meta-row .ma-row-edit:hover {
-  color: var(--surface);
-  background: color-mix(in srgb, var(--surface) 18%, transparent);
-}
-body[data-mem-style="film"] .memory-app-page .ma-row-meta-row .ma-row-del:hover {
-  color: #ffb0b0;
-  background: rgba(255, 130, 130, 0.18);
+  color: var(--muted);
 }
 body[data-mem-style="film"] .memory-app-page .ma-row-body {
   padding: 0 12px 12px;
@@ -701,10 +749,8 @@ body[data-mem-style="film"] .memory-app-page .ma-row-events {
   padding-left: 12px;
   padding-right: 12px;
 }
-/* film 卡片底 chip padding-bottom — chip 不能紧贴卡片底,加 8px 视觉间距 */
-body[data-mem-style="film"] .memory-app-page .ma-row {
-  padding-bottom: 8px;
-}
+/* 注:padding-bottom 已经在主 .ma-row rule 里设成 19px(11 齿孔 + 8 内容
+   离齿孔距离),旧 padding-bottom 8 删了。 */
 body[data-mem-style="film"] .memory-app-page .ma-cell {
   background: var(--surface);
   border: 4px solid var(--surface);
@@ -867,26 +913,35 @@ body[data-mem-style="cosmic"] .memory-app-page .ma-style-opt-desc {
    只写差异化的东西,共享部分(chip / folder / vector hits)在上面 通用 段。
    ═════════════════════════════════════════════════════════════════════ */
 
-/* planner — chip 当胶带:虚线边 + 渐变奶油底色
-   T34 v3: 删 transform: rotate(-1.2deg) — user 反馈 L1 chip 跟下面 title
-   左侧"没对齐",元凶就是旋转让 chip 框视觉歪斜,boundingRect 数据上对齐
-   但人眼看不齐。失去微旋转的"胶带"感,但保留奶油底 + dashed 边的辨识。 */
+/* planner v3 — chip 改 pill(从胶带变成圆角小标签)。L1 实心 accent,普通 chip
+   用 accent 浅底 muted 字,demo .planB .chip 风格。 */
 body[data-mem-style="planner"] .memory-app-page .mem-chips > span {
-  background: linear-gradient(135deg, rgba(255, 220, 150, 0.55), rgba(255, 200, 130, 0.35));
-  border-top: 1px dashed color-mix(in srgb, var(--fg) 35%, transparent);
-  border-bottom: 1px dashed color-mix(in srgb, var(--fg) 35%, transparent);
-  border-radius: 2px;
-  color: var(--fg);
-  padding: 2px 8px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  border-radius: 999px;
+  color: var(--muted);
+  padding: 2px 9px;
+  font-size: 10px;
 }
-/* T35 v3: 各风格 chips margin-left 整体抵消方式作废 — 改用通用 first-child
-   chip padding-left: 0,让 chip frame + chip text 都跟 title 完全对齐。
-   各风格 chip padding 不同也不再影响对齐(都是第一个 padding 强制 0)。 */
-body[data-mem-style="planner"] .memory-app-page .mem-tag,
-body[data-mem-style="planner"] .memory-app-page .mem-tier,
-body[data-mem-style="planner"] .memory-app-page .mem-timerange,
-body[data-mem-style="planner"] .memory-app-page .mem-score {
-  background: linear-gradient(135deg, rgba(255, 220, 150, 0.55), rgba(255, 200, 130, 0.35));
+body[data-mem-style="planner"] .memory-app-page .mem-chips > .mem-tier {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+body[data-mem-style="planner"] .memory-app-page .mem-chips > .mem-tag {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+/* events 也改圆角浅底胶囊(demo .planB .ev) */
+body[data-mem-style="planner"] .memory-app-page .ma-row-event {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 2px 8px;
 }
 /* T35: 原 dashed border 让 char chip 看起来"破破的",user 反馈"虚线丑"。
    改 solid 跟 chip 文字区分用更细 muted 边色,保留 planner 风格但收敛。 */
@@ -1008,28 +1063,64 @@ body[data-mem-style="film"] .memory-app-page .mem-chips > span {
   padding: 2px 6px;
   letter-spacing: 0.06em;
 }
-body[data-mem-style="film"] .memory-app-page .mem-tier {
-  background: var(--fg);
-  color: var(--surface);
-  border: none;
+/* L1 chip 实心 accent + 白字(demo .filmC .chip.l1)— specificity 要赢
+   `.mem-chips > span`(后者 `> span` 加 1 element specificity 把单纯 .mem-tier
+   吃了)。多写一层 `.mem-chips` 让 specificity 升到 32。 */
+body[data-mem-style="film"] .memory-app-page .mem-chips > .mem-tier {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  font-weight: 700;
 }
-/* T27 film — 卡片顶部 6px filmstrip 装饰,齿孔重复 dot 让卡片看上去像
-   一格胶片。.ma-row 已经是 position relative(其它风格用 ::before 占位),
-   ::after 安全往顶部贴。 */
+/* tag chip — accent-soft 底 + accent 字 */
+body[data-mem-style="film"] .memory-app-page .mem-chips > .mem-tag {
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+/* 节选引文 — 左 2px accent 边 + 8px padding(demo .filmC .q) */
+body[data-mem-style="film"] .memory-app-page .ma-row-quote {
+  border-left: 2px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  padding-left: 8px;
+  margin: 2px 0;
+}
+/* film v3 — 印样条:顶 ::after + 底 ::before 双齿孔条。粉米底叠齿孔 dot
+   重复(齿孔本身是 surface 透出来的)。.ma-row padding-top/bottom 11 给两条
+   齿孔留位。 */
 body[data-mem-style="film"] .memory-app-page .ma-row {
   position: relative;
-  padding-top: 18px;
+  padding-top: 11px;
+  padding-bottom: 19px;  /* 11 齿孔 + 8 内部 events 离底间距 */
 }
 body[data-mem-style="film"] .memory-app-page .ma-row::after {
   content: '';
   position: absolute;
   top: 0; left: 0; right: 0;
-  height: 6px;
-  background: repeating-linear-gradient(90deg,
-    var(--accent) 0px, var(--accent) 4px,
-    transparent 4px, transparent 8px);
-  opacity: 0.3;
+  height: 11px;
+  background:
+    repeating-linear-gradient(90deg,
+      transparent 0 6px,
+      color-mix(in srgb, var(--fg) 30%, transparent) 6px 11px,
+      transparent 11px 16px),
+    color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border-bottom: 1px solid var(--border);
   pointer-events: none;
+  opacity: 0.7;
+}
+body[data-mem-style="film"] .memory-app-page .ma-row::before {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 11px;
+  background:
+    repeating-linear-gradient(90deg,
+      transparent 0 6px,
+      color-mix(in srgb, var(--fg) 30%, transparent) 6px 11px,
+      transparent 11px 16px),
+    color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border-top: 1px solid var(--border);
+  pointer-events: none;
+  opacity: 0.7;
 }
 /* T20: film 头像 polaroid 风 — 方角 + 白边 + 深阴影,胶片照片质感 */
 body[data-mem-style="film"] .memory-app-page .mem-char-chip {
@@ -1182,11 +1273,14 @@ body[data-mem-style="cosmic"] .memory-app-page .mem-vh-label {
    就是对齐基准(chips/meta/title/body/quotes/events 全都 padding 12px)。
    ═════════════════════════════════════════════════════════════════════ */
 @media (max-width: 440px) {
+  /* film v3:顶 + 底齿孔同时缩到 8px,padding 跟着收。 */
   body[data-mem-style="film"] .memory-app-page .ma-row {
-    padding-top: 12px;
+    padding-top: 8px;
+    padding-bottom: 14px;
   }
-  body[data-mem-style="film"] .memory-app-page .ma-row::after {
-    height: 4px;
+  body[data-mem-style="film"] .memory-app-page .ma-row::after,
+  body[data-mem-style="film"] .memory-app-page .ma-row::before {
+    height: 8px;
   }
   body[data-mem-style="film"] .memory-app-page .ma-row .mem-chips {
     padding-top: 6px;
@@ -1196,9 +1290,15 @@ body[data-mem-style="cosmic"] .memory-app-page .mem-vh-label {
     font-size: 8.5px;
     padding: 1px 5px;
   }
+  body[data-mem-style="film"] .memory-app-page .mem-frameno {
+    padding: 8px 12px 2px;
+    font-size: 9px;
+  }
+  body[data-mem-style="film"] .memory-app-page .ma-row-meta-row {
+    margin: 0;
+    padding: 0 12px;
+  }
   body[data-mem-style="film"] .memory-app-page .ma-row-meta {
-    margin: 6px 12px 4px;
-    padding: 2px 8px;
     font-size: 9.5px;
   }
   body[data-mem-style="film"] .memory-app-page .ma-row-title {

@@ -166,12 +166,24 @@ export async function mountMemoryApp(container, params, router) {
   //   右上角,跟 meta / chips 视觉抢位置。改成跟 chips 同行 flex 右端,跟卡片
   //   内容一起在 flow 里,不再悬浮。extras 仍保留给 mergedDetail 这类底部
   //   非按钮内容用。
-  function buildMemCard({ meta = [], body, tier, timeRange, tag, score, extras = '', tools = '', dataAttrs = '', cardClass = '', title, quotes, importance, events, phaseFromTs }) {
+  function buildMemCard({ meta = [], body, tier, timeRange, tag, score, extras = '', tools = '', dataAttrs = '', cardClass = '', title, quotes, importance, events, phaseFromTs, frameNo, dayTabTs }) {
     // 月相相位(cosmic 风格用,其他风格无视)— day-of-month 4 档映射。
     //   不是真天文月相,是"日期诗意"映射 — 让用户看月初 / 月中 / 月末记忆时
     //   左侧月相循环变化,有"日记翻页"感。phaseAttr 空时 cosmic CSS 默认满月。
     const phase = moonPhaseOf(phaseFromTs);
     const phaseAttr = phase ? ` data-moon-phase="${phase}"` : '';
+    // 帧号(film 风格"印样条"用)— session 内 chronological 序号,3 位补零。
+    //   其他风格 CSS 把 .mem-frameno 设 display:none 隐藏。空值不渲染。
+    const frameNoHtml = (Number.isFinite(frameNo) && frameNo > 0)
+      ? `<span class="mem-frameno">#${String(frameNo).padStart(3, '0')}</span>` : '';
+    // 日期凸耳(planner 风格"活页夹"用)— 卡片右上贴顶的 MM·DD 短标签。
+    //   其他风格 CSS 设 display:none 隐藏。
+    const dayTabHtml = Number.isFinite(dayTabTs)
+      ? (() => {
+          const d = new Date(dayTabTs);
+          return `<span class="mem-day-tab">${String(d.getMonth()+1).padStart(2,'0')}·${String(d.getDate()).padStart(2,'0')}</span>`;
+        })()
+      : '';
     const tierChip = tier
       ? `<span class="mem-tier mem-tier-${tier === 2 ? 'l2' : 'l1'}">${tier === 2 ? 'L2' : 'L1'}</span>`
       : '';
@@ -219,6 +231,8 @@ export async function mountMemoryApp(container, params, router) {
     const cardClasses = [cardClass, importance === 'high' ? 'ma-row-imp-high' : ''].filter(Boolean).join(' ');
     return `
       <div class="ma-row${cardClasses ? ' ' + cardClasses : ''}"${phaseAttr}${dataAttrs ? ' ' + dataAttrs : ''}>
+        ${dayTabHtml}
+        ${frameNoHtml}
         ${chipsBlock}
         ${metaBlock}
         ${titleHtml}
@@ -394,6 +408,26 @@ export async function mountMemoryApp(container, params, router) {
       if (ai !== bi) return ai - bi;
       return (a.createdAt || 0) - (b.createdAt || 0);
     });
+    // 帧号 = session 内 chronological 序号(film 风格"印样条"用)。UI 倒序
+    //   显示(最新在上)但帧号 1=最早,跟微博 ID 一样:越新数字越大,desc 列表
+    //   首条就是最大编号。先按 session 分组按 chronological 排,然后塞 map。
+    const tlFrameNo = new Map();
+    const tlBySession = new Map();
+    for (const t of allTl) {
+      if (t.mergedInto) continue;
+      if (!tlBySession.has(t.sessionId)) tlBySession.set(t.sessionId, []);
+      tlBySession.get(t.sessionId).push(t);
+    }
+    for (const arr of tlBySession.values()) {
+      arr.sort((a, b) => {
+        const dk = (a.dayKey || '').localeCompare(b.dayKey || '');
+        if (dk !== 0) return dk;
+        const ai = Number.isFinite(a.eventIdx) ? a.eventIdx : 0;
+        const bi = Number.isFinite(b.eventIdx) ? b.eventIdx : 0;
+        return ai - bi;
+      });
+      arr.forEach((t, i) => tlFrameNo.set(t.id, i + 1));
+    }
     const labelFor = (sid) => {
       const s = sessions.find(x => x.id === sid);
       if (!s) return '(未知会话)';
@@ -447,6 +481,8 @@ export async function mountMemoryApp(container, params, router) {
             cardClass: t.mergedFrom ? 'merged-row' : '',
             dataAttrs: `data-tl-id="${esc(t.id)}"`,
             phaseFromTs: t.fromTs,
+            frameNo: tlFrameNo.get(t.id),
+            dayTabTs: t.fromTs,
           });
         }).join('')}
       </div>
@@ -692,6 +728,20 @@ export async function mountMemoryApp(container, params, router) {
     // chatMessages 一次性 cache,为 timeRangeOf 服务(避免 N+1)。
     const allMsgs = await db.getAll('chatMessages');
     const msgIdx = new Map(allMsgs.map(m => [m.id, m]));
+    // Memory frameNo — session 内 chronological 序号(film 印样条用)。
+    //   用 allMems 算(不受 filter 影响),让"问影渠的第 24 个总结"在切到
+    //   其他角色 filter 时仍是 #024。
+    const memFrameNo = new Map();
+    const allMemsForNo = await db.getAll('memories');
+    const memBySession = new Map();
+    for (const m of allMemsForNo) {
+      if (!memBySession.has(m.sessionId)) memBySession.set(m.sessionId, []);
+      memBySession.get(m.sessionId).push(m);
+    }
+    for (const arr of memBySession.values()) {
+      arr.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+      arr.forEach((m, i) => memFrameNo.set(m.id, i + 1));
+    }
 
     // vector hits 区块 — embedding 没开就 hint,开了就显输入框 + 命中卡片
     // T29:user 反馈 label「语义检索命中」拗口,改成「搜索」;空状态 hint
@@ -723,6 +773,8 @@ export async function mountMemoryApp(container, params, router) {
                 events: h.memory.events,
                 cardClass: 'vh-row',
                 phaseFromTs: h.memory.fromTs || h.memory.createdAt,
+                frameNo: memFrameNo.get(h.memory.id),
+                dayTabTs: h.memory.fromTs || h.memory.createdAt,
               });
             }).join('')}
           </div>
@@ -769,6 +821,8 @@ export async function mountMemoryApp(container, params, router) {
                 tools: `<button class="ma-row-edit" type="button" title="编辑">✎</button><button class="ma-row-del" type="button" title="删除">×</button>`,
                 dataAttrs: `data-memory-id="${esc(m.id)}"`,
                 phaseFromTs: m.fromTs || m.createdAt,
+                frameNo: memFrameNo.get(m.id),
+                dayTabTs: m.fromTs || m.createdAt,
               })).join('')}
             </details>
           `;
