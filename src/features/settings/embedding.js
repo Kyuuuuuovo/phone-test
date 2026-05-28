@@ -17,7 +17,8 @@ const PRESETS = [
 
 export async function mountEmbeddingSettings(container, params, router) {
   const settings = (await db.get('settings', 'default')) || { id: 'default' };
-  const cfg = settings.embedding || {};
+  const cfg     = settings.embedding || {};
+  const sumCfg  = settings.embeddingSummary || {};
 
   container.innerHTML = `
     <div class="page embedding-settings-page">
@@ -73,6 +74,42 @@ export async function mountEmbeddingSettings(container, params, router) {
           <div class="form-status"></div>
         </form>
 
+        <h3 class="settings-section-title">向量总结(可选 — 独立端点)</h3>
+        <p class="hint">
+          想让<b>总结(memory)的向量化</b>用不同模型 / 端点,打开开关 + 填配置;
+          关掉就跟上面主 embedding 共用。常见场景:总结用高精度的
+          OpenAI <code>text-embedding-3-large</code>,世界书参考用便宜 BGE。
+          注意写 / 查必须同 model,改了模型旧 vector 会作废需要重新跑「补齐旧总结」。
+        </p>
+        <div class="settings-list">
+          <label class="settings-item toggle-row">
+            <span class="settings-label">启用独立端点</span>
+            <input type="checkbox" data-toggle="summary-enabled"${sumCfg.enabled === true ? ' checked' : ''}>
+          </label>
+        </div>
+        <div class="preset-picker preset-scroll">
+          ${PRESETS.map(p => `<button type="button" class="btn secondary preset-chip-sum" data-preset="${esc(p.label)}">${esc(p.label)}</button>`).join('')}
+        </div>
+        <form class="emb-sum-form" autocomplete="off">
+          <label>
+            <div class="label-text">API URL(基础路径,会自动追加 /embeddings)</div>
+            <input name="urlTemplate" type="text" value="${esc(sumCfg.urlTemplate || '')}" placeholder="https://api.openai.com/v1">
+          </label>
+          <label>
+            <div class="label-text">API Key</div>
+            <input name="apiKey" type="password" value="${esc(sumCfg.apiKey || '')}" placeholder="sk-...">
+          </label>
+          <label>
+            <div class="label-text">模型名</div>
+            <input name="modelName" type="text" value="${esc(sumCfg.modelName || '')}" placeholder="text-embedding-3-large">
+          </label>
+          <div class="form-actions">
+            <button type="button" class="btn secondary test-sum-btn">测试连接</button>
+            <button type="submit" class="btn">保存</button>
+          </div>
+          <div class="form-status sum-status"></div>
+        </form>
+
         <h3 class="settings-section-title">补 embedding</h3>
         <p class="hint">
           打开开关后,新生成的总结会自动 embed。已经生成的旧总结需要手动跑一次补齐。
@@ -103,6 +140,11 @@ export async function mountEmbeddingSettings(container, params, router) {
   container.querySelector('[data-toggle="enabled"]').addEventListener('change', async (e) => {
     const fresh = (await db.get('settings', 'default')) || { id: 'default' };
     fresh.embedding = { ...(fresh.embedding || {}), enabled: !!e.target.checked };
+    await db.set('settings', fresh);
+  });
+  container.querySelector('[data-toggle="summary-enabled"]').addEventListener('change', async (e) => {
+    const fresh = (await db.get('settings', 'default')) || { id: 'default' };
+    fresh.embeddingSummary = { ...(fresh.embeddingSummary || {}), enabled: !!e.target.checked };
     await db.set('settings', fresh);
   });
 
@@ -174,12 +216,87 @@ export async function mountEmbeddingSettings(container, params, router) {
     await db.set('settings', after);
   });
 
+  // ── Summary form(向量总结独立端点)— 跟主 form 平行,共用 PRESETS chips
+  const sumForm    = container.querySelector('.emb-sum-form');
+  const sumStatus  = container.querySelector('.sum-status');
+  const sumSaveBtn = sumForm.querySelector('button[type="submit"]');
+  const sumDirty   = bindFormDirty(sumForm, sumSaveBtn);
+  container.querySelectorAll('.preset-chip-sum').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = PRESETS.find(x => x.label === btn.dataset.preset);
+      if (!p) return;
+      sumForm.elements.urlTemplate.value = p.urlTemplate;
+      sumForm.elements.modelName.value   = p.modelName;
+      sumDirty.markDirty();
+    });
+  });
+  sumForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(sumForm);
+    const fresh = (await db.get('settings', 'default')) || { id: 'default' };
+    fresh.embeddingSummary = {
+      ...(fresh.embeddingSummary || {}),
+      urlTemplate: String(fd.get('urlTemplate') || '').trim(),
+      apiKey:      String(fd.get('apiKey')      || '').trim(),
+      modelName:   String(fd.get('modelName')   || '').trim(),
+    };
+    await db.set('settings', fresh);
+    sumStatus.textContent = '已保存';
+    sumStatus.className = 'form-status sum-status success';
+    sumDirty.markSaved();
+  });
+  container.querySelector('.test-sum-btn').addEventListener('click', async () => {
+    // 跟主 form test 同模式 — 临时写 settings 测一次,然后还原。这里测的
+    //   是 embeddingSummary cfg,绕过 enabled 检查临时启用。
+    const fd = new FormData(sumForm);
+    const cfgNow = {
+      urlTemplate: String(fd.get('urlTemplate') || '').trim(),
+      apiKey:      String(fd.get('apiKey')      || '').trim(),
+      modelName:   String(fd.get('modelName')   || '').trim(),
+    };
+    if (!cfgNow.urlTemplate || !cfgNow.apiKey || !cfgNow.modelName) {
+      sumStatus.textContent = 'URL / Key / 模型名都得填了再测';
+      sumStatus.className = 'form-status sum-status error';
+      return;
+    }
+    sumStatus.textContent = '调用中…';
+    sumStatus.className = 'form-status sum-status';
+    const orig = (await db.get('settings', 'default')) || { id: 'default' };
+    const origSum = orig.embeddingSummary;
+    orig.embeddingSummary = { ...cfgNow, enabled: true };
+    await db.set('settings', orig);
+    try {
+      const vec = await embedding.embedTextForSummary('test embedding');
+      if (vec) {
+        sumStatus.textContent = `成功 — 向量维度 ${vec.length}`;
+        sumStatus.className = 'form-status sum-status success';
+      } else {
+        sumStatus.textContent = '调用返回空,可能响应不对';
+        sumStatus.className = 'form-status sum-status error';
+      }
+    } catch (err) {
+      sumStatus.textContent = `失败:${String(err).slice(0, 200)}`;
+      sumStatus.className = 'form-status sum-status error';
+    }
+    const after = (await db.get('settings', 'default')) || { id: 'default' };
+    after.embeddingSummary = origSum;
+    await db.set('settings', after);
+  });
+
   backfillBtn.addEventListener('click', async () => {
     const fresh = (await db.get('settings', 'default')) || {};
-    if (fresh.embedding?.enabled !== true) {
+    // 补齐用的是 memory cfg(summary 优先 fallback main),所以两个开关任一
+    //   启用且配齐都允许跑。
+    const summaryReady = fresh.embeddingSummary?.enabled === true
+      && fresh.embeddingSummary.urlTemplate && fresh.embeddingSummary.apiKey
+      && fresh.embeddingSummary.modelName;
+    const mainReady = fresh.embedding?.enabled === true
+      && fresh.embedding.urlTemplate && fresh.embedding.apiKey
+      && fresh.embedding.modelName;
+    if (!summaryReady && !mainReady) {
       await openAlert(container, {
         title: '请先启用向量记忆',
-        message: '把开关打开 + 保存配置后再来跑补齐。',
+        message: '把(主 embedding 或 向量总结 独立端点)其中一个开关打开 + 填齐配置后再来跑补齐。',
         danger: true,
       });
       return;

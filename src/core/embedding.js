@@ -55,22 +55,56 @@ async function callEmbeddingAPI({ urlTemplate, apiKey, modelName, input }) {
   return new Float32Array(vec);
 }
 
-// One-shot text → vector. Reads config from settings.embedding.
-// Returns null (not throw) when embedding is disabled or unconfigured —
-// caller treats it as "no vector available, skip retrieval".
-export async function embedText(text) {
+// 解析当前生效的 embedding cfg。两套 profile:
+//   - settings.embedding(主):给 worldbook entries 用,默认所有调用 fallback
+//   - settings.embeddingSummary(总结专属):给 memory 写 + memory query 用
+//
+// resolveSummaryCfg:summary 启用就用 summary,否则 fallback 主 embedding
+//   (主 embedding 也没启用时返回 null cfg — embedText 会返回 null,跳过)
+// resolveMainCfg:只看主 embedding
+//
+// 为啥总结要单独 cfg:summary 是"长期记忆"(写一次查很多次,精度要高)、
+// worldbook 是"设定参考"(精度要求低),不同模型 trade-off 不同。两套各
+// 独立 enabled toggle 给 user 灵活选(不开 summary 时仍走主端点,保留向后
+// 兼容)。
+function resolveSummaryCfg(settings) {
+  const s = settings.embeddingSummary || {};
+  if (s.enabled === true && s.urlTemplate && s.apiKey && s.modelName) return s;
+  return resolveMainCfg(settings);
+}
+function resolveMainCfg(settings) {
+  const m = settings.embedding || {};
+  if (m.enabled === true && m.urlTemplate && m.apiKey && m.modelName) return m;
+  return null;
+}
+
+// 通用 helper — 给 cfg 直接调 API,无 cfg 返回 null。供两条路径共用。
+async function embedTextWith(cfg, text) {
   const trimmed = (text || '').trim();
   if (!trimmed) return null;
-  const settings = (await db.get('settings', 'default')) || {};
-  const cfg = settings.embedding || {};
-  if (cfg.enabled !== true) return null;
-  if (!cfg.urlTemplate || !cfg.apiKey || !cfg.modelName) return null;
+  if (!cfg) return null;
   return await callEmbeddingAPI({
     urlTemplate: cfg.urlTemplate,
     apiKey:      cfg.apiKey,
     modelName:   cfg.modelName,
     input:       trimmed,
   });
+}
+
+// One-shot text → vector,走**主 embedding**(worldbook 等场景默认入口)。
+// Returns null (not throw) when embedding is disabled or unconfigured —
+// caller treats it as "no vector available, skip retrieval".
+export async function embedText(text) {
+  const settings = (await db.get('settings', 'default')) || {};
+  return await embedTextWith(resolveMainCfg(settings), text);
+}
+
+// Memory 专属入口 — 优先 settings.embeddingSummary,fallback 主 embedding。
+// embedMemory + topKMemoriesForQuery 都用这条,保证写 / 查同源(同 model
+// 出的向量才能 cosine 比较)。
+export async function embedTextForSummary(text) {
+  const settings = (await db.get('settings', 'default')) || {};
+  return await embedTextWith(resolveSummaryCfg(settings), text);
 }
 
 // Cosine similarity. Assumes both vectors are same length and not zero.
@@ -98,13 +132,16 @@ export async function embedMemory(memory) {
   if (existing.length > 0) return existing[0].id;
   let vec;
   try {
-    vec = await embedText(memory.summary);
+    vec = await embedTextForSummary(memory.summary);
   } catch (e) {
     console.warn('[embedding] embedMemory failed (non-fatal):', e);
     return null;
   }
   if (!vec) return null;
   const settings = (await db.get('settings', 'default')) || {};
+  const cfg = settings.embeddingSummary?.enabled === true
+    ? settings.embeddingSummary
+    : settings.embedding;
   const id = db.newId();
   await db.set('embeddings', {
     id,
@@ -113,7 +150,7 @@ export async function embedMemory(memory) {
     sessionId:  memory.sessionId,
     vector:     vec,
     dim:        vec.length,
-    modelName:  settings.embedding?.modelName || '',
+    modelName:  cfg?.modelName || '',
     createdAt:  Date.now(),
   });
   return id;
@@ -131,12 +168,14 @@ const MIN_SIMILARITY = 0.35;
 // failure / disabled state (caller should treat as no retrieval).
 export async function topKMemoriesForQuery(sessionId, queryText, k) {
   const settings = (await db.get('settings', 'default')) || {};
-  const cfg = settings.embedding || {};
-  if (cfg.enabled !== true) return [];
+  // memory query 走 summary cfg(优先 embeddingSummary,fallback 主 embedding),
+  //   跟 embedMemory 写时同源 — 否则不同 model 出的向量空间不一致召不回。
+  const cfg = resolveSummaryCfg(settings);
+  if (!cfg) return [];
   const topK = Number.isFinite(k) ? k : (Number.isFinite(cfg.topK) ? cfg.topK : 5);
   let qvec;
   try {
-    qvec = await embedText(queryText);
+    qvec = await embedTextForSummary(queryText);
   } catch (e) {
     console.warn('[embedding] query embed failed (non-fatal):', e);
     return [];
@@ -267,7 +306,17 @@ const BACKFILL_DELAY_MS = 150;
 // Serial (one at a time) + paced — providers rate-limit hard on bursts.
 export async function backfillSessionMemories(sessionId) {
   const settings = (await db.get('settings', 'default')) || {};
-  if (settings.embedding?.enabled !== true) return { embedded: 0, skipped: 0 };
+  // 任一 cfg(主 embedding 或 summary 独立端点)启用就允许 — embedMemory 内
+  //   走 embedTextForSummary 自动 fallback。
+  const summaryOk = settings.embeddingSummary?.enabled === true
+    && settings.embeddingSummary.urlTemplate
+    && settings.embeddingSummary.apiKey
+    && settings.embeddingSummary.modelName;
+  const mainOk = settings.embedding?.enabled === true
+    && settings.embedding.urlTemplate
+    && settings.embedding.apiKey
+    && settings.embedding.modelName;
+  if (!summaryOk && !mainOk) return { embedded: 0, skipped: 0 };
   const memories = await db.query('memories', 'sessionId', sessionId);
   const existingEmbs = await db.query('embeddings', 'sessionId', sessionId);
   const haveEmbed = new Set(existingEmbs.map(e => e.sourceId));

@@ -382,13 +382,16 @@ body[data-mem-style="planner"] .memory-app-page .ma-tab {
   color: var(--muted);
   padding: 8px 6px;
 }
-/* active tab 跟容器 dashed bottom 同款虚线 — base 默认 `border-bottom:
-   2px solid transparent`,只改 color 会让 active 变成"实线压虚线"刺眼。
-   显式 dashed 让两条线视觉融合(active 多了 accent 色辨识)。 */
+/* active tab 视觉:整块 accent 浅底高亮 + 顶圆角(像高亮荧光笔在手账纸上
+   涂过那一段)。不要任何 border line,跟其他风格的"底下加深色线"语言完全
+   区分。padding 微调防 background 贴边塞挤。 */
 body[data-mem-style="planner"] .memory-app-page .ma-tab.active {
-  color: var(--fg);
+  color: var(--accent);
   font-weight: 600;
-  border-bottom: 2px dashed var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-bottom-color: transparent;
+  border-radius: 6px 6px 0 0;
+  padding: 8px 10px;
 }
 /* planner v3「活页夹」浅色版 — user demo .planB:卡片白底 + border + 圆角 +
    左侧 dotted 竖线 + accent 圆点时间轴 + 右上角日期凸耳。padding-left 26
@@ -684,9 +687,13 @@ body[data-mem-style="film"] .memory-app-page .ma-tab {
   border-radius: 0;
   margin-bottom: -1px;
 }
+/* active tab 视觉:整块反色(fg 底 surface 字),像胶片印出的曝光段 — 跟
+   meta-row 已删的反色暗条同语言,但现在挪到 tab 才能体现"选中即被高光"的
+   胶片印样感。不用 border-bottom 单调线。 */
 body[data-mem-style="film"] .memory-app-page .ma-tab.active {
-  border-bottom: 2px solid var(--accent);
-  color: var(--fg);
+  border-bottom-color: transparent;
+  background: var(--fg);
+  color: var(--surface);
   font-weight: 600;
 }
 /* film v3「印样条」浅色版 — user demo .filmC:浅色奶白卡片 + 顶/底双齿孔条 +
@@ -815,10 +822,30 @@ body[data-mem-style="cosmic"] .memory-app-page .ma-tab {
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
 }
+/* active tab 视觉:字发光 + 字底下一颗 accent 小月亮圆点。不要 border-bottom
+   单调线,改用月光语言 — 字本身有 text-shadow glow,小圆点像悬在字下的
+   月亮 indicator。 */
 body[data-mem-style="cosmic"] .memory-app-page .ma-tab.active {
   color: color-mix(in srgb, var(--accent) 15%, #ece6d6);
-  border-bottom-color: var(--accent);
-  text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 50%, transparent);
+  border-bottom-color: transparent;
+  text-shadow:
+    0 0 12px color-mix(in srgb, var(--accent) 70%, transparent),
+    0 0 22px color-mix(in srgb, var(--accent) 30%, transparent);
+  position: relative;
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow:
+    0 0 6px var(--accent),
+    0 0 12px color-mix(in srgb, var(--accent) 60%, transparent);
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-row {
   background: rgba(255, 255, 255, 0.045);
