@@ -5730,33 +5730,35 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
 .memory-app-page .ms-row:hover { background: var(--bubble-char); }
 /* T34 v2: ✎ × 按钮跟 meta(日期·角色名)行同行 — user 反馈"放日期名字那行"。
    meta 有时走 .ma-row-meta-row(timeline/milestones/profile),meta 空时
-   fallback 到 chips 行(summary tab 卡片)。两种 layout 都用 flex。 */
-.memory-app-page .ma-row-header,
-.memory-app-page .ma-row-meta-row {
+   fallback 到 chips 行(summary tab 卡片)。两种 layout 都用 flex。
+   T35 v2: meta-row 改 inline-flex inline pill — user 反馈"反色阴影不是
+   占满,是一条,和四周有空隙"。所有风格的 meta-row 都做成 inline pill
+   (浅灰底自然宽),film 风格自己 override 反色 fg/surface 配色。 */
+.memory-app-page .ma-row-header {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 4px;
 }
-.memory-app-page .ma-row-header { margin-bottom: 4px; }
+.memory-app-page .ma-row-meta-row {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  padding: 3px 10px;
+  border-radius: 6px;
+}
 .memory-app-page .ma-row-header .mem-chips {
   flex: 1;
   margin-bottom: 0;
-  /* T34 v3: chip 内 padding 7-8px 让 chip 文字比 row 其他内容 inset,user
-     反馈"L1 跟下面 title 没对齐"。负 margin 抵消 chip padding 让第一个
-     chip 内文字回到 row content left。各风格 chip padding 不同时 specific
-     scope 再 override(见 memory-styles.css)。 */
-  margin-left: -7px;
+  /* T35 v3: chips margin-left 0 + 第一个 chip padding-left 0 让 chip 框
+     跟 title text 完全同位置(原 -7~-8 margin 让 chip 框比 title 偏左 ≥7px,
+     user 反馈仍"有空隙")。第一个 chip 视觉 padding 不对称是 trade-off。 */
+  margin-left: 0;
 }
-/* T34 v3: meta 在 meta-row 内 flex:1 撑满到 tools 旁 — user 反馈"时间日期
-   后面的背景条变窄了"(film 反色 inline-block label),flex:1 让 label
-   width 拉满,background 也拉满,不再窄缩。其他风格 meta 无 background,
-   flex:1 视觉无差异。 */
-.memory-app-page .ma-row-meta-row > .ma-row-meta {
-  flex: 1;
-  min-width: 0;
-}
-.memory-app-page .ma-row-meta-row > .ma-row-tools {
-  margin-left: auto;
+.memory-app-page .ma-row-header > .mem-chips > span:first-child {
+  padding-left: 0;
 }
 .memory-app-page .ma-row-tools {
   display: flex;

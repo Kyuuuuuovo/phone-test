@@ -662,11 +662,18 @@ body[data-mem-style="film"] .memory-app-page .ma-row-meta {
   letter-spacing: 0.06em;
   /* background / color 移到 .ma-row-meta-row */
 }
+/* T35 v2: meta-row 改 inline-flex + align-self flex-start — user 反馈
+   "反色阴影不是占满,是一条,和四周有空隙"。inline-flex 让宽度 fit
+   content(包 meta + tools),align-self flex-start 防止被 .ma-row
+   (flex column)stretch 撑满。margin-left 12 让反色条距 row 左边有空隙。 */
 body[data-mem-style="film"] .memory-app-page .ma-row-meta-row {
-  margin: 10px 0 6px;
+  display: inline-flex;
+  align-self: flex-start;
+  margin: 10px 12px 6px;
   background: var(--fg);
   color: var(--surface);
   padding: 3px 12px;
+  gap: 8px;
 }
 /* tools 在 fg 暗底上,默认 --muted 看不见;改 surface 浅色 */
 body[data-mem-style="film"] .memory-app-page .ma-row-meta-row .ma-row-edit,
@@ -877,19 +884,9 @@ body[data-mem-style="planner"] .memory-app-page .mem-chips > span {
   color: var(--fg);
   padding: 2px 8px;
 }
-/* T35: planner chip padding-left 8 不是通用 7,chips margin-left 也得 -8
-   让 chip 内文字完全跟 title 对齐(原 -7 残留 1px 偏右 user 仍嫌不齐)。 */
-body[data-mem-style="planner"] .memory-app-page .ma-row-header > .mem-chips {
-  margin-left: -8px;
-}
-/* cabinet chip 同 padding 8 也需 -8 */
-body[data-mem-style="cabinet"] .memory-app-page .ma-row-header > .mem-chips {
-  margin-left: -8px;
-}
-/* film chip padding 6 — 通用 -7 反而偏左 1,改 -6 */
-body[data-mem-style="film"] .memory-app-page .ma-row-header > .mem-chips {
-  margin-left: -6px;
-}
+/* T35 v3: 各风格 chips margin-left 整体抵消方式作废 — 改用通用 first-child
+   chip padding-left: 0,让 chip frame + chip text 都跟 title 完全对齐。
+   各风格 chip padding 不同也不再影响对齐(都是第一个 padding 强制 0)。 */
 body[data-mem-style="planner"] .memory-app-page .mem-tag,
 body[data-mem-style="planner"] .memory-app-page .mem-tier,
 body[data-mem-style="planner"] .memory-app-page .mem-timerange,
