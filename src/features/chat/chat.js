@@ -263,7 +263,12 @@ export async function mountChat(container, params, router) {
     return changed;
   }
 
-  async function refresh() {
+  // opts.preserveScroll = true → 渲染完不强制滚到底(给 banner toggle 用 —
+  //   user 在历史上方点 banner 展开,如果 refresh 强制 scrollTop=scrollHeight
+  //   会直接跳到底,banner 展开内容跑出视区,体感就是"点不开")。
+  async function refresh(opts = {}) {
+    const preserveScroll = opts.preserveScroll === true;
+    const prevScrollTop = preserveScroll ? stream.scrollTop : 0;
     const msgs = await db.query('chatMessages', 'sessionId', sessionId);
     msgs.sort((a, b) => a.createdAt - b.createdAt);
     // 先 expire 过期红包,再渲染 — refresh 内只跑一次扫描,完事就 redo query
@@ -339,7 +344,11 @@ export async function mountChat(container, params, router) {
     }
     flushGroup();
     stream.innerHTML = parts.join('');
-    stream.scrollTop = stream.scrollHeight;
+    if (preserveScroll) {
+      stream.scrollTop = prevScrollTop;
+    } else {
+      stream.scrollTop = stream.scrollHeight;
+    }
     // C2: devMode 下顺手算下次发送的 tokens 估算。中文 ≈ 1.5 token/字、ASCII
     // ≈ 0.3 token/char(粗略 — 真值要 tiktoken,这里只是 ballpark 给 user 心
     // 里有数)。fire-and-forget,失败显示 '?' 不打断 chat。
@@ -708,12 +717,14 @@ export async function mountChat(container, params, router) {
 
   const onStreamClick = async (e) => {
     // Archive banner: toggle the group's expanded state, then re-render.
+    // preserveScroll:user 通常在视区中部 / 上方点 banner,如果 refresh 默认
+    //   滚到底会让展开内容跑出视区,体感就是"点不开"。保留 scrollTop 即可。
     const banner = e.target.closest('.archive-banner');
     if (banner) {
       const key = banner.dataset.groupKey;
       if (expandedArchiveGroups.has(key)) expandedArchiveGroups.delete(key);
       else                                  expandedArchiveGroups.add(key);
-      await refresh();
+      await refresh({ preserveScroll: true });
       return;
     }
 
