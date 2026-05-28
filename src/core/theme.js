@@ -180,49 +180,77 @@ const PINK_PALETTE = {
 
 // One-click presets — the editor renders a row of chips at the top that copies
 // the preset's values into the draft. Users can still tweak after applying.
+// 12 套预设。原 13 → 12:删「默认 iOS 蓝」(跟黑白灰逐字节重复)+ 删
+// 「黑白灰」(并进素白)。名字全两字。3 套改色(夜紫→浅紫、深青→荷紫、
+// 暖琥珀→琥珀),1 套新增(浅荷)。配色对照 docs / presets-all.html demo。
+//
+// id 命名:历史 id 保留不动(向后兼容,user 自定义 preset 不会撞);改色的
+// 套也保留旧 id(night-violet / deep-teal / warm-amber)避免老 settings 引用
+// 失效。新增"浅荷"用 light-mint。
 export const THEME_PRESETS = [
-  // 「素白」放最前 — 灰白通透玻璃,鼓励 user 自配浅色壁纸,呈现"白瓷玻璃
-  // 浮在风景上"的感觉。bubbleChar 用 rgba 留 alpha(同雾屿系列的 caveat,
-  // 色 picker 读 rgba 退化成 hex)。
+  // 素白 — 灰白通透玻璃,鼓励 user 自配浅色壁纸,白瓷玻璃浮在风景上的感觉。
+  //   原黑白灰 preset 已经并进来(配色范围一致),mono 删了。
   {
     id: 'misty-white',
     label: '素白',
     theme: {
       notch: false,
       bg:           '#F4F4F2',
-      fg:           '#3A3A38',           // 中灰,不是纯黑 — 整体柔
+      fg:           '#3A3A38',
       surface:      '#FFFFFF',
-      accent:       '#6B6B68',           // 石墨灰,不抢色
+      accent:       '#6B6B68',
       muted:        '#9A9A95',
       border:       '#E0DFDB',
-      bubbleUser:   '#3A3A38',           // 用户气泡用 fg 色,深灰
+      bubbleUser:   '#3A3A38',
       bubbleUserFg: '#F4F4F2',
-      bubbleChar:   'rgba(255,255,255,0.5)',  // 半透明白,壁纸透出来
+      bubbleChar:   'rgba(255,255,255,0.55)',
       bubbleCharFg: '#3A3A38',
       outsideBg:    '#D8D8D4',
       bgPinned:     '#EFEEEB',
       fontFamily:   'rounded',
       fontSize:     15,
-      radius:       22,                  // 圆润,跟柔光感配
+      radius:       22,
       effects: {
         glass:          'liquid',
-        glassIntensity: 90,              // 强玻璃,反射 + 模糊明显
+        glassIntensity: 90,
         gradient:       false,
         gradientTo:     '#EFEEEB',
         texture:        'none',
         transparency:   0,
-        surfaceAlpha:   75,              // page 大幅透出 — 壁纸是这套的灵魂
+        surfaceAlpha:   75,
       },
     },
   },
+  // 墨黑 — 唯一暗色中性预设。原 "黑色" 改名;surface 从 #1C1C1E 调到
+  //   demo 的卡色 #2C2C2E 让对方气泡跟 card 同色。
   {
-    id: 'default',
-    label: '默认 iOS 蓝',
-    theme: { ...DEFAULT_THEME, effects: { ...DEFAULT_THEME.effects } },
+    id: 'dark',
+    label: '墨黑',
+    theme: {
+      notch: false,
+      bg:           '#0F0F12',
+      fg:           '#F5F5F7',
+      surface:      '#2C2C2E',
+      accent:       '#0A84FF',
+      muted:        '#98989D',
+      border:       '#38383A',
+      bubbleUser:   '#0A84FF',
+      bubbleUserFg: '#FFFFFF',
+      bubbleChar:   'rgba(44,44,46,0.6)',
+      bubbleCharFg: '#F5F5F7',
+      outsideBg:    '#000000',
+      bgPinned:     '#2C2C2E',
+      fontFamily: 'system',
+      fontSize:   15,
+      radius:     12,
+      effects: { glass: 'liquid', glassIntensity: 80, gradient: false, gradientTo: '#1C1C1E', texture: 'none', transparency: 0, surfaceAlpha: 0 },
+    },
   },
+  // 黛蓝 — 原 "蓝灰衬线",label 两字化。bubbleChar 改 rgba(255,255,255,0.62)
+  //   匹配 demo 玻璃感。
   {
     id: 'blue-grey-serif',
-    label: '蓝灰衬线',
+    label: '黛蓝',
     theme: {
       notch: false,
       bg:           '#EEF1F5',
@@ -233,7 +261,7 @@ export const THEME_PRESETS = [
       border:       '#E0E6EE',
       bubbleUser:   '#7E9AB5',
       bubbleUserFg: '#FFFFFF',
-      bubbleChar:   '#FFFFFF',
+      bubbleChar:   'rgba(255,255,255,0.62)',
       bubbleCharFg: '#171A21',
       outsideBg:    '#E0E6EE',
       bgPinned:     '#F5F8FC',
@@ -243,54 +271,16 @@ export const THEME_PRESETS = [
       effects: { glass: 'frosted', gradient: false, gradientTo: '#cce4ff', texture: 'none', transparency: 0 },
     },
   },
-  {
-    id: 'dark',
-    label: '黑色',
-    theme: {
-      notch: false,
-      ...DARK_PALETTE,
-      fontFamily: 'system',
-      fontSize:   15,
-      radius:     12,
-      effects: { glass: 'liquid', gradient: false, gradientTo: '#1C1C1E', texture: 'none', transparency: 0 },
-    },
-  },
-  {
-    id: 'mono',
-    label: '黑白灰',
-    theme: {
-      notch: false,
-      bg:           '#F4F4F5',
-      fg:           '#1A1A1A',
-      surface:      '#FFFFFF',
-      accent:       '#3A3A3A',
-      muted:        '#8A8A8A',
-      border:       '#D6D6D6',
-      bubbleUser:   '#2C2C2C',
-      bubbleUserFg: '#F5F5F5',
-      bubbleChar:   '#ECECEC',
-      bubbleCharFg: '#1A1A1A',
-      outsideBg:    '#D6D6D6',
-      bgPinned:     '#EDEDED',
-      fontFamily:   'system',
-      fontSize:     15,
-      radius:       10,
-      // glass: 'none' 避免 frosted/liquid/metal 出彩色高光 — 黑白灰要纯粹。
-      effects: { glass: 'none', gradient: false, gradientTo: '#E8E8E8', texture: 'none', transparency: 0 },
-    },
-  },
+  // 嫩粉 — 原 "嫩粉液态金属",label 两字化。配色不变(玫瑰金液态金属)。
   {
     id: 'pink-metal',
-    label: '嫩粉液态金属',
+    label: '嫩粉',
     theme: {
       notch: false,
       ...PINK_PALETTE,
       fontFamily: 'rounded',
       fontSize:   15,
-      radius:     18,  // softer corners for rose-gold device feel
-      // Subtler gradient — fade to a barely-pinker tone rather than the
-      // pronounced FFD3E0 of the first pass. Keeps the "rose-gold device"
-      // mood without making the page wash visibly pink.
+      radius:     18,
       effects: { glass: 'metal', gradient: true, gradientTo: '#FCE6EE', texture: 'none', transparency: 0 },
     },
   },
@@ -307,7 +297,7 @@ export const THEME_PRESETS = [
   // ────────────────────────────────────────────────────────────────────
   {
     id: 'glass-ink-night',
-    label: '雾屿 · 雪夜',
+    label: '雪夜',
     theme: {
       notch: false,
       bg:           '#1A1A1F',
@@ -338,7 +328,7 @@ export const THEME_PRESETS = [
   },
   {
     id: 'glass-ink-dawn',
-    label: '雾屿 · 晨雾',
+    label: '晨雾',
     theme: {
       notch: false,
       bg:           '#E8E6E2',
@@ -381,7 +371,7 @@ export const THEME_PRESETS = [
   // ────────────────────────────────────────────────────────────────────
   {
     id: 'script-letter',
-    label: '缄默 · 旧信',
+    label: '旧信',
     theme: {
       notch: false,
       bg:           '#ECE9E2',
@@ -414,7 +404,7 @@ export const THEME_PRESETS = [
   },
   {
     id: 'script-night',
-    label: '缄默 · 夜读',
+    label: '夜读',
     theme: {
       notch: false,
       bg:           '#15130F',
@@ -446,101 +436,143 @@ export const THEME_PRESETS = [
     },
   },
   // ────────────────────────────────────────────────────────────────────
-  // 三色补全(紫 / 青 / 黄)— user 反馈:仓库没有独立的紫青色调,黄色只有
-  // 「缄默 · 夜读」的辅助老纸黄。每套自带不同 radius / glass / texture 气质,
-  // 避免新预设视觉过于雷同。月相 v3 走 --accent 推导,这三套切到 cosmic
-  // 风格会自然呈现紫月 / 青月 / 黄月。
+  // 浅色三套 + 荷紫渐变 — demo 重做后的轻盈版本。
+  //   浅荷:新增,light mint。
+  //   浅紫:由原"夜紫"改色 — 去荧光 / 转浅柔(底色从深紫黑变浅紫白)。
+  //   荷紫:由原"深青"改色 — 薄荷→紫渐变气泡,主屏渐变 bg。
+  //   琥珀:由原"暖琥珀"调通透 — 底色更亮,主色降饱和。
   // ────────────────────────────────────────────────────────────────────
   {
-    id: 'night-violet',
-    label: '夜紫',
+    id: 'light-mint',
+    label: '浅荷',
     theme: {
       notch: false,
-      bg:           '#1A1232',           // 深紫底,跟 cosmic 风格深紫黑同源
-      fg:           '#ECE6D8',           // 米白文字
-      surface:      '#2A1F4A',           // 深紫卡,比 bg 稍亮
-      accent:       '#9A86D6',           // 柔紫(月光紫)— 不刺眼
-      muted:        '#8C80A8',
-      border:       '#38305A',
-      bubbleUser:   '#9A86D6',
-      bubbleUserFg: '#FFFFFF',
-      bubbleChar:   'rgba(255,255,255,0.07)',
-      bubbleCharFg: '#ECE6D8',
-      outsideBg:    '#0D0A1E',
-      bgPinned:     '#2F2655',
+      bg:           '#E9F5F2',
+      fg:           '#243634',
+      surface:      '#FFFFFF',
+      accent:       '#84B8B1',
+      muted:        '#7FA7A1',
+      border:       '#B4DED6',
+      bubbleUser:   '#84B8B1',
+      bubbleUserFg: '#F5FBFA',
+      bubbleChar:   'rgba(255,255,255,0.6)',
+      bubbleCharFg: '#243634',
+      outsideBg:    '#C8E8E0',
+      bgPinned:     '#DCEFEA',
       fontFamily:   'system',
       fontSize:     15,
-      radius:       16,                  // 柔圆 — 夜晚的圆润感
+      radius:       16,
       effects: {
-        glass:          'liquid',         // 紫底 + liquid 玻璃 = 夜色质感
-        glassIntensity: 80,
+        glass:          'liquid',
+        glassIntensity: 75,
         gradient:       false,
-        gradientTo:     '#2F2655',
-        texture:        'noise',           // 细微噪点 = 星空像素粒
+        gradientTo:     '#DCEFEA',
+        texture:        'none',
         transparency:   0,
-        surfaceAlpha:   65,
+        surfaceAlpha:   60,
       },
     },
   },
+  // 浅紫 — 原 night-violet 改色。从深紫黑改成浅紫白系,去荧光紫,转浅柔
+  //   (#A6A3C7 取代 #9A86D6,底色从 #1A1232 变 #F0EEF8)。id 不动向后兼容。
+  {
+    id: 'night-violet',
+    label: '浅紫',
+    theme: {
+      notch: false,
+      bg:           '#F0EEF8',
+      fg:           '#2F2C3E',
+      surface:      '#FFFFFF',
+      accent:       '#A6A3C7',
+      muted:        '#9A97B2',
+      border:       '#D2CEEA',
+      bubbleUser:   '#A6A3C7',
+      bubbleUserFg: '#FBFAFF',
+      bubbleChar:   'rgba(255,255,255,0.6)',
+      bubbleCharFg: '#2F2C3E',
+      outsideBg:    '#D2CEEA',
+      bgPinned:     '#E7E4F3',
+      fontFamily:   'system',
+      fontSize:     15,
+      radius:       16,
+      effects: {
+        glass:          'liquid',
+        glassIntensity: 75,
+        gradient:       false,
+        gradientTo:     '#E7E4F3',
+        texture:        'none',
+        transparency:   0,
+        surfaceAlpha:   60,
+      },
+    },
+  },
+  // 荷紫 — 原 deep-teal 改色。从深青墨绿改成薄荷→紫渐变系。气泡用渐变是
+  //   demo 的精髓 — bubbleUser 是 linear-gradient CSS 字符串(base.css 用
+  //   `background: var(--bubble-user)` shorthand 接 gradient,渲染没问题)。
+  //   主屏 bg 也设 gradient(effects.gradient=true + gradientTo 紫端)。
   {
     id: 'deep-teal',
-    label: '深青',
+    label: '荷紫',
     theme: {
       notch: false,
-      bg:           '#0E2A30',           // 深青墨绿
-      fg:           '#D8E8E0',           // 柔白米绿
-      surface:      '#143840',           // 深青卡
-      accent:       '#6EE0C8',           // 明青绿(发光生物色)
-      muted:        '#7A9890',
-      border:       '#1F4A52',
-      bubbleUser:   '#6EE0C8',
-      bubbleUserFg: '#0E2A30',           // 深底深字反差 — 沉静感
-      bubbleChar:   '#1B454D',
-      bubbleCharFg: '#D8E8E0',
-      outsideBg:    '#051A20',
-      bgPinned:     '#1A4048',
+      bg:           '#E7F4F0',
+      fg:           '#2B3340',
+      surface:      '#FFFFFF',
+      accent:       '#8FA6C8',
+      muted:        '#8B96A4',
+      border:       '#C6D4E4',
+      bubbleUser:   'linear-gradient(135deg,#8EC6BD 0%,#A6A3C7 100%)',
+      bubbleUserFg: '#FCFCFF',
+      bubbleChar:   'rgba(255,255,255,0.58)',
+      bubbleCharFg: '#2B3340',
+      outsideBg:    '#C8DBD6',
+      bgPinned:     '#ECEDF6',
       fontFamily:   'system',
       fontSize:     15,
-      radius:       4,                   // 硬朗几何感(跟柔紫对比)
+      radius:       14,
       effects: {
-        glass:          'frosted',        // 毛玻璃 — 比 liquid 收敛
-        glassIntensity: 70,
-        gradient:       false,
-        gradientTo:     '#1A4048',
-        texture:        'lines',           // 斜纹 = 深海纹理
+        glass:          'liquid',
+        glassIntensity: 75,
+        gradient:       true,
+        gradientTo:     '#ECE8F6',           // 屏底紫端,跟气泡渐变同源
+        texture:        'none',
         transparency:   0,
-        surfaceAlpha:   55,
+        surfaceAlpha:   58,
       },
     },
   },
+  // 琥珀 — 原 warm-amber 调通透。底/卡都调到 demo 给的更亮档(#FFF8EC /
+  //   #FFF7E6),accent 从 #E89A38 降饱和到 #DDA863(更耐看),border 同步
+  //   #F0E0BE。改用 liquid 玻璃 + 60% surfaceAlpha 让光透感出来(原 'none'
+  //   纯色看着闷),保留 rounded font + 22 radius 复古海报糖块感。
   {
     id: 'warm-amber',
-    label: '暖琥珀',
+    label: '琥珀',
     theme: {
       notch: false,
-      bg:           '#FFF7E8',           // 柔奶黄
-      fg:           '#3A2A18',           // 深咖文字
-      surface:      '#FFFCF4',           // 米白卡
-      accent:       '#E89A38',           // 温琥珀橙黄
+      bg:           '#FFF8EC',
+      fg:           '#3A2A18',
+      surface:      '#FFF7E6',
+      accent:       '#DDA863',
       muted:        '#A8927A',
-      border:       '#F0DBB0',
-      bubbleUser:   '#E89A38',
+      border:       '#F0E0BE',
+      bubbleUser:   '#DDA863',
       bubbleUserFg: '#FFFCF4',
-      bubbleChar:   '#FFEFCC',
+      bubbleChar:   'rgba(255,247,230,0.66)',
       bubbleCharFg: '#3A2A18',
       outsideBg:    '#E8D8B0',
       bgPinned:     '#FFF0CC',
-      fontFamily:   'rounded',           // 圆体 + 大圆角 = 软糖暖意
+      fontFamily:   'rounded',
       fontSize:     15,
-      radius:       22,                  // 超圆 — 复古海报糖块感
+      radius:       22,
       effects: {
-        glass:          'none',           // 纯色不要玻璃,保留奶黄通透
-        glassIntensity: 100,
+        glass:          'liquid',
+        glassIntensity: 70,
         gradient:       false,
-        gradientTo:     '#FFF0CC',
-        texture:        'dots',           // 点阵 = 旧复古印刷感
+        gradientTo:     '#FBEED0',
+        texture:        'none',
         transparency:   0,
-        surfaceAlpha:   0,
+        surfaceAlpha:   60,
       },
     },
   },
