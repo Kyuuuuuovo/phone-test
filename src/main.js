@@ -420,6 +420,13 @@ async function setupPet(router) {
       await openMemoryHelperPanel(cur.params.sessionId);
       return;
     }
+    // T33: memory app 短点 → 跨会话 helper(列各会话 + 每个会话重置 / 重新提取)
+    if (cur?.id === 'memory') {
+      const existing = document.querySelector('.memory-helper-backdrop');
+      if (existing) { existing.remove(); return; }
+      await openCrossSessionMemoryPanel();
+      return;
+    }
     await showBubble({ forceFresh: true });
   });
   // Right-click anywhere on the orb → go straight to chat.
@@ -667,6 +674,118 @@ async function openMemoryHelperPanel(sessionId) {
       } catch (e) {
         statusEl.textContent = '失败:' + String(e).slice(0, 100);
       }
+    });
+  }
+
+  await render();
+}
+
+// T33: memory app 跨会话 helper — 桌宠短点在 memory app 时弹这个。
+// 列所有 chatSessions(排除 __bear__)+ 每个 session 的 memory 数 + 重置 /
+// 重新提取按钮。复用 chat 内 helper 的 resetMemoriesForSession + context.
+// maybeCompressMemory。空 session 不显示按钮(防误操作)。
+async function openCrossSessionMemoryPanel() {
+  const frame = document.querySelector('.phone-frame');
+  if (!frame) return;
+  document.querySelector('.memory-helper-backdrop')?.remove();
+
+  const esc = (s) => String(s ?? '').replace(/[&"<>]/g, c => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'}[c]));
+
+  async function render() {
+    const allSessions = await db.getAll('chatSessions');
+    const sessions = allSessions.filter(s => s.characterId !== '__bear__');
+    const chars = await db.getAll('characters');
+    const allMems = await db.getAll('memories');
+    const memByS = new Map();
+    for (const m of allMems) {
+      memByS.set(m.sessionId, (memByS.get(m.sessionId) || 0) + 1);
+    }
+    sessions.sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop memory-helper-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal memory-helper-modal">
+        <div class="modal-header">记忆助手 · 跨会话</div>
+        <div class="mh-section">
+          <div class="mh-label">所有会话(${sessions.length})— 点按钮对该会话操作</div>
+          ${sessions.length === 0 ? `
+            <div class="mh-empty">还没有会话。</div>
+          ` : `
+            <div class="mh-xs-list">
+              ${sessions.map(s => {
+                const c = chars.find(x => x.id === s.characterId);
+                const memCount = memByS.get(s.id) || 0;
+                return `
+                  <div class="mh-xs-row" data-session-id="${esc(s.id)}">
+                    <div class="mh-xs-meta">
+                      <div class="mh-xs-name">${esc(c?.name || s.title || '(未命名)')}</div>
+                      <div class="mh-xs-count">${memCount} 条总结</div>
+                    </div>
+                    <div class="mh-xs-actions">
+                      <button type="button" class="btn secondary mh-xs-reset" title="删 memory + unarchive 消息">重置</button>
+                      <button type="button" class="btn mh-xs-resum" title="重置后立即跑一次压缩">重新提取</button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `}
+          <div class="mh-mem-status mh-xs-status"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn close-btn">关闭</button>
+        </div>
+      </div>
+    `;
+    frame.appendChild(backdrop);
+
+    const close = () => backdrop.remove();
+    const statusEl = backdrop.querySelector('.mh-xs-status');
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+    backdrop.querySelector('.close-btn').addEventListener('click', close);
+
+    backdrop.querySelectorAll('.mh-xs-reset').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const row = btn.closest('[data-session-id]');
+        const sid = row?.dataset.sessionId;
+        if (!sid) return;
+        if (!await openConfirm(frame, {
+          title: '重置该会话记忆',
+          message: '会删除这个会话的所有总结、把被压缩的消息恢复成正常聊天记录。不会立即重新生成。继续?',
+          confirmLabel: '重置', danger: true,
+        })) return;
+        statusEl.textContent = '重置中…';
+        try {
+          await resetMemoriesForSession(sid);
+          statusEl.textContent = '已重置';
+          setTimeout(() => { close(); openCrossSessionMemoryPanel(); }, 600);
+        } catch (e) {
+          statusEl.textContent = '失败:' + String(e).slice(0, 100);
+        }
+      });
+    });
+
+    backdrop.querySelectorAll('.mh-xs-resum').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const row = btn.closest('[data-session-id]');
+        const sid = row?.dataset.sessionId;
+        if (!sid) return;
+        if (!await openConfirm(frame, {
+          title: '重新提取该会话记忆',
+          message: '会删现有总结、恢复被压消息,然后基于当前所有消息重新生成总结。会调用 AI(可能慢)。继续?',
+          confirmLabel: '重新提取', danger: true,
+        })) return;
+        statusEl.textContent = '重置 + AI 生成中…';
+        try {
+          await resetMemoriesForSession(sid);
+          await context.maybeCompressMemory(sid);
+          statusEl.textContent = '已重新提取';
+          setTimeout(() => { close(); openCrossSessionMemoryPanel(); }, 800);
+        } catch (e) {
+          statusEl.textContent = '失败:' + String(e).slice(0, 100);
+        }
+      });
     });
   }
 

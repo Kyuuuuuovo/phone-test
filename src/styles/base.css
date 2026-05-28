@@ -5835,6 +5835,47 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
   opacity: 0.85;
 }
 
+/* T33 跨会话 memory helper 行 — 每个会话一行,左边名字+计数,右边两按钮。
+   桌宠在 memory app 短点时弹出。 */
+.mh-xs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.mh-xs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  background: var(--bubble-char);
+}
+.mh-xs-meta { flex: 1; min-width: 0; }
+.mh-xs-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mh-xs-count {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.mh-xs-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.mh-xs-actions .btn {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
 /* T25 chat-beautify 气泡 preset 卡片网格 — 2 列,每张卡片显示 label + hint
    一句,点击 active 切 attr 应用预览(保存到 character.chatBubbleStyle.preset)。 */
 .chat-beautify-page .bubble-preset-grid {
