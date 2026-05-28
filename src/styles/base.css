@@ -5752,13 +5752,12 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
 .memory-app-page .ma-row-header .mem-chips {
   flex: 1;
   margin-bottom: 0;
-  /* T35 v3: chips margin-left 0 + 第一个 chip padding-left 0 让 chip 框
-     跟 title text 完全同位置(原 -7~-8 margin 让 chip 框比 title 偏左 ≥7px,
-     user 反馈仍"有空隙")。第一个 chip 视觉 padding 不对称是 trade-off。 */
+  /* T35 v4: chips margin-left 0 + 各 chip 保留对称 padding(让 chip 内 text
+     居中 chip frame,user 反馈"L1 应该在框里居中")。chip frame outer-left
+     跟 title text-left 都在 row.padding-left,chip 内 text 比 title text
+     偏右 padding 距离(7-8px)— 这是 chip 视觉框对齐的 trade-off,user
+     选择居中 over text 对齐。 */
   margin-left: 0;
-}
-.memory-app-page .ma-row-header > .mem-chips > span:first-child {
-  padding-left: 0;
 }
 .memory-app-page .ma-row-tools {
   display: flex;

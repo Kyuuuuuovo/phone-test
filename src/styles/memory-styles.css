@@ -664,15 +664,16 @@ body[data-mem-style="film"] .memory-app-page .ma-row-meta {
 }
 /* T35 v2: meta-row 改 inline-flex + align-self flex-start — user 反馈
    "反色阴影不是占满,是一条,和四周有空隙"。inline-flex 让宽度 fit
-   content(包 meta + tools),align-self flex-start 防止被 .ma-row
-   (flex column)stretch 撑满。margin-left 12 让反色条距 row 左边有空隙。 */
+   content(包 meta + tools)。
+   T35 v4: padding 上下从 3 → 1(user 反馈"太他妈高了"),margin 上下
+   对称 8px(原 10/6 不对称 user 反馈"上下没对齐")。 */
 body[data-mem-style="film"] .memory-app-page .ma-row-meta-row {
   display: inline-flex;
   align-self: flex-start;
-  margin: 10px 12px 6px;
+  margin: 8px 12px;
   background: var(--fg);
   color: var(--surface);
-  padding: 3px 12px;
+  padding: 1px 10px;
   gap: 8px;
 }
 /* tools 在 fg 暗底上,默认 --muted 看不见;改 surface 浅色 */
