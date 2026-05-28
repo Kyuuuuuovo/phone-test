@@ -101,11 +101,15 @@ export async function generateMissingDays(sessionId, { onProgress, maxDays = 30 
       });
       const summary = trimSummary(raw);
       if (!summary) { errors++; continue; }
+      // T30: 存 fromTs/toTs 让 UI 显示带 HH:MM 的时间段(老 timeline 没这俩
+      //   字段,UI 端 fallback 到 dayKey 显示)。msgs 已经按 createdAt 排序。
       await db.set('timeline', {
         id: db.newId(),
         sessionId,
         dayKey,
         summary,
+        fromTs: msgs[0]?.createdAt ?? null,
+        toTs:   msgs[msgs.length - 1]?.createdAt ?? null,
         createdAt: Date.now(),
       });
       generated++;

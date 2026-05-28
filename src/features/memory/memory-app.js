@@ -193,6 +193,7 @@ export async function mountMemoryApp(container, params, router) {
   // 时间覆盖范围 — 优先用 m.fromTs / m.toTs(memory 上的字段,context.js
   // formatMemoryWithDate 也用这个),fallback 走 fromMsgId/toMsgId 查 msgIdx,
   // 都没有再用 createdAt。这样消息被删了也能正确显示时间范围。
+  // T30: 格式带 HH:MM 精度 — `YYYY-MM-DD HH:MM[-HH:MM | – YYYY-MM-DD HH:MM]`
   function timeRangeOf(m, msgIdx) {
     let fromTs = m?.fromTs, toTs = m?.toTs;
     if (!Number.isFinite(fromTs) || !Number.isFinite(toTs)) {
@@ -201,12 +202,25 @@ export async function mountMemoryApp(container, params, router) {
       fromTs = from?.createdAt ?? m?.createdAt;
       toTs   = to?.createdAt   ?? m?.createdAt;
     }
+    return formatTimeRangeFull(fromTs, toTs);
+  }
+
+  // 统一时间段格式化 — 让 timeline / memory / 后续其它 row 都用同款格式。
+  // 同分钟 → `YYYY-MM-DD HH:MM`;同天 → `YYYY-MM-DD HH:MM – HH:MM`;
+  // 跨天 → `YYYY-MM-DD HH:MM – YYYY-MM-DD HH:MM`。
+  function formatTimeRangeFull(fromTs, toTs) {
     if (!Number.isFinite(fromTs) || !Number.isFinite(toTs)) return null;
-    const fromDate = new Date(fromTs);
-    const toDate   = new Date(toTs);
-    const fmt = (d) => `${d.getMonth() + 1}月${d.getDate()}日`;
-    const sameDay = fromDate.toDateString() === toDate.toDateString();
-    return sameDay ? fmt(fromDate) : `${fmt(fromDate)}–${fmt(toDate)}`;
+    const fromD = new Date(fromTs);
+    const toD   = new Date(toTs);
+    const pad = (n) => String(n).padStart(2, '0');
+    const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    const hm  = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const sameDay = fromD.toDateString() === toD.toDateString();
+    if (sameDay) {
+      if (hm(fromD) === hm(toD)) return `${ymd(fromD)} ${hm(fromD)}`;
+      return `${ymd(fromD)} ${hm(fromD)} – ${hm(toD)}`;
+    }
+    return `${ymd(fromD)} ${hm(fromD)} – ${ymd(toD)} ${hm(toD)}`;
   }
 
   // 角色 id → 稳定颜色(用于 folder 色条 / chip 头像兜底背景)。简单 hash 取
@@ -350,7 +364,9 @@ export async function mountMemoryApp(container, params, router) {
                 }).join('')}
               </details>`
             : '';
-          const meta = [t.dayKey || '', labelFor(t.sessionId)];
+          // T30: timeline 也带 HH:MM 时间段 — 老 row 没 fromTs/toTs 回退 dayKey
+          const timeLabel = formatTimeRangeFull(t.fromTs, t.toTs) || (t.dayKey || '');
+          const meta = [timeLabel, labelFor(t.sessionId)];
           if (t.mergedFrom) meta.push(`合并(${t.mergedFrom.length})`);
           // T28: timeline 不再打 tag — user 反馈"不打标",timeline 只显日期+事件
           // T29: 每行加 edit + del 按钮 — user 反馈"时间线和记忆没有修改键"
