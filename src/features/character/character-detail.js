@@ -3,6 +3,7 @@
 
 import * as db from '../../core/db.js';
 import { openConfirm } from '../../core/modal.js';
+import { bindFormDirty } from '../../core/form-helpers.js';
 
 export async function mountCharacterDetail(container, params, router) {
   const id = params.id;
@@ -92,6 +93,9 @@ export async function mountCharacterDetail(container, params, router) {
   const toggleBlock  = container.querySelector('.toggle-block');
   const deleteBtn    = container.querySelector('.delete-btn');
   const wbList       = container.querySelector('.wb-mount-list');
+  const saveBtn      = form.querySelector('button[type="submit"]');
+  const dirty        = bindFormDirty(form, saveBtn);
+  dirty.markSaved();
 
   function setStatus(text, kind) {
     status.textContent = text;
@@ -130,6 +134,7 @@ export async function mountCharacterDetail(container, params, router) {
     e.preventDefault();
     await saveFromForm();
     setStatus('已保存', 'success');
+    dirty.markSaved();
   };
 
   const onUpload = () => fileInput.click();
@@ -147,6 +152,7 @@ export async function mountCharacterDetail(container, params, router) {
       avatarData = reader.result;
       refreshAvatarPreview();
       setStatus('头像已加载,点保存写入', 'success');
+      dirty.markDirty();
     };
     reader.onerror = () => setStatus('读取图片失败', 'error');
     reader.readAsDataURL(file);
@@ -156,6 +162,7 @@ export async function mountCharacterDetail(container, params, router) {
     avatarData = null;
     refreshAvatarPreview();
     setStatus('头像已清除,点保存写入', 'success');
+    dirty.markDirty();
   };
 
   const onToggleBlock = async () => {

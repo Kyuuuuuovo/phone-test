@@ -7,6 +7,7 @@
 import * as db from '../../core/db.js';
 import { openConfirm } from '../../core/modal.js';
 import * as ai from '../../core/ai.js';
+import { bindFormDirty } from '../../core/form-helpers.js';
 
 export async function mountApiDetail(container, params, router) {
   const id = params.id;
@@ -52,7 +53,7 @@ export async function mountApiDetail(container, params, router) {
           <div class="model-list" hidden></div>
           <label>
             <div class="label-text">Temperature(0-2)</div>
-            <input name="temperature" type="number" step="0.1" min="0" max="2" value="${config.temperature ?? 0.8}">
+            <input name="temperature" type="number" step="0.001" min="0" max="2" value="${config.temperature ?? 0.8}">
           </label>
           <label>
             <div class="label-text">Max tokens(可选 · 留空走供应商默认。多动作 JSON 数组建议至少 2048)</div>
@@ -80,6 +81,9 @@ export async function mountApiDetail(container, params, router) {
   const setActive  = container.querySelector('.set-active');
   const deleteBtn  = container.querySelector('.delete-btn');
   const modelList  = container.querySelector('.model-list');
+  const saveBtn    = form.querySelector('button[type="submit"]');
+  const dirty      = bindFormDirty(form, saveBtn);
+  dirty.markSaved();
 
   async function saveFromForm() {
     const fd = new FormData(form);
@@ -109,6 +113,7 @@ export async function mountApiDetail(container, params, router) {
     e.preventDefault();
     await saveFromForm();
     setStatus('已保存', 'success');
+    dirty.markSaved();
   };
 
   const onTest = async () => {

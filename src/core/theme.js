@@ -57,20 +57,22 @@ export const GLASS_OPTIONS = [
   { id: 'metal',   label: '液态金属' },
 ];
 
+// T5: 默认主题从 iOS 蓝调成黑白灰 — 跟「黑白灰」preset 同一组色 + glass: none。
+// 旧用户的 settings.theme 已经写到 IDB,不会被改;只影响新用户 / clear-data 后。
 export const DEFAULT_THEME = Object.freeze({
   notch: false,
-  bg:           '#f5f5f7',
-  fg:           '#1d1d1f',
-  surface:      '#ffffff',
-  accent:       '#007aff',
-  muted:        '#86868b',
-  border:       '#d2d2d7',
-  bubbleUser:   '#007aff',
-  bubbleUserFg: '#ffffff',
-  bubbleChar:   '#e9e9eb',
-  bubbleCharFg: '#1d1d1f',
-  outsideBg:    '#c7c7cc',
-  bgPinned:     '#ebebef',
+  bg:           '#F4F4F5',
+  fg:           '#1A1A1A',
+  surface:      '#FFFFFF',
+  accent:       '#3A3A3A',
+  muted:        '#8A8A8A',
+  border:       '#D6D6D6',
+  bubbleUser:   '#2C2C2C',
+  bubbleUserFg: '#F5F5F5',
+  bubbleChar:   '#ECECEC',
+  bubbleCharFg: '#1A1A1A',
+  outsideBg:    '#D6D6D6',
+  bgPinned:     '#EDEDED',
   fontFamily:   'system',
   fontSize:     15,
   // 自定义字体:fontFamily === 'custom' 时生效,中文 / 英文各一对(family +

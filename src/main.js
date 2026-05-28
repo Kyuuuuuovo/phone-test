@@ -203,6 +203,19 @@ async function boot() {
   notify.init(router);
   scheduleNotify.start(router);
 
+  // T5: 桌面浏览器 .preset-scroll(主题预设 / 向量记忆 endpoint 预设那种横向 chip 行)
+  // 在没有触屏的情况下用户没法滑 — 滚动条 CSS 又是 display: none。这里加一个
+  // 文档级 wheel delegate:鼠标在 .preset-scroll 上滚 → 转成横向 scrollLeft。
+  // passive: false 因为要 preventDefault 阻止 page 一起滚。
+  document.addEventListener('wheel', (e) => {
+    const scroller = e.target.closest?.('.preset-scroll');
+    if (!scroller) return;
+    if (Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;  // 已经是横向滚,不拦
+    if (scroller.scrollWidth <= scroller.clientWidth) return;  // 不需要滚
+    e.preventDefault();
+    scroller.scrollLeft += e.deltaY;
+  }, { passive: false });
+
   // 注册 AI 主动动作的副作用 handler。dispatchActions 调它把 action 写到
   // 业务 store 里。目前只有 add_schedule_entry — 角色对话里提了"明天 3
   // 点开会"模型输出这个 action,handler 自动写入 schedule store。

@@ -30,6 +30,11 @@
 }
 
 * { box-sizing: border-box; }
+/* 点击反馈净化 — 浏览器默认在 <button>/<a> 上画一层方形半透明灰底(不跟
+   border-radius),与 .app-icon / .widget 的圆角 squircle 不匹配,看起来像"点
+   下去之后多出一块方阴影"。我们已经用 :active scale + box-shadow 做了自己
+   的反馈,UA 默认的多余 highlight 关掉。 */
+* { -webkit-tap-highlight-color: transparent; }
 /* 视窗高度 chain —— html/body/#app 都强制 100dvh(动态视窗高度,iOS Safari
    URL bar 收起/展开会跟着改),fallback 到 100vh 给老浏览器。100vh 在 iOS
    Safari 是"全屏含 URL bar"的高度,导致 body 比可见区高,user 能往下滚一
@@ -557,6 +562,27 @@ label .label-text {
   color: var(--muted);
   margin-bottom: 4px;
 }
+/* T7: label-text 内联的小提示 — 用在「设于 X 前」「字符数:N/80」之类的元信息,
+   字号更小、颜色更淡、左侧留点 gap。 */
+.label-text .hint-inline {
+  font-size: 11px;
+  color: var(--muted);
+  opacity: 0.7;
+  margin-left: 8px;
+  font-weight: normal;
+}
+
+/* T8: form dirty 状态 — bindFormDirty helper 在 saveBtn 上加/去 .saved。
+   saved 时变灰、扁平化、不响应 hover/active transform — 让用户一眼看出
+   "这一轮已经保存了,不用再点"。再有 input 又翻回原色。 */
+.btn.saved {
+  background: transparent;
+  color: var(--muted);
+  border-color: color-mix(in srgb, var(--border) 80%, transparent);
+  cursor: default;
+}
+.btn.saved:hover,
+.btn.saved:active { transform: none; box-shadow: none; }
 
 .btn {
   padding: 10px 16px;
@@ -1997,6 +2023,57 @@ body[data-fx-glass="metal"] .widget.widget-music::after { display: none; }
   color: var(--muted);
   line-height: 1.4;
 }
+/* T4: 用户自定义预设外面包一层 .widget-preset-card-wrap 用来 absolute 定位
+   右上角的 × 删除按钮(只有 user-added preset 有这个 wrap + 按钮)。内置
+   preset 是直接 .widget-preset-card 在 grid 里,所以 wrap 也得占满 cell —
+   display: contents 不行(absolute 没参照),改 block + position: relative。 */
+.widget-preset-card-wrap {
+  position: relative;
+  display: flex;
+}
+.widget-preset-card-wrap > .widget-preset-card { flex: 1; }
+.widget-preset-card-wrap > .preset-delete {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 1;
+}
+.widget-preset-card-wrap:hover > .preset-delete,
+.widget-preset-card-wrap:focus-within > .preset-delete { opacity: 1; }
+/* 触屏 (no hover) 永远显示 —— 跟 .preset-delete 一致的处理 */
+@media (hover: none) {
+  .widget-preset-card-wrap > .preset-delete { opacity: 1; }
+}
+/* 自定义新建 card — 虚线边框 + 居中大 +,跟内置 card 等高 */
+.widget-preset-card.widget-preset-add {
+  border-style: dashed;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.widget-preset-add-glyph {
+  font-size: 32px;
+  font-weight: 300;
+  color: var(--muted);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.widget-preset-card.widget-preset-add .widget-preset-label,
+.widget-preset-card.widget-preset-add .widget-preset-hint {
+  text-align: center;
+}
 /* iOS-style "squircle" tile —— 圆角正方形,占 cell 大头(min(85% 宽, 1fr 高
    - label 空间)),label 在下方小字。aspect-ratio: 1 让 tile 始终正方形,
    width clamp 防止 tile 在大/小 cell 里失控。border-radius: 22% 接近 iOS
@@ -2411,6 +2488,16 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
   scrollbar-width: none;
 }
 .preset-scroll::-webkit-scrollbar { display: none; }
+/* T5: 桌面环境(hover-capable)露一条薄滚动条,让没触屏的 user 能拖着滚。
+   wheel 横滚由 main.js 的 document-level delegate 处理。 */
+@media (hover: hover) {
+  .preset-scroll { scrollbar-width: thin; padding-bottom: 6px; }
+  .preset-scroll::-webkit-scrollbar { display: block; height: 6px; }
+  .preset-scroll::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--muted) 60%, transparent);
+    border-radius: 3px;
+  }
+}
 .preset-chip-wrap {
   position: relative;
   flex: 0 0 auto;

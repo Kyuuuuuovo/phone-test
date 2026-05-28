@@ -4,6 +4,7 @@
 // 决定要不要压。这里的修改即时生效,不需要刷新。
 
 import * as db from '../../core/db.js';
+import { bindFormDirty } from '../../core/form-helpers.js';
 
 const DEFAULT_THRESHOLD = 20;
 const DEFAULT_BATCH = 10;
@@ -62,6 +63,9 @@ export async function mountMemorySettings(container, params, router) {
   const form    = container.querySelector('form');
   const status  = container.querySelector('.form-status');
   const backBtn = container.querySelector('.back');
+  const saveBtn = form.querySelector('button[type="submit"]');
+  const dirty   = bindFormDirty(form, saveBtn);
+  dirty.markSaved();
 
   function setStatus(text, kind) {
     status.textContent = text;
@@ -89,6 +93,7 @@ export async function mountMemorySettings(container, params, router) {
     s.memoryBatchSize = b;
     await db.set('settings', s);
     setStatus('已保存', 'success');
+    dirty.markSaved();
   };
 
   backBtn.addEventListener('click', onBack);

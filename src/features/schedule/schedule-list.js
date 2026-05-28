@@ -300,7 +300,6 @@ export async function mountScheduleList(container, params, router) {
                   <span class="mt-icon" style="${t.color ? `--type-color: ${esc(t.color)};` : ''}">${esc(t.icon || (t.name || '?').slice(0, 1))}</span>
                   <div class="mt-info">
                     <div class="mt-name">${esc(t.name || '(未命名)')}</div>
-                    <div class="mt-freq">${freqLabel(t.targetFreq)}</div>
                   </div>
                   <button class="mt-edit" type="button" title="编辑">编辑</button>
                   <button class="mt-del" type="button" title="删除" aria-label="删除">×</button>
@@ -351,7 +350,7 @@ export async function mountScheduleList(container, params, router) {
     const existing = id ? await db.get('checkinTypes', id) : null;
     const t = existing || {
       name: '', icon: '', color: '#5ec97e',
-      targetFreq: 'daily', reminder: null,
+      reminder: null,
     };
     const modal = document.createElement('div');
     modal.className = 'modal-backdrop';
@@ -371,15 +370,6 @@ export async function mountScheduleList(container, params, router) {
             <div class="label-text">颜色</div>
             <input name="color" type="color" value="${esc(t.color || '#5ec97e')}">
           </label>
-          <label>
-            <div class="label-text">目标频率</div>
-            <select name="targetFreq">
-              <option value="daily"${t.targetFreq === 'daily' ? ' selected' : ''}>每天</option>
-              <option value="weekly:2"${t.targetFreq === 'weekly:2' ? ' selected' : ''}>每周 2 次</option>
-              <option value="weekly:3"${t.targetFreq === 'weekly:3' ? ' selected' : ''}>每周 3 次</option>
-              <option value="weekly:5"${t.targetFreq === 'weekly:5' ? ' selected' : ''}>每周 5 次</option>
-            </select>
-          </label>
           <div class="modal-actions">
             <button type="button" class="btn secondary cancel-btn">取消</button>
             <button type="submit" class="btn">${existing ? '保存' : '创建'}</button>
@@ -393,12 +383,13 @@ export async function mountScheduleList(container, params, router) {
     modal.querySelector('form').addEventListener('submit', async (ev) => {
       ev.preventDefault();
       const fd = new FormData(modal.querySelector('form'));
+      // T6: 不再写 targetFreq 字段 — 打卡纯记录,不做目标频率/连续追踪。老
+      // 数据里 existing.targetFreq 也不带过来(隐式 drop)。
       const next = {
         id: id || db.newId(),
         name: String(fd.get('name') || '').trim() || '(未命名)',
         icon: String(fd.get('icon') || '').trim(),
         color: String(fd.get('color') || '#5ec97e'),
-        targetFreq: String(fd.get('targetFreq') || 'daily'),
         reminder: existing?.reminder || null,
         createdAt: existing?.createdAt || Date.now(),
       };
@@ -686,8 +677,3 @@ function toLocalDT(ts) {
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
-function freqLabel(f) {
-  if (!f || f === 'daily') return '每天';
-  if (f.startsWith('weekly:')) return `每周 ${f.split(':')[1]} 次`;
-  return f;
-}

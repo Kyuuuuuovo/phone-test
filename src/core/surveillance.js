@@ -171,7 +171,10 @@ export async function generateSnapshot(cameraId) {
   if (!character) throw new Error(`generateSnapshot: character ${camera.characterId} not found`);
 
   const persona  = (character.persona || '').trim();
-  const schedule = await buildScheduleLines(character.id);
+  const schedule = await buildScheduleLines(character.id, null, {
+    userName,
+    charName: character.name,
+  });
   const recent   = await recentChatContext(character.id);
   const modeFact = modeFactLine(camera, character);
   const userName = await activePersonaNameFor(character.id);

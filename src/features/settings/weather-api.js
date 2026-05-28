@@ -4,6 +4,7 @@
 
 import * as db from '../../core/db.js';
 import { PRESET_TEMPLATES, fetchWeather } from '../../core/weather.js';
+import { bindFormDirty } from '../../core/form-helpers.js';
 
 export async function mountWeatherApi(container, params, router) {
   const settings = (await db.get('settings', 'default')) || { id: 'default' };
@@ -54,6 +55,9 @@ export async function mountWeatherApi(container, params, router) {
   const presetPicker = container.querySelector('.preset-picker');
   const presetHint  = container.querySelector('.preset-hint');
   const urlInput    = form.elements.urlTemplate;
+  const saveBtn     = form.querySelector('button[type="submit"]');
+  const dirty       = bindFormDirty(form, saveBtn);
+  dirty.markSaved();
 
   function showPresetHint() {
     const match = PRESET_TEMPLATES.find(p => p.urlTemplate === urlInput.value.trim());
@@ -82,6 +86,7 @@ export async function mountWeatherApi(container, params, router) {
     e.preventDefault();
     await saveFromForm();
     setStatus('已保存', 'success');
+    dirty.markSaved();
   };
   const onTest = async () => {
     setStatus('保存配置...');
@@ -103,6 +108,7 @@ export async function mountWeatherApi(container, params, router) {
     urlInput.value = preset.urlTemplate;
     showPresetHint();
     setStatus(`已填入「${preset.label}」模板,补完 key 后点保存`, 'success');
+    dirty.markDirty();
   };
   const onUrlInput = () => showPresetHint();
 

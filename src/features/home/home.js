@@ -158,7 +158,7 @@ function gridStyle(row, col, colSpan, rowSpan, transparency, custom) {
 
 // 倾斜角度 slider helper — 跟 transparency / radius 同款。范围 -30~30 度,
 // 步进 1。0 表示不倾斜。inline live readout 用 wireTiltReadout 绑事件。
-function tiltFieldHtml(current) {
+export function tiltFieldHtml(current) {
   const val = Number.isFinite(current) ? Math.max(-30, Math.min(30, current)) : 0;
   return `
     <label>
@@ -167,13 +167,13 @@ function tiltFieldHtml(current) {
     </label>
   `;
 }
-function wireTiltReadout(modal) {
+export function wireTiltReadout(modal) {
   const slider = modal.querySelector('input[name="tilt"]');
   if (!slider) return;
   const readout = modal.querySelector('.tilt-readout');
   slider.addEventListener('input', () => { if (readout) readout.textContent = slider.value; });
 }
-function parseTilt(fd) {
+export function parseTilt(fd) {
   const t = Number(fd.get('tilt'));
   if (!Number.isFinite(t)) return 0;
   return Math.max(-30, Math.min(30, Math.round(t)));
@@ -936,7 +936,7 @@ function sizeSelectHtml(currentColSpan, currentRowSpan, defaultPreset) {
   `;
 }
 
-function transparencyFieldHtml(current) {
+export function transparencyFieldHtml(current) {
   const val = Number.isFinite(current) ? Math.max(0, Math.min(100, current)) : 100;
   return `
     <label>
@@ -948,7 +948,7 @@ function transparencyFieldHtml(current) {
 
 // Wire up the transparency slider's live readout. Call after inserting the
 // field into a modal.
-function wireTransparencyReadout(modal) {
+export function wireTransparencyReadout(modal) {
   const slider = modal.querySelector('input[name="transparency"]');
   if (!slider) return;
   const readout = modal.querySelector('.transp-readout');
@@ -974,7 +974,7 @@ function hsvToCssHsl(h, s, v) {
   return `hsl(${hh}, ${ss}%, ${ll}%)`;
 }
 
-function bgColorAndRadiusFieldsHtml(currentHsv, currentRadius) {
+export function bgColorAndRadiusFieldsHtml(currentHsv, currentRadius) {
   // currentHsv: {h, s, v} | null;currentRadius: number | null
   const h = currentHsv?.h ?? 0;
   const s = currentHsv?.s ?? 0;       // 默认 0 = 灰色,user 调 H 后调 S 出彩
@@ -1008,7 +1008,7 @@ function bgColorAndRadiusFieldsHtml(currentHsv, currentRadius) {
 }
 
 // Wire HSV sliders + checkbox + preview live update. Call after the form is in DOM.
-function wireBgColorReadout(modal) {
+export function wireBgColorReadout(modal) {
   const block = modal.querySelector('.bg-color-block');
   const toggle = modal.querySelector('input[name="bgColorEnabled"]');
   const preview = modal.querySelector('.bg-color-preview');
@@ -1035,7 +1035,7 @@ function wireBgColorReadout(modal) {
 }
 
 // Parse HSV + radius out of FormData → { bgColor: string|null, radius: number }
-function parseBgColorAndRadius(fd) {
+export function parseBgColorAndRadius(fd) {
   const enabled = fd.get('bgColorEnabled') === 'on';
   const radius = Number(fd.get('bgRadius'));
   const r = Number.isFinite(radius) ? Math.max(0, Math.min(30, radius)) : 16;

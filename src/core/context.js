@@ -323,7 +323,10 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     editParams: { id: character.id },
   });
   // 8b. 当前行程
-  const scheduleLines = await buildScheduleLines(character.id, session.personaId);
+  const scheduleLines = await buildScheduleLines(character.id, session.personaId, {
+    userName: persona?.name,
+    charName: character.name,
+  });
   parts.push({
     key: 'schedule',
     title: '# 当前行程',
@@ -705,7 +708,7 @@ async function buildCameraLines(characterId, userName) {
 //
 // Exported so surveillance.js can reuse the same window logic for camera
 // snapshots without duplicating the formatter.
-export async function buildScheduleLines(characterId, sessionPersonaId) {
+export async function buildScheduleLines(characterId, sessionPersonaId, names = {}) {
   const settings = (await db.get('settings', 'default')) || {};
   if (settings.syncScheduleToChat === false) return '';
   const all = await db.getAll('schedule');
@@ -755,25 +758,28 @@ export async function buildScheduleLines(characterId, sessionPersonaId) {
     if (!e.endTs && now > e.startTs) return '(已过)';
     return '';
   };
+  const userLabel = names.userName || '用户';
+  const charLabel = names.charName || '你';
   return relevant.map(e => {
-    const who = e.who === 'user' ? '用户' : '你';
+    const who = e.who === 'user' ? userLabel : charLabel;
     const status = statusOf(e);
     const desc = e.desc ? ` — ${e.desc}` : '';
     return `- ${who} ${fmtTime(e.startTs)}${status} ${e.title}${desc}`;
   }).join('\n');
 }
 
-// 打卡紧凑摘要 — 用户「每天 / 每周 N 次」习惯的本月汇总 + 连续天数。跟
-// schedule 同源(都是日级别事件),所以共用 settings.syncScheduleToChat 全
-// 局开关:不想让 AI 看到行程的人通常也不想让 AI 看到打卡习惯。types 为空
-// 或整体关掉 → return ''(caller 通过空 body 不渲染该 part)。
+// 打卡紧凑摘要 — 本月已打 N/M 天。跟 schedule 同源(都是日级别事件),所以
+// 共用 settings.syncScheduleToChat 全局开关:不想让 AI 看到行程的人通常也
+// 不想让 AI 看到打卡习惯。types 为空或整体关掉 → return ''(caller 通过空
+// body 不渲染该 part)。
 //
 // 输出形如:
-//   - 跑步:本月已打 18/28 天,连续 5 天 · 目标每天
-//   - 喝水:本月已打 27/28 天,连续 12 天 · 目标每天
+//   - 跑步:本月已打 18/28 天
+//   - 喝水:本月已打 27/28 天
 //
-// streak 显示规则:≥3 才秀,避免「连续 1 天」这种噪音。targetFreq 显示规
-// 则:已知模式才秀,unknown 不秀(空目标 = 自由打卡)。
+// T6: 早期版本带 streak「连续 N 天」+ targetFreq「目标每天 / 目标每周 N 次」,
+// 用户反馈不需要 — 打卡只是单纯记录,不是 habit 追踪 app,去掉连续天数和目标
+// 频率维度。老数据里的 targetFreq 字段保留但不渲染,新建 type 也不再写入。
 export async function buildCheckinLines() {
   const settings = (await db.get('settings', 'default')) || {};
   if (settings.syncScheduleToChat === false) return '';
@@ -791,22 +797,7 @@ export async function buildCheckinLines() {
   for (const t of types) {
     const thisType = all.filter(c => c.typeId === t.id);
     const monthCount = thisType.filter(c => c.dayKey.startsWith(monthPrefix) && c.dayKey <= todayKey).length;
-    let streak = 0;
-    const cursor = new Date(now); cursor.setHours(0, 0, 0, 0);
-    while (true) {
-      const dk = `${cursor.getFullYear()}-${pad2(cursor.getMonth() + 1)}-${pad2(cursor.getDate())}`;
-      if (thisType.some(c => c.dayKey === dk)) {
-        streak++;
-        cursor.setDate(cursor.getDate() - 1);
-      } else {
-        break;
-      }
-    }
-    const streakNote = streak >= 3 ? `,连续 ${streak} 天` : '';
-    const freqNote = t.targetFreq && t.targetFreq.startsWith('weekly:')
-      ? ` · 目标每周 ${t.targetFreq.split(':')[1]} 次`
-      : (t.targetFreq === 'daily') ? ' · 目标每天' : '';
-    lines.push(`- ${t.name}:本月已打 ${monthCount}/${todayDay} 天${streakNote}${freqNote}`);
+    lines.push(`- ${t.name}:本月已打 ${monthCount}/${todayDay} 天`);
   }
   return lines.join('\n');
 }
@@ -865,13 +856,12 @@ export async function buildMessageHistory(sessionId, maxRecent = 40) {
 function makeRenderContext(allMessages) {
   const byId = new Map(allMessages.map(m => [m.id, m]));
   return {
-    resolveQuote(msgId) {
+    // T3: actionIdx 来源 reply action 上新加的 quoteActionIdx 字段。老数据
+    // 没这个字段 → fallback 0(等同旧行为)。
+    resolveQuote(msgId, actionIdx = 0) {
       const m = byId.get(msgId);
       if (!m) return '';
-      // pick the first action's "main text" — content for text/reply/voice,
-      // description for image, name for location, etc. Returns full text
-      // intentionally — caller can truncate.
-      const a = m.actions?.[0];
+      const a = m.actions?.[actionIdx] ?? m.actions?.[0];
       if (!a) return '';
       return String(a.content || a.description || a.name || `[${a.type}]`);
     },
@@ -964,7 +954,8 @@ function renderActionsAsText(actions, ctx) {
       case 'reply': {
         // B#8: 拿被引用的原话拼进 prompt,模型才能看到上下文。如果 ctx 没传
         // (compatibility / direct caller),退回到只输出 reply 内容。
-        const quote = ctx?.resolveQuote ? ctx.resolveQuote(a.quoteMsgId) : '';
+        const qIdx = Number.isFinite(a.quoteActionIdx) ? a.quoteActionIdx : 0;
+        const quote = ctx?.resolveQuote ? ctx.resolveQuote(a.quoteMsgId, qIdx) : '';
         return quote
           ? `[引用「${quote}」]\n${a.content || ''}`
           : (a.content || '');

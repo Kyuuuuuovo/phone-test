@@ -151,7 +151,7 @@ export async function mountChat(container, params, router) {
   // Per-render preview map: msgId -> first-action text (for inline quote rendering)
   let previewMap = new Map();
   // State
-  let replyingTo = null;        // msgId currently being quoted
+  let replyingTo = null;        // { msgId, actionIdx } currently being quoted
   let activeBubbleMsgId = null;     // msgId the bubble-menu was opened for
   let activeBubbleActionIdx = 0;    // 同 msg row 里第几个 bubble(action 数组下标)。
                                     // 之前 handler 用 querySelector 拿同 msgId 的第一个 .bubble
@@ -253,7 +253,21 @@ export async function mountChat(container, params, router) {
       msgs.length = 0;
       msgs.push(...freshMsgs);
     }
-    previewMap = new Map(msgs.map(m => [m.id, firstActionText(m)]));
+    // T3: previewMap 以 `${msgId}:${idx}` 为 key,记每条 action 自己的预览文本。
+    // 旧版只存 msgId → firstActionText,导致 reply 引用第 2/3 气泡时永远显示
+    // 第 1 个 action 的内容。同时保留 `${msgId}:0` 兼容老 reply action 没存
+    // quoteActionIdx 的情况(渲染时按 quoteActionIdx ?? 0 查)。
+    previewMap = new Map();
+    for (const m of msgs) {
+      const actions = m.actions || [];
+      if (actions.length === 0) {
+        previewMap.set(`${m.id}:0`, '');
+        continue;
+      }
+      for (let i = 0; i < actions.length; i++) {
+        previewMap.set(`${m.id}:${i}`, actionTextOf(actions[i]));
+      }
+    }
     // Re-read character + session every refresh — pin / read receipt / blocked
     // can change behind the scenes.
     const cur     = await db.get('characters', session.characterId);
@@ -381,9 +395,10 @@ export async function mountChat(container, params, router) {
   function openPanel()     { panel.hidden    = false; plusBtn.classList.add('active'); }
   function closeBubbleMenu() { bubbleMenu.hidden = true; activeBubbleMsgId = null; activeBubbleActionIdx = 0; }
 
-  function setReplyTo(msgId) {
-    replyingTo = msgId;
-    replyText.textContent = (previewMap.get(msgId) || '(已删除的消息)').slice(0, 80);
+  function setReplyTo(msgId, actionIdx = 0) {
+    replyingTo = { msgId, actionIdx };
+    const preview = previewMap.get(`${msgId}:${actionIdx}`) ?? previewMap.get(`${msgId}:0`) ?? '(已删除的消息)';
+    replyText.textContent = String(preview).slice(0, 80);
     replyBar.hidden = false;
     input.focus();
   }
@@ -435,7 +450,7 @@ export async function mountChat(container, params, router) {
   const onSend = async () => {
     const text = input.value.trim();
     if (!text) return;
-    const quoteId = replyingTo;
+    const quote = replyingTo;
     const innerVoice = (ivInput?.value || '').trim();
     input.value = '';
     if (ivInput) ivInput.value = '';
@@ -444,10 +459,10 @@ export async function mountChat(container, params, router) {
     autosize();
     closePanel();
     closeBubbleMenu();
-    const action = quoteId
-      ? { type: 'reply', content: text, quoteMsgId: quoteId }
+    const action = quote
+      ? { type: 'reply', content: text, quoteMsgId: quote.msgId, quoteActionIdx: quote.actionIdx }
       : { type: 'text',  content: text };
-    if (quoteId) clearReply();
+    if (quote) clearReply();
     await appendUserMessage([action], innerVoice);
   };
 
@@ -867,7 +882,7 @@ export async function mountChat(container, params, router) {
     const actionIdx = activeBubbleActionIdx;
     closeBubbleMenu();
     if (btn.dataset.action === 'quote') {
-      setReplyTo(msgId);
+      setReplyTo(msgId, actionIdx);
     } else if (btn.dataset.action === 'copy') {
       // M2: 复制按 action 粒度,不是整条消息。previewMap 是整 msg 的所有
       // action 拼起来的预览,user 看 bubble menu 想复制的是 ta 点的那个
@@ -1055,7 +1070,7 @@ export async function mountChat(container, params, router) {
         // 同步清 favorites + 删 row + 取消可能正在引用本 row 的 reply
         for (const f of favsForMsg) await db.del('favorites', f.id);
         await db.del('chatMessages', msgId);
-        if (replyingTo === msgId) clearReply();
+        if (replyingTo?.msgId === msgId) clearReply();
       } else {
         actions.splice(actionIdx, 1);
         msg.actions = actions;
@@ -1158,8 +1173,9 @@ export async function mountChat(container, params, router) {
   };
 }
 
-function firstActionText(msg) {
-  const a = (msg.actions ?? [])[0];
+// T3: 单 action → 预览文本。previewMap 现在按 (msgId, actionIdx) 索引,所以
+// 不能再只看 actions[0],引用 / 复制 / 收藏每个气泡时各自查自己的那条。
+function actionTextOf(a) {
   if (!a) return '';
   switch (a.type) {
     case 'text':   return a.content || '';
@@ -1173,6 +1189,9 @@ function firstActionText(msg) {
     case 'location':   return `[位置] ${a.name || ''}${a.desc ? ' · ' + a.desc : ''}`;
     default:       return `[${a.type}]`;
   }
+}
+function firstActionText(msg) {
+  return actionTextOf((msg.actions ?? [])[0]);
 }
 
 // Banner that stands in for a run of consecutive archived messages with the
@@ -1277,7 +1296,10 @@ function renderAction(a, side, msgId, idx, previewMap, character) {
       return `<div class="bubble ${side}" ${attrs}>${esc(a.content || '')}</div>`;
     }
     case 'reply': {
-      const quoted = previewMap?.get(a.quoteMsgId) || '(已删除的消息)';
+      // T3: 老数据没 quoteActionIdx,fallback 到 0(等同旧行为)。新数据查
+      // `${msgId}:${idx}` 精确定位被引用那条 action 的预览。
+      const qIdx = Number.isFinite(a.quoteActionIdx) ? a.quoteActionIdx : 0;
+      const quoted = previewMap?.get(`${a.quoteMsgId}:${qIdx}`) ?? previewMap?.get(`${a.quoteMsgId}:0`) ?? '(已删除的消息)';
       if (a.translation) {
         return `<div class="bubble ${side} bubble-reply bubble-translate" ${attrs}>
           <div class="reply-quote">${esc(quoted.slice(0, 60))}</div>

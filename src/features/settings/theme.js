@@ -30,6 +30,10 @@ export async function mountTheme(container, params, router) {
   let draft = normalizeTheme(settings.theme);
   const original = JSON.parse(JSON.stringify(draft));  // committed-on-disk snapshot
   let saved = false;
+  // T8: dirty 是这一轮"按了保存之后,有没有改过新东西" — 跟 saved 不同。
+  //   saved 描述"整个 session 里点过 save 没",cleanup 用它判断要不要 revert。
+  //   dirty 描述"现在还没保存的修改",save-btn 视觉用它。
+  let dirty = false;
   let activeTab = 'preset';
   // User presets live in settings.themePresets (array of { id, label, theme }).
   let userPresets = Array.isArray(settings.themePresets) ? settings.themePresets : [];
@@ -299,6 +303,20 @@ export async function mountTheme(container, params, router) {
 
   function applyDraft() { applyTheme(draft); }
 
+  // T8: save-btn 视觉同步。render 重建 .save-btn 后,wire() 调用一次 sync;
+  // onField 改 dirty=true 再 sync;save 后 dirty=false 再 sync。
+  function syncSaveBtnState() {
+    const btn = container.querySelector('.save-btn');
+    if (!btn) return;
+    if (dirty) {
+      btn.classList.remove('saved');
+      btn.textContent = '保存';
+    } else {
+      btn.classList.add('saved');
+      btn.textContent = '已保存';
+    }
+  }
+
   function wire() {
     container.querySelector('.back').addEventListener('click', () => router.back());
 
@@ -333,14 +351,18 @@ export async function mountTheme(container, params, router) {
       draft = JSON.parse(JSON.stringify(DEFAULT_THEME));
       draft.effects = { ...DEFAULT_THEME.effects };
       applyDraft();
+      dirty = true;
       render();
       status('已重置为默认(还没保存)', 'success');
     });
     container.querySelector('.save-btn').addEventListener('click', async () => {
       await db.updateSettings(s => { s.theme = draft; });
       saved = true;
+      dirty = false;
       status('已保存', 'success');
+      syncSaveBtnState();
     });
+    syncSaveBtnState();
   }
 
   function wirePresetTab() {
@@ -488,6 +510,8 @@ export async function mountTheme(container, params, router) {
       if (block) block.hidden = (val !== 'custom');
     }
     applyDraft();
+    dirty = true;
+    syncSaveBtnState();
   }
   function onTextFieldChange(el) {
     const key = el.dataset.keyText;
@@ -497,6 +521,8 @@ export async function mountTheme(container, params, router) {
     const colorInput = container.querySelector(`[data-key="${cssEscape(key)}"]`);
     if (colorInput) colorInput.value = v;
     applyDraft();
+    dirty = true;
+    syncSaveBtnState();
   }
   function onFxChange(el) {
     const key = `effects.${el.dataset.fx}`;
@@ -520,6 +546,8 @@ export async function mountTheme(container, params, router) {
       if (r) r.textContent = val;
     }
     applyDraft();
+    dirty = true;
+    syncSaveBtnState();
   }
 
   render();
