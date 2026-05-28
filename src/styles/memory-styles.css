@@ -652,10 +652,19 @@ body[data-mem-style="film"] .memory-app-page .ma-row-meta {
   letter-spacing: 0.06em;
 }
 body[data-mem-style="film"] .memory-app-page .ma-row-body {
-  padding: 0 14px 14px;
+  padding: 0 12px 12px;
   font-size: 13px;
   line-height: 1.6;
   color: var(--fg);
+}
+/* T33: film 子元素统一 inline padding 12px — 跟 chips / meta margin / body 对齐。
+   .ma-row 自身 padding 0(齿孔条 + 反色 meta label 布局必需),所以 title /
+   quotes / events 必须自己 padding,否则贴左跟其他元素错开。 */
+body[data-mem-style="film"] .memory-app-page .ma-row-title,
+body[data-mem-style="film"] .memory-app-page .ma-row-quotes,
+body[data-mem-style="film"] .memory-app-page .ma-row-events {
+  padding-left: 12px;
+  padding-right: 12px;
 }
 body[data-mem-style="film"] .memory-app-page .ma-cell {
   background: var(--surface);
@@ -932,46 +941,6 @@ body[data-mem-style="petal"] .memory-app-page .mem-char-chip.active .mem-chip-av
               0 4px 12px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
-/* T32 film 手机端减压 — phone-frame 在 ≤440px viewport 缩到 100% 宽,卡片堆叠
-   chips + meta + title + body + quotes + events 容易挤,统一缩 padding / margin
-   / chip 字号,让密度合理化。base.css 也用 max-width:440 做 mobile breakpoint。 */
-@media (max-width: 440px) {
-  body[data-mem-style="film"] .memory-app-page .ma-row {
-    padding-top: 12px;
-  }
-  body[data-mem-style="film"] .memory-app-page .ma-row::after {
-    height: 4px;
-  }
-  body[data-mem-style="film"] .memory-app-page .ma-row .mem-chips {
-    padding: 6px 10px 0;
-    gap: 3px;
-  }
-  body[data-mem-style="film"] .memory-app-page .mem-chips > span {
-    font-size: 8.5px;
-    padding: 1px 5px;
-  }
-  body[data-mem-style="film"] .memory-app-page .ma-row-meta {
-    margin: 6px 10px 4px;
-    padding: 2px 8px;
-    font-size: 9.5px;
-  }
-  body[data-mem-style="film"] .memory-app-page .ma-row-title {
-    font-size: 13px;
-    padding: 0 10px;
-    margin-bottom: 1px;
-  }
-  body[data-mem-style="film"] .memory-app-page .ma-row-body {
-    padding: 0 10px 10px;
-    font-size: 12.5px;
-    line-height: 1.5;
-  }
-  body[data-mem-style="film"] .memory-app-page .ma-row-quotes,
-  body[data-mem-style="film"] .memory-app-page .ma-row-events {
-    margin: 4px 10px 0;
-    padding-top: 4px;
-  }
-}
-
 /* film — meta 独立行(monospace 暗底 label),chips 显在齿孔下方第一行
    原 ma-row-meta 已 monospace + 反色,这里加 chip 的胶片风:小、方角、灰底 */
 body[data-mem-style="film"] .memory-app-page .ma-row .mem-chips {
@@ -1150,3 +1119,39 @@ body[data-mem-style="cabinet"] .memory-app-page .ma-row-body {
   line-height: unset;
 }
 
+/* ═════════════════════════════════════════════════════════════════════
+   T32/T33 film 手机端减压 — 放文件最末确保 source order 最靠后,不被
+   桌面 film rule(`.ma-row { padding-top: 18px }` 等)覆盖。
+   原则:**只缩字号 / gap / 齿孔条**,inline padding 不动 — 桌面统一 12px
+   就是对齐基准(chips/meta/title/body/quotes/events 全都 padding 12px)。
+   ═════════════════════════════════════════════════════════════════════ */
+@media (max-width: 440px) {
+  body[data-mem-style="film"] .memory-app-page .ma-row {
+    padding-top: 12px;
+  }
+  body[data-mem-style="film"] .memory-app-page .ma-row::after {
+    height: 4px;
+  }
+  body[data-mem-style="film"] .memory-app-page .ma-row .mem-chips {
+    padding-top: 6px;
+    gap: 3px;
+  }
+  body[data-mem-style="film"] .memory-app-page .mem-chips > span {
+    font-size: 8.5px;
+    padding: 1px 5px;
+  }
+  body[data-mem-style="film"] .memory-app-page .ma-row-meta {
+    margin: 6px 12px 4px;
+    padding: 2px 8px;
+    font-size: 9.5px;
+  }
+  body[data-mem-style="film"] .memory-app-page .ma-row-title {
+    font-size: 13px;
+    margin-bottom: 1px;
+  }
+  body[data-mem-style="film"] .memory-app-page .ma-row-body {
+    padding-bottom: 10px;
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+}

@@ -5733,7 +5733,9 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
   padding: 4px 6px;
 }
 .memory-app-page .ma-row-del { right: 6px; font-size: 18px; }
-.memory-app-page .ma-row-edit { right: 32px; }
+/* T33: ✎ + × 两按钮间距 — del 宽 ≈ 30px 占 right [6, 36],原 edit right 32
+   重叠 4px。改 40 留 4px 视觉间距,不再挤一起。 */
+.memory-app-page .ma-row-edit { right: 40px; }
 .memory-app-page .ma-row-del:hover { color: var(--danger); }
 .memory-app-page .ma-row-edit:hover { color: var(--accent); }
 /* timeline / memory row 有 edit + del 两个按钮 — body 留够右 padding 不
