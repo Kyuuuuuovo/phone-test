@@ -2,7 +2,7 @@
 // Data model frozen in STORES below — bump DB_VERSION when changing schema.
 
 export const DB_NAME = 'phone-app';
-export const DB_VERSION = 12;
+export const DB_VERSION = 13;
 
 // Object store definitions. Applied during onupgradeneeded.
 // keyPath = primary key field; indexes = secondary lookup paths.
@@ -190,6 +190,28 @@ export const STORES = {
     keyPath: 'id',
     indexes: [
       { name: 'characterId', keyPath: 'characterId' },
+    ],
+  },
+  // 生理期 周期 — 单例 id='default'。字段:
+  //   enabled (bool, default false) / averageLength (天数, default 28) /
+  //   periodLength (来潮持续天数, default 5) / fluctuation (前后浮动 ±N 天, default 2) /
+  //   lastStartDayKey ('YYYY-MM-DD' or null) / history [{startDayKey, endDayKey?, note?}] /
+  //   visibleToChat (bool, 是否注入 prompt, default false 双门控隐私安全)
+  // 预测算法:nextStart = lastStartDayKey + averageLength;
+  //   浮动窗口 [nextStart - fluctuation, nextStart + fluctuation]。
+  // Prompt 注入只在「进行中」或「浮动窗口内」才发生 — 平日不生成噪音。
+  cycle: {
+    keyPath: 'id',
+    indexes: [],
+  },
+  // 生理期 症状记录 — 独立 store,不复用 checkins(隐私敏感 + 跟体力打卡分离)。
+  // 字段:id / dayKey ('YYYY-MM-DD') / kind ('cramp'|'headache'|'mood'|'flow'|'note') /
+  //   severity? (1-3 轻中重) / note? (自由文本) / createdAt。按 dayKey 索引,
+  //   月历视图按月范围扫,O(month)。
+  cycleSymptoms: {
+    keyPath: 'id',
+    indexes: [
+      { name: 'dayKey', keyPath: 'dayKey' },
     ],
   },
 };

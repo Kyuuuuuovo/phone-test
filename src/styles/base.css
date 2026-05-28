@@ -5913,3 +5913,177 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
 }
 .tl-row .tl-del:hover    { color: var(--danger); }
 .tl-row .tl-unmerge:hover { color: var(--accent); }
+
+/* ──────────────────────────────────────────────────────────────────────
+   生理期 / 周期 app — home 第 2 页入口,3 tab(当前 / 日历 / 症状)。
+   隐私敏感数据,视觉上偏柔和、低饱和;不用警告色(避免"有问题"的暗示)。
+   颜色用 tier 比例:in-period 主色、fluctuation 中间、predicted 淡色。
+   ────────────────────────────────────────────────────────────────────── */
+.cycle-page .page-header .actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cycle-settings-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+}
+.cycle-settings-btn:hover { color: var(--fg); }
+
+.cycle-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+.cycle-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 14px;
+  cursor: pointer;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+}
+.cycle-tab.active {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}
+.cycle-body { padding-top: 12px; }
+
+.cycle-empty {
+  padding: 32px 24px;
+  text-align: center;
+}
+.cycle-empty .enable-btn { margin-top: 16px; }
+
+/* 状态卡 — 当前 tab 顶部那张大卡 */
+.cycle-status-card {
+  margin: 0 16px 16px;
+  padding: 18px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.cycle-status-title {
+  font-size: 17px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--fg);
+}
+.cycle-status-hint {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+/* 状态色 — 用 mix 而非硬编码,各主题(蓝/粉/黑白)都能 fit */
+.cycle-status-in    { background: color-mix(in srgb, #d96b8f 14%, var(--surface)); border-color: color-mix(in srgb, #d96b8f 35%, var(--border)); }
+.cycle-status-fluct { background: color-mix(in srgb, #e3a87a 12%, var(--surface)); border-color: color-mix(in srgb, #e3a87a 30%, var(--border)); }
+.cycle-status-pred  { background: var(--surface); }
+.cycle-status-over  { background: color-mix(in srgb, var(--muted) 8%, var(--surface)); }
+.cycle-status-inactive .cycle-status-title { color: var(--muted); font-weight: 500; }
+
+.cycle-current-actions { padding: 0 16px 16px; }
+.cycle-current-actions .btn { width: 100%; }
+
+.cycle-info-list { margin-top: 8px; }
+
+/* 日历 — 月历 6 行 × 7 列, dot 用 background-color 表达 */
+.cycle-calendar { padding: 0 16px 16px; }
+.cy-month-label {
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+  padding: 4px 0 12px;
+}
+.cy-week-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  padding-bottom: 6px;
+}
+.cy-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.cy-cell {
+  aspect-ratio: 1;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  color: var(--fg);
+  cursor: pointer;
+  padding: 0;
+}
+.cy-cell-blank { visibility: hidden; }
+.cy-day { font-size: 13px; }
+.cy-cell-in    { background: color-mix(in srgb, #d96b8f 30%, var(--surface)); color: var(--fg); }
+.cy-cell-fluct { background: color-mix(in srgb, #e3a87a 22%, var(--surface)); }
+.cy-cell-pred  { outline: 2px dashed color-mix(in srgb, #d96b8f 50%, transparent); outline-offset: -3px; }
+.cy-cell.cy-today { font-weight: 700; outline: 1.5px solid var(--accent); outline-offset: -2px; }
+
+.cy-legend {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.cy-legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.cy-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.cy-dot-in    { background: color-mix(in srgb, #d96b8f 60%, var(--surface)); }
+.cy-dot-fluct { background: color-mix(in srgb, #e3a87a 50%, var(--surface)); }
+.cy-dot-pred  { background: transparent; border: 1.5px dashed color-mix(in srgb, #d96b8f 60%, transparent); }
+
+/* 症状 tab — 列表 + 加按钮 */
+.cycle-symptoms-section { padding: 0 16px 16px; }
+.cy-actions-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+.symptom-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.symptom-meta { flex: 1; min-width: 0; }
+.symptom-kind {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg);
+}
+.symptom-day {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.symptom-del {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+.symptom-del:hover { color: var(--danger); }

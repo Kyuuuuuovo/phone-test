@@ -41,6 +41,7 @@ import { mountMonitorView }     from './features/monitor/monitor-view.js';
 import { mountBottle }          from './features/bottle/bottle.js';
 import { mountMemoryApp }       from './features/memory/memory-app.js';
 import { mountKeepsakeApp }     from './features/keepsake/keepsake-app.js';
+import { mountCycleApp }        from './features/cycle/cycle-app.js';
 import {
   BEAR_CHARACTER_ID, BEAR_SESSION_ID, DEFAULT_BEAR_AVATAR,
   ensureBearExists, pickAmbientLine,
@@ -48,6 +49,7 @@ import {
 import { scanDueBottles } from './core/bottle.js';
 import * as notify from './core/notify.js';
 import * as scheduleNotify from './core/schedule-notify.js';
+import * as cycleNotify from './core/cycle-notify.js';
 
 // Expose modules on window for console-driven dev/debugging.
 window.app = { db, router, ai, context };
@@ -187,6 +189,7 @@ async function boot() {
   router.registerPage('bottle',            mountBottle);
   router.registerPage('memory',            mountMemoryApp);
   router.registerPage('keepsake',          mountKeepsakeApp);
+  router.registerPage('cycle',             mountCycleApp);
 
   // Reserved bear character + session (id-stable, idempotent).
   await ensureBearExists(db, ai.getActiveApiConfig);
@@ -202,6 +205,8 @@ async function boot() {
   // system notifications can navigate back to the right chat on click.
   notify.init(router);
   scheduleNotify.start(router);
+  // 周期通知 — 一次性 boot 检查,日级别 dedup,不需要 poll
+  cycleNotify.start(router).catch(err => console.warn('[boot] cycle notify failed:', err));
 
   // T5: 桌面浏览器 .preset-scroll(主题预设 / 向量记忆 endpoint 预设那种横向 chip 行)
   // 在没有触屏的情况下用户没法滑 — 滚动条 CSS 又是 display: none。这里加一个

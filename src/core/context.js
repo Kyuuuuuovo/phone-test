@@ -7,6 +7,7 @@ import { BEHAVIOR_GUIDANCE } from './behavior.js';
 import * as embedding from './embedding.js';
 import * as timeline from './timeline.js';
 import { parseTolerantJSON } from './util.js';
+import { computeCycleStatus } from './cycle.js';
 
 // 向量打标 6 类固定 enum — 转折 / 亲密 / 冲突 / 发现 / 约定 / 日常。每条 L1
 // memory 生成时随 summary 同步打标(单次 AI 调用,不双倍 token)。enum 内
@@ -344,6 +345,18 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     body: checkinLines,
     kind: 'data',
     editRoute: 'schedule',
+  });
+  // 8b''. 生理状态(用户)— 双门控(cycle.enabled + cycle.visibleToChat)+ 仅
+  //  在「进行中」/「浮动窗口内」才生成内容,平日 return '' 不渲染。纯事实
+  //  陈述,不写行为引导(铁律 3)。架空模式下也跳过(现代生理用品 / 经期 app
+  //  不一定在 in-world 存在)。
+  const cycleLine = isFictional ? '' : await buildCycleStatus();
+  parts.push({
+    key: 'cycle',
+    title: '# 生理状态(用户)',
+    body: cycleLine,
+    kind: 'data',
+    editRoute: 'cycle',
   });
   // 8e. 关于你 — per (角色×人设) 的画像。lookup 先精确匹配 charId|personaId
   //  再 fallback charId|(共享行)。500 字以内,渲染 likes/dislikes/discoveries
@@ -766,6 +779,25 @@ export async function buildScheduleLines(characterId, sessionPersonaId, names = 
     const desc = e.desc ? ` — ${e.desc}` : '';
     return `- ${who} ${fmtTime(e.startTs)}${status} ${e.title}${desc}`;
   }).join('\n');
+}
+
+// 生理期状态 — 双门控:enabled + visibleToChat。仅 in-period / fluctuation
+// 才生成 body(其它阶段 return '' 不渲染)。纯事实陈述,无行为引导(铁律 3)。
+//   in-period:「用户目前在生理期(第 X 天 / 共约 N 天)。这是 ta 真实的身
+//     体状态,具体如何反应由你的人设决定。」
+//   fluctuation:「用户近期可能进入生理期(预测窗口内)。」
+export async function buildCycleStatus() {
+  const cfg = await db.get('cycle', 'default');
+  if (!cfg?.enabled) return '';
+  if (cfg.visibleToChat !== true) return '';
+  const status = computeCycleStatus(cfg);
+  if (status.phase === 'in-period') {
+    return `用户目前在生理期(第 ${status.dayInPeriod} 天 · 通常持续 ${status.periodLength} 天)。这是 ta 真实的身体状态,具体如何反应由你的人设决定。`;
+  }
+  if (status.phase === 'fluctuation') {
+    return `用户近期可能进入生理期(预测窗口 ${status.winStart} – ${status.winEnd})。这是预测,不是确定 — 仅供你参考 ta 可能的状态。`;
+  }
+  return '';
 }
 
 // 打卡紧凑摘要 — 本月已打 N/M 天。跟 schedule 同源(都是日级别事件),所以

@@ -10,8 +10,10 @@
 //   • 'text'     — single-line input
 //   • 'textarea' — multi-line
 //   • 'number'   — numeric input, accepts min/step on the field config
+//   • 'checkbox' — boolean toggle, defaultValue 'on'/'off' or true/false
+//   • 'select'   — dropdown, takes options: [{value, label}]
 //
-// Field options: { name, label, kind, defaultValue?, required?, min?, step?, placeholder? }
+// Field options: { name, label, kind, defaultValue?, required?, min?, step?, placeholder?, options? }
 
 export function openModal(container, { title, fields, submitLabel = '确认', cancelLabel = '取消' }) {
   return new Promise((resolve) => {
@@ -47,10 +49,15 @@ export function openModal(container, { title, fields, submitLabel = '确认', ca
       const out = {};
       for (const f of fields) {
         const el = form.querySelector(`[name="${cssEscape(f.name)}"]`);
-        out[f.name] = el?.value ?? '';
+        // checkbox 读 .checked,不是 .value(.value 永远是 'on')
+        if (f.kind === 'checkbox') {
+          out[f.name] = !!el?.checked;
+        } else {
+          out[f.name] = el?.value ?? '';
+        }
       }
       for (const f of fields) {
-        if (f.required && !String(out[f.name] ?? '').trim()) {
+        if (f.required && f.kind !== 'checkbox' && !String(out[f.name] ?? '').trim()) {
           form.querySelector(`[name="${cssEscape(f.name)}"]`)?.focus();
           return;
         }
@@ -72,11 +79,33 @@ function renderField(f) {
       </label>
     `;
   }
+  if (f.kind === 'checkbox') {
+    // defaultValue 接受 true / 'on' / 'true' / non-empty 任何 truthy
+    const checked = def === true || def === 'on' || def === 'true' || (def !== '' && def !== false && def != null) ? !!def : false;
+    return `
+      <label class="checkbox-row" for="${id}">
+        <input id="${id}" type="checkbox" name="${escAttr(f.name)}"${checked ? ' checked' : ''}>
+        <span>${escHtml(f.label)}</span>
+      </label>
+    `;
+  }
+  if (f.kind === 'select') {
+    const options = Array.isArray(f.options) ? f.options : [];
+    return `
+      <label for="${id}">
+        <div class="label-text">${escHtml(f.label)}</div>
+        <select id="${id}" name="${escAttr(f.name)}"${f.required ? ' required' : ''}>
+          ${options.map(o => `<option value="${escAttr(o.value)}"${String(o.value) === String(def) ? ' selected' : ''}>${escHtml(o.label)}</option>`).join('')}
+        </select>
+      </label>
+    `;
+  }
   const type = f.kind === 'number' ? 'number' : 'text';
   const attrs = [];
   if (f.required) attrs.push('required');
   if (f.min != null)  attrs.push(`min="${escAttr(f.min)}"`);
   if (f.step != null) attrs.push(`step="${escAttr(f.step)}"`);
+  if (f.max != null)  attrs.push(`max="${escAttr(f.max)}"`);
   return `
     <label for="${id}">
       <div class="label-text">${escHtml(f.label)}</div>
