@@ -168,8 +168,9 @@ export async function mountScheduleList(container, params, router) {
           `;
         }).join('') + `<button class="checkin-chip add" type="button" data-action="add-checkin">+ 添加</button>`;
 
-    // 纵向 timeline:跟原三日视图同款 absolute 块按时间定位,但只渲染一列。
-    // entryRect 跟当时一样,Math.max/min 处理跨天 entry 在这天的可见片段。
+    // 纵向 timeline 改双列结构:user 1 列固定 + 每个当天有行程的角色一列,
+    // 列数 = 1 + N(N 由数据决定,user 反馈"不要预设 2-3 列")。
+    // 同时段不再叠加,各自走自己列。
     function entryRect(e) {
       const s = Math.max(e.startTs, dayStart);
       const ee = Math.min(e.endTs || (e.startTs + 3600000), dayEnd);
@@ -177,18 +178,70 @@ export async function mountScheduleList(container, params, router) {
       const height = Math.max(22, ((ee - s) / 3600000) * HOUR_PX);
       return { top, height };
     }
+    // 扫当天有行程的角色 id 集合
+    const charIdsToday = [...new Set(
+      dayEntries.filter(e => e.who === 'character' && e.characterId).map(e => e.characterId)
+    )];
+    // 把 user entry / 各 character entry 分桶
+    const userEntries = dayEntries.filter(e => e.who === 'user');
+    const charEntriesByCharId = new Map();
+    for (const cid of charIdsToday) {
+      charEntriesByCharId.set(cid, dayEntries.filter(e => e.who === 'character' && e.characterId === cid));
+    }
+    // 列 spec:[ {label, who, charId?, entries} ],第 1 列固定是 user
+    const columns = [
+      { label: '我', who: 'user', entries: userEntries },
+      ...charIdsToday.map(cid => ({
+        label: charMap.get(cid)?.name || '?',
+        who: 'character',
+        charId: cid,
+        entries: charEntriesByCharId.get(cid),
+      })),
+    ];
+
+    function renderEntryBlock(e) {
+      const r = entryRect(e);
+      return `<div class="time-entry${e.who === 'user' ? ' time-entry-user' : ' time-entry-char'}${e.syncToChat === false ? ' muted' : ''}" data-entry-id="${esc(e.id)}" style="top: ${r.top}px; height: ${r.height}px">
+        <div class="time-entry-title">${esc(e.title || '(无标题)')}</div>
+        <button class="time-entry-del" type="button" title="删除" aria-label="删除">×</button>
+      </div>`;
+    }
+
+    // 周条:7 天(选中天所在那周,周日开头跟月历对齐),点击切日。
+    const sel = new Date(y, m - 1, d);
+    const weekStart = new Date(sel);
+    weekStart.setDate(sel.getDate() - sel.getDay());  // 回到周日
+    const weekCells = Array.from({ length: 7 }, (_, i) => {
+      const c = new Date(weekStart);
+      c.setDate(weekStart.getDate() + i);
+      const ck = `${c.getFullYear()}-${String(c.getMonth()+1).padStart(2,'0')}-${String(c.getDate()).padStart(2,'0')}`;
+      const isSel = ck === dayKey;
+      const isToday = ck === dayKeyOf(Date.now());
+      const wname = ['日','一','二','三','四','五','六'][c.getDay()];
+      return `
+        <button class="week-cell${isSel ? ' selected' : ''}${isToday ? ' today' : ''}" data-day-key="${esc(ck)}" type="button">
+          <span class="week-cell-w">${wname}</span>
+          <span class="week-cell-d">${c.getDate()}</span>
+        </button>
+      `;
+    }).join('');
+
     const timelineHtml = `
-      <div class="day-timeline" style="height: ${24 * HOUR_PX}px">
-        ${Array.from({ length: 25 }, (_, h) => `<div class="hour-mark" style="top: ${h * HOUR_PX}px">${h}:00</div>`).join('')}
-        ${dayEntries.map(e => {
-          const r = entryRect(e);
-          const who = e.who === 'user' ? '我' : (charMap.get(e.characterId)?.name || '?');
-          return `<div class="time-entry${e.who === 'user' ? ' time-entry-user' : ' time-entry-char'}${e.syncToChat === false ? ' muted' : ''}" data-entry-id="${esc(e.id)}" style="top: ${r.top}px; height: ${r.height}px">
-            <div class="time-entry-title">${esc(e.title || '(无标题)')}</div>
-            <div class="time-entry-who">${esc(who)}</div>
-            <button class="time-entry-del" type="button" title="删除" aria-label="删除">×</button>
-          </div>`;
-        }).join('')}
+      <div class="day-week-strip">${weekCells}</div>
+      <div class="day-timeline-multi" style="--col-count: ${columns.length}">
+        <div class="dtm-hours" style="height: ${24 * HOUR_PX}px">
+          ${Array.from({ length: 25 }, (_, h) => `<div class="hour-mark" style="top: ${h * HOUR_PX}px">${h}:00</div>`).join('')}
+        </div>
+        <div class="dtm-cols">
+          ${columns.map(col => `
+            <div class="dtm-col" data-col-who="${esc(col.who)}"${col.charId ? ` data-col-char="${esc(col.charId)}"` : ''}>
+              <div class="dtm-col-head">${esc(col.label)}</div>
+              <div class="dtm-col-body" style="height: ${24 * HOUR_PX}px">
+                ${col.entries.map(renderEntryBlock).join('')}
+              </div>
+            </div>
+          `).join('')}
+        </div>
       </div>
     `;
 
@@ -227,6 +280,13 @@ export async function mountScheduleList(container, params, router) {
       await render();
     });
     container.querySelectorAll('.sched-cell[data-day-key]').forEach(c => {
+      c.addEventListener('click', async () => {
+        selectedDayKey = c.dataset.dayKey;
+        await render();
+      });
+    });
+    // 周条 7 天点击切换选中日
+    container.querySelectorAll('.week-cell[data-day-key]').forEach(c => {
       c.addEventListener('click', async () => {
         selectedDayKey = c.dataset.dayKey;
         await render();

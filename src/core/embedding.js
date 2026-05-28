@@ -194,18 +194,31 @@ export async function topKMemoriesForQuery(sessionId, queryText, k) {
     const score = cosineSimilarity(qvec, e.vector);
     scored.push({ embedding: e, score });
   }
+  // 阶段 4 向量打标 boost — 用 memory.tag 给 cosine score 加权,让"戏剧性"
+  // 片段(转折/冲突/亲密)在召回排序上优于"日常"。需要 lookup memory tag,
+  // 所以先 sort by raw score 拿 top 3*K(避免 O(N) lookup),再 boost 重排。
+  // boost 系数:转折/冲突 +0.06,亲密 +0.04,发现/约定 +0.02,日常 +0(默认)
+  const BOOST = { '转折': 0.06, '冲突': 0.06, '亲密': 0.04, '发现': 0.02, '约定': 0.02 };
   scored.sort((a, b) => b.score - a.score);
-  // Cut at threshold BEFORE slicing — a low-noise top-K of 0 is correct
-  // when nothing is genuinely related (caller treats it as "no recall").
-  const top = scored.filter(s => s.score >= MIN_SIMILARITY).slice(0, topK);
-  // Resolve sourceId → memory row. Some may be orphaned (memory deleted
-  // post-embed). Filter those out.
-  const out = [];
-  for (const s of top) {
+  const preWindow = scored.slice(0, Math.max(topK * 3, topK + 5));
+  const boosted = [];
+  for (const s of preWindow) {
     const m = await db.get('memories', s.embedding.sourceId);
-    if (m) out.push({ memory: m, score: s.score });
+    if (!m) continue;
+    const tagBoost = BOOST[m.tag] || 0;
+    // high importance 再加一点(关系关键节点是 user 标记过的"重要")
+    const impBoost = m.importance === 'high' ? 0.05 : 0;
+    boosted.push({
+      memory: m,
+      rawScore: s.score,
+      score: s.score + tagBoost + impBoost,
+    });
   }
-  return out;
+  boosted.sort((a, b) => b.score - a.score);
+  // 用 boosted score 做阈值过滤(boost 把弱相关 + 戏剧性 tag 抬过线是 OK 的,
+  // 那种"很久前提过的关键转折"正是向量召回的价值)。
+  const top = boosted.filter(s => s.score >= MIN_SIMILARITY).slice(0, topK);
+  return top.map(s => ({ memory: s.memory, score: s.score }));
 }
 
 // Embed a worldbook entry. 类似 embedMemory 但 sourceType='worldbook-entry',

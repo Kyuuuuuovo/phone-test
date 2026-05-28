@@ -2904,6 +2904,91 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
   text-overflow: ellipsis;
 }
 
+/* 周条:选中日所在那周 7 天横排 — 点击切日(独立于月历) */
+.day-week-strip {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-top: 8px;
+}
+.week-cell {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.week-cell .week-cell-w { font-size: 10px; color: var(--muted); }
+.week-cell .week-cell-d { font-size: 13px; color: var(--fg); font-variant-numeric: tabular-nums; }
+.week-cell.today { border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); }
+.week-cell.selected {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  border-color: var(--accent);
+}
+.week-cell.selected .week-cell-d { color: var(--accent); font-weight: 700; }
+
+/* 双列 timeline:小时刻度独立浮在左侧,右边 N 列动态(用户 1 列固定 +
+   N 个当天有行程的角色一列)。每列 absolute time-entry 按时间 top/height
+   定位,不再共用一列叠加。 */
+.day-timeline-multi {
+  position: relative;
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 0;
+  margin-top: 8px;
+}
+.dtm-hours {
+  position: relative;
+  border-right: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+.dtm-hours .hour-mark {
+  border-top-color: transparent;
+  text-align: right;
+  padding-right: 6px;
+  padding-left: 0;
+}
+.dtm-cols {
+  display: grid;
+  grid-template-columns: repeat(var(--col-count, 1), minmax(0, 1fr));
+  gap: 4px;
+}
+.dtm-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.dtm-col-head {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+  text-align: center;
+  padding: 4px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dtm-col-body {
+  position: relative;
+  background-image: repeating-linear-gradient(
+    180deg,
+    transparent 0,
+    transparent 27px,
+    color-mix(in srgb, var(--border) 35%, transparent) 27px,
+    color-mix(in srgb, var(--border) 35%, transparent) 28px
+  );
+}
+.dtm-col-body .time-entry {
+  left: 2px;
+  right: 2px;
+  padding: 3px 5px;
+}
+.dtm-col-body .time-entry-who { display: none; }  /* 列头已经标 who,块内不重复 */
+
 .schedule-page .actions { display: flex; gap: 4px; align-items: center; }
 .schedule-page .actions .ai-gen {
   background: var(--accent);

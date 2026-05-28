@@ -804,12 +804,16 @@ export async function buildScheduleLines(characterId, sessionPersonaId, names = 
   };
   const userLabel = names.userName || '用户';
   const charLabel = names.charName || '你';
-  return relevant.map(e => {
+  // 注入顶部加一行明示时间是用户本地时区。如果跨时区,角色读到 "今天
+  // 14:00" 时知道这是用户那边的钟点,不会按自己时区误解。
+  const header = '(以下时间均为用户本地时区。)';
+  const body = relevant.map(e => {
     const who = e.who === 'user' ? userLabel : charLabel;
     const status = statusOf(e);
     const desc = e.desc ? ` — ${e.desc}` : '';
     return `- ${who} ${fmtTime(e.startTs)}${status} ${e.title}${desc}`;
   }).join('\n');
+  return `${header}\n${body}`;
 }
 
 // 生理期状态 — 双门控:enabled + visibleToChat。仅 in-period / fluctuation
@@ -1071,7 +1075,7 @@ function renderActionsAsText(actions, ctx) {
 // 两行,summary 里随便什么字符都不破坏 schema。V4 (多卡 [CARD] 块):一次压缩
 // 可产出 1-3 张「故事卡」,每卡 title + summary + quotes + tag + importance。
 // V4 仍 fallback 兼容 V3 老输出,parseMemoryOutput 返回 array,旧 V3 直接当 1 卡。
-const DEFAULT_MEMORY_SYS = '你是对话压缩助手。把下面这段对话压成 1-3 张「故事卡」,每张卡聚焦一个独立故事段落。模型自己判断:对话明显涵盖多个独立主题(比如先吵架后和好,或先回家后出门)时切多张;单一主题就只出 1 张。**每张卡必须是一段叙事完整的故事**(有起因 / 过程 / 结果或转折),不要只写一句话标语;同时**单卡摘要严格控制在 200 字以内**(多卡情况下各自独立计算,不共享配额)。';
+const DEFAULT_MEMORY_SYS = '你是对话压缩助手。把下面这段对话压成 1-3 张「故事卡」,每张卡聚焦一个独立故事段落。模型自己判断:对话明显涵盖多个独立主题(比如先吵架后和好,或先回家后出门)时切多张;单一主题就只出 1 张。**每张卡必须是一段叙事完整的故事**(有起因 / 过程 / 结果或转折),不要只写一句话标语;同时**单卡摘要严格控制在 200 字以内**(多卡情况下各自独立计算,不共享配额)。**摘要只客观叙述发生了什么(谁说了什么、做了什么、表现了什么),不要写"这反映了…" / "可以看出…" / "这是关系的关键节点" 这类主观定性或评价句。打标和重要度交给后面的标签/重要度字段,摘要里不要重复总结。**';
 
 const MEMORY_OUTPUT_RULES = `
 **输出格式严格按下面 [CARD] 块结构,不要 JSON、不要 markdown 包裹、不要前后缀文字**:
@@ -1095,7 +1099,16 @@ const MEMORY_OUTPUT_RULES = `
 - 约定 — 计划 / 承诺
 - 日常 — 闲聊、未归类(兜底)
 
-重要度只填 high 或 low — high 仅留给关系转折 / 情感高点 / 关键约定;日常聊天填 low。拿不准就「日常 + low」。`;
+重要度只填 high 或 low — high 仅留给关系转折 / 情感高点 / 关键约定;日常聊天填 low。拿不准就「日常 + low」。
+
+**可选的用户画像增量(只在确实发现关于用户的新事实时输出,否则整段省略)**:
+如果这段对话里**明确说出或确认了**关于用户的新事实(喜好 / 厌恶 / 职业 / 习惯 / 家庭 / 关系 等),在所有 [CARD] 之后追加一个 [PROFILE_PATCH] 块。**日常闲聊不要硬塞,凭空臆测会污染画像**。
+
+[PROFILE_PATCH]
+喜欢: <一行一条;只填这段对话里新发现的;省略整行如果没有>
+不喜欢: <一行一条>
+你发现: <一行一条;其它非喜好类事实 — 职业/居住/性格/关系/习惯等>
+[/PROFILE_PATCH]`;
 
 // 解析单个 CARD 块内容(不含 [CARD] / [/CARD] 标记),返回 {title?, summary,
 // quotes?, tag?, importance}。各字段缺失时省略(quotes 空数组也省略)。
@@ -1134,6 +1147,55 @@ function parseCardBlock(block) {
     if (v === 'high' || v === 'low') card.importance = v;
   }
   return card;
+}
+
+// 用户画像 patch — 从压缩输出里抽 [PROFILE_PATCH] 块,返回 { likes, dislikes,
+//   discoveries }(都是字符串数组,空段不返回)。模型可能没输出整段就返回 null。
+function parseProfilePatch(raw) {
+  if (typeof raw !== 'string') return null;
+  const m = raw.match(/\[PROFILE_PATCH\]([\s\S]*?)\[\/PROFILE_PATCH\]/i);
+  if (!m) return null;
+  const block = m[1];
+  const extract = (label) => {
+    const re = new RegExp(`(?:^|\\n)\\s*${label}[::]\\s*([\\s\\S]*?)(?=\\n\\s*(?:喜欢|不喜欢|你发现)[::]|$)`, 'i');
+    const mm = block.match(re);
+    if (!mm) return [];
+    return mm[1].split('\n')
+      .map(s => s.trim().replace(/^[-•·]\s*/, ''))
+      .filter(s => s && s.length <= 100)
+      .slice(0, 5);  // cap 防模型话痨
+  };
+  const likes       = extract('喜欢');
+  const dislikes    = extract('不喜欢');
+  const discoveries = extract('你发现');
+  if (likes.length === 0 && dislikes.length === 0 && discoveries.length === 0) return null;
+  return { likes, dislikes, discoveries };
+}
+
+// 合并 patch 到 userProfiles。compositeId = `${charId}|${personaId}`。已有就
+// append(每条新事实加一行,简单字符串包含去重);没有就新建。
+async function mergeProfilePatch(characterId, personaId, patch) {
+  if (!patch) return;
+  const id = `${characterId}|${personaId || ''}`;
+  const existing = await db.get('userProfiles', id);
+  const now = Date.now();
+  const merge = (oldText, newLines) => {
+    const oldLines = (oldText || '').split('\n').map(s => s.trim()).filter(Boolean);
+    const seen = new Set(oldLines.map(s => s.toLowerCase()));
+    const toAdd = newLines.filter(s => !seen.has(s.toLowerCase()));
+    if (toAdd.length === 0) return oldText || '';
+    return [...oldLines, ...toAdd].join('\n');
+  };
+  const next = existing || {
+    id, characterId, personaId: personaId || '',
+    likes: '', dislikes: '', discoveries: '',
+    createdAt: now,
+  };
+  next.likes       = merge(next.likes,       patch.likes);
+  next.dislikes    = merge(next.dislikes,    patch.dislikes);
+  next.discoveries = merge(next.discoveries, patch.discoveries);
+  next.updatedAt   = now;
+  await db.set('userProfiles', next);
 }
 
 // V4 解析:返回一个 cards 数组。每张卡 {title?, summary, quotes?, tag?, importance}。
@@ -1367,6 +1429,15 @@ export async function maybeCompressMemory(sessionId, opts = {}) {
   const cards = parseMemoryOutput(raw);
   if (cards.length === 0) {
     cards.push({ summary: (raw || '').trim() || '(空)', importance: 'low' });
+  }
+
+  // Phase 2 用户画像 patch — 模型在 raw 末尾若输出 [PROFILE_PATCH] 块,
+  //   解析后增量 merge 到 userProfiles[charId|personaId]。新事实简单字符
+  //   串包含去重,不重复添加。失败不影响 memory 写入(fire-and-forget)。
+  const patch = parseProfilePatch(raw);
+  if (patch) {
+    mergeProfilePatch(session.characterId, session.personaId, patch)
+      .catch(e => console.warn('[context] profile patch merge failed:', e));
   }
 
   // 「这次发生了」事件链 — 扫 overflow 的非 text/reply actions(零 AI 成本)。

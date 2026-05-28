@@ -422,8 +422,23 @@ export async function mountTheme(container, params, router) {
       if (!wrap) return;
       const p = allPresets().find(x => x.id === wrap.dataset.presetId);
       if (!p) return;
+      // 字体保留 — user 反馈"切预设要重设字体很麻烦"。preset 自带字体字段
+      //   是设计师意图,但日常使用场景里 user 想固定一套字体只切配色。从
+      //   当前 draft 抠出字体相关字段 → spread 到新 preset 上覆盖回去。
+      //   想用 preset 原生字体的话 user 可以在「字体」tab 单独选。
+      const fontKeep = {
+        fontFamily:           draft.fontFamily,
+        fontSize:             draft.fontSize,
+        customFontFamily:     draft.customFontFamily,
+        customFontImportUrl:  draft.customFontImportUrl,
+        customFontFamilyCn:   draft.customFontFamilyCn,
+        customFontImportUrlCn:draft.customFontImportUrlCn,
+        customFontFamilyEn:   draft.customFontFamilyEn,
+        customFontImportUrlEn:draft.customFontImportUrlEn,
+      };
       draft = JSON.parse(JSON.stringify(p.theme));
       draft.effects = { ...p.theme.effects };
+      Object.assign(draft, fontKeep);
       applyDraft();
       // T22: 套用 preset 后必须 flip dirty + sync saveBtn,否则 status 文本
       //   写「还没保存」但 saveBtn 仍显「已保存」灰扁,user 困惑。
