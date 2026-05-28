@@ -251,13 +251,25 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     kind: 'data',
     editRoute: 'worldbook-list',
   });
-  // 6b. 相关记忆 — 按语义检索(if vector memory is enabled). Goes BEFORE
-  //     the linear L1/L2 summaries so the most-relevant facts are primed
-  //     first. Uses the last few user messages as the query text.
-  //     Linear memory preserves narrative arc; vector recall surfaces
-  //     specific facts mentioned long ago and possibly forgotten by the
-  //     linear compression. They coexist, slight overlap is OK.
-  const vectorRecall = await buildVectorRecallLines(sessionId);
+  // 6b/6c. Vector retrieval — memory + worldbook vector-mode entries. Both
+  //     builders use the same query text (last 5 turns user+character
+  //     interleaved). Originally each built its own query string by
+  //     re-querying chatMessages then embedded separately — when the user
+  //     hasn't configured a separate summary endpoint, both calls landed
+  //     on the same upstream which means we were paying for the same
+  //     embedding twice every turn. Build the query once here; the
+  //     embedding.js LRU cache dedups the actual API call when the cfgs
+  //     resolve to the same endpoint.
+  //
+  //     去重(excludeIds):L1+L2 memories 已经全量注入 mem-l1 / mem-l2 段,
+  //     vector 召回不再重复这些 id 的卡片 — 否则同一段 summary 在 prompt 里
+  //     出现两次(linear + vector),既浪费 token 也让模型重复消化。
+  const recentQueryText = await buildRecentQueryText(sessionId);
+  const linearMemIds = new Set([...l1Mem, ...l2Mem].map(m => m.id));
+  const injectQuotes = settings.memoryInjectQuotes === true;
+  const vectorRecall = recentQueryText
+    ? await buildVectorRecallLines(sessionId, recentQueryText, linearMemIds, injectQuotes)
+    : '';
   parts.push({
     key: 'vector-recall',
     title: '# 相关记忆(按语义检索)',
@@ -269,7 +281,9 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
   //     检索。跟 6b 同套机制不同 source:6b 是 memories,6c 是 worldbook
   //     entries(activationMode='vector')。分开注入让模型清楚区分"对话记忆"
   //     和"世界设定"。
-  const wbVectorRecall = await buildWorldbookVectorLines(character.id, sessionId);
+  const wbVectorRecall = recentQueryText
+    ? await buildWorldbookVectorLines(character.id, recentQueryText)
+    : '';
   parts.push({
     key: 'wb-vector-recall',
     title: '# 相关世界设定(按语义检索)',
@@ -587,19 +601,20 @@ export async function buildSystemPrompt(sessionId, opts) {
     .join('\n\n---\n\n');
 }
 
-// Vector retrieval for worldbook entries — 跟 buildVectorRecallLines 同套
-// query 拼装(最近 5 条对话),但检索范围是这 character 挂载的 worldbook
-// 里 activationMode='vector' 的 entries。命中后注入「# 相关世界设定」段。
-async function buildWorldbookVectorLines(characterId, sessionId) {
-  const settings = (await db.get('settings', 'default')) || {};
-  if (settings.embedding?.enabled !== true) return '';
-  const QUERY_TURN_COUNT = 5;
+// Shared query text builder — last N turns regardless of role. Including
+// the most-recent assistant turn matters because short user replies like
+// "对 那个" are basically useless as queries on their own; the assistant's
+// preceding "上次你说想去京都" carries the topic the user is responding to.
+// Extracted out so buildVectorRecallLines and buildWorldbookVectorLines can
+// share the same text + downstream LRU-cached embedding call.
+const VECTOR_QUERY_TURN_COUNT = 5;
+async function buildRecentQueryText(sessionId) {
   const allMsgs = (await db.query('chatMessages', 'sessionId', sessionId))
     .filter(m => !m.archived && m.role !== 'system');
   if (allMsgs.length === 0) return '';
   allMsgs.sort((a, b) => a.createdAt - b.createdAt);
-  const recent = allMsgs.slice(-QUERY_TURN_COUNT);
-  const query = recent
+  const recent = allMsgs.slice(-VECTOR_QUERY_TURN_COUNT);
+  return recent
     .map(m => {
       const who = m.role === 'user' ? '用户' : '角色';
       const text = (m.actions || []).map(a => a.content || a.description || '').filter(Boolean).join(' ');
@@ -608,10 +623,18 @@ async function buildWorldbookVectorLines(characterId, sessionId) {
     .filter(Boolean)
     .join('\n')
     .trim();
-  if (!query) return '';
+}
+
+// Vector retrieval for worldbook entries — same query text as memory recall,
+// embedding LRU cache dedups the API call when both builders resolve to the
+// same upstream endpoint.
+async function buildWorldbookVectorLines(characterId, queryText) {
+  const settings = (await db.get('settings', 'default')) || {};
+  if (settings.embedding?.enabled !== true) return '';
+  if (!queryText) return '';
   let hits = [];
   try {
-    hits = await embedding.topKWorldbookEntriesForQuery(characterId, query);
+    hits = await embedding.topKWorldbookEntriesForQuery(characterId, queryText);
   } catch (e) {
     console.warn('[context] worldbook vector recall failed (non-fatal):', e);
     return '';
@@ -627,33 +650,20 @@ async function buildWorldbookVectorLines(characterId, sessionId) {
 // across this session's memory embeddings. Returns the formatted lines
 // (or '' when disabled / no hits / unconfigured).
 //
-// Query construction: last N messages regardless of role (user + character
-// interleaved). Including the most-recent assistant turn matters because
-// short user replies like "对 那个" are basically useless as queries on
-// their own — the assistant's preceding "上次你说想去京都" carries the
-// topic the user is responding to.
-async function buildVectorRecallLines(sessionId) {
+// excludeIds:跳过已经在 linear L1/L2 段全量注入的 memory ids,防止同一段
+//   summary 出现两次(linear 叙事 + vector 召回)— 既省 token 又避免模型
+//   重复消化。linear 段一定全注入(是骨架叙事),vector 是"补充"。
+// injectQuotes:strong-match (≥0.7) 的卡片附 quotes(关键原话)。默认关 —
+//   quotes 是给用户翻看的高密度信息,只在 vector 强命中时入 prompt 信息价
+//   值才超过 token 成本(L1/L2 全量段一刀切不附,否则爆 token)。
+const QUOTES_INJECT_THRESHOLD = 0.7;
+async function buildVectorRecallLines(sessionId, queryText, excludeIds, injectQuotes) {
   const settings = (await db.get('settings', 'default')) || {};
   if (settings.embedding?.enabled !== true) return '';
-  const QUERY_TURN_COUNT = 5;
-  const allMsgs = (await db.query('chatMessages', 'sessionId', sessionId))
-    .filter(m => !m.archived && m.role !== 'system');
-  if (allMsgs.length === 0) return '';
-  allMsgs.sort((a, b) => a.createdAt - b.createdAt);
-  const recent = allMsgs.slice(-QUERY_TURN_COUNT);
-  const query = recent
-    .map(m => {
-      const who = m.role === 'user' ? '用户' : '角色';
-      const text = (m.actions || []).map(a => a.content || a.description || '').filter(Boolean).join(' ');
-      return text ? `${who}:${text}` : '';
-    })
-    .filter(Boolean)
-    .join('\n')
-    .trim();
-  if (!query) return '';
+  if (!queryText) return '';
   let hits = [];
   try {
-    hits = await embedding.topKMemoriesForQuery(sessionId, query);
+    hits = await embedding.topKMemoriesForQuery(sessionId, queryText, undefined, { excludeIds });
   } catch (e) {
     console.warn('[context] vector recall failed (non-fatal):', e);
     return '';
@@ -664,7 +674,15 @@ async function buildVectorRecallLines(sessionId) {
   // ("相关度 31%") versus a strong one ("相关度 87%").
   return hits.map(({ memory, score }) => {
     const pct = Math.round(Math.max(0, score) * 100);
-    return `(相关度 ${pct}%)${memory.summary}`;
+    const cleanSummary = normalizeMemorySummary(memory.summary || '');
+    const titlePrefix = memory.title ? `[${memory.title}] ` : '';
+    let block = `(相关度 ${pct}%)${titlePrefix}${cleanSummary}`;
+    if (injectQuotes && score >= QUOTES_INJECT_THRESHOLD
+        && Array.isArray(memory.quotes) && memory.quotes.length > 0) {
+      const lines = memory.quotes.slice(0, 5).map(q => `  · ${q}`).join('\n');
+      block += `\n  关键原话:\n${lines}`;
+    }
+    return block;
   }).join('\n\n');
 }
 
@@ -1208,17 +1226,29 @@ function parseProfilePatch(raw) {
 
 // 合并 patch 到 userProfiles。compositeId = `${charId}|${personaId}`。已有就
 // append(每条新事实加一行,简单字符串包含去重);没有就新建。
+//
+// FIFO cap(每段独立 cap):每个字段上限默认 20 条(settings.memoryProfileCap
+// 可调)。超出时从最老的几条砍掉 — append 顺序按时间走,最老的就是 split
+// 后开头几条。设这个 cap 是因为长期用户的 likes / discoveries 会无限增长,
+// 注入 prompt 的「# 关于你」段越来越长(同时模型也容易把不同时期的零散
+// fact 混淆)。20 条一个段已经够覆盖关键 trait,旧条目自然遗忘是健康的。
 async function mergeProfilePatch(characterId, personaId, patch) {
   if (!patch) return;
   const id = `${characterId}|${personaId || ''}`;
   const existing = await db.get('userProfiles', id);
+  const settings = (await db.get('settings', 'default')) || {};
+  const cap = Number.isFinite(settings.memoryProfileCap) && settings.memoryProfileCap > 0
+    ? settings.memoryProfileCap : 20;
   const now = Date.now();
   const merge = (oldText, newLines) => {
     const oldLines = (oldText || '').split('\n').map(s => s.trim()).filter(Boolean);
     const seen = new Set(oldLines.map(s => s.toLowerCase()));
     const toAdd = newLines.filter(s => !seen.has(s.toLowerCase()));
-    if (toAdd.length === 0) return oldText || '';
-    return [...oldLines, ...toAdd].join('\n');
+    if (toAdd.length === 0 && oldLines.length <= cap) return oldText || '';
+    const combined = [...oldLines, ...toAdd];
+    // FIFO cap:超 cap 时从开头切掉(最老的优先丢)。
+    const capped = combined.length > cap ? combined.slice(combined.length - cap) : combined;
+    return capped.join('\n');
   };
   const next = existing || {
     id, characterId, personaId: personaId || '',
@@ -1472,8 +1502,11 @@ export async function maybeCompressMemory(sessionId, opts = {}) {
   // Phase 2 用户画像 patch — 模型在 raw 末尾若输出 [PROFILE_PATCH] 块,
   //   解析后增量 merge 到 userProfiles[charId|personaId]。新事实简单字符
   //   串包含去重,不重复添加。失败不影响 memory 写入(fire-and-forget)。
+  //   session?.characterId 防御:压缩过程中会话被删的极端情况,直接读
+  //   .characterId 会 TypeError(mergeProfilePatch 是 async,会进 catch
+  //   不崩主流程,但日志会脏)。
   const patch = parseProfilePatch(raw);
-  if (patch) {
+  if (patch && session?.characterId) {
     mergeProfilePatch(session.characterId, session.personaId, patch)
       .catch(e => console.warn('[context] profile patch merge failed:', e));
   }
@@ -1620,7 +1653,33 @@ async function buildTimelineIndexLines(sessionId) {
 // trying to capture every event again.
 const L1_KEEP_RECENT = 8;
 const L1_BATCH       = 4;
-const DEFAULT_MEMORY_SYS_L2 = '你是对话章节合并助手。下面是同一段关系中按时间顺序的若干段已压缩的对话摘要。请把它们合并成一段不超过 400 字的中文综合摘要。\n\n要求:\n- 去重(同一件事不要在合并后重复出现)\n- 保留情感主线、关系演变、关键事件转折\n- 保留人名、地名、关键约定\n- 删掉细枝末节,聚焦弧线\n- 不分段、不列表、不加任何前缀或解释\n\n只输出合并后的摘要文本本身。';
+// V4 化:L2 也用 [CARD] 块结构,带 title / tag / importance。让远期记忆段在
+//   prompt 注入和记忆 app 渲染时有统一的卡片骨架,vector 召回也能享受 tag
+//   boost(原来 L2 没 tag,boost 全部按"日常"算)。老 L2 row 没 title/tag
+//   /importance 自动 fallback(formatMemoryWithDate 处理),不动老数据。
+//
+// 字数上限放宽到 400(L2 是章节合并,需要比 L1 更长);quotes 选填(L2 不
+//   是单段对话,quotes 意义低)。tag 仍从 6 类挑,importance 默认 high(L2
+//   本身就是"挑剩下值得保留的章节")。
+const DEFAULT_MEMORY_SYS_L2 = `你是对话章节合并助手。下面是同一段关系中按时间顺序的若干段已压缩的对话摘要(每段一张「故事卡」)。请把它们合并成一张更高维度的「章节卡」。
+
+要求:
+- 去重(同一件事不要在合并后重复出现)
+- 保留情感主线、关系演变、关键事件转折
+- 保留人名、地名、关键约定
+- 删掉细枝末节,聚焦弧线
+- 摘要≤400 字
+- title 是这一章节的标题(8 字内)
+- 标签从 6 类挑 1 个,importance 默认 high
+
+**输出格式严格按 [CARD] 块,不要 JSON、不要 markdown 包裹、不要前后缀文字**:
+
+[CARD]
+标题: <8 字内章节名>
+摘要: <≤400 字的中文章节摘要>
+标签: <转折/亲密/冲突/发现/约定/日常 之一>
+重要度: <high 或 low>
+[/CARD]`;
 
 async function maybeRollupToL2(sessionId) {
   const all = await db.query('memories', 'sessionId', sessionId);
@@ -1629,11 +1688,14 @@ async function maybeRollupToL2(sessionId) {
   l1.sort((a, b) => a.createdAt - b.createdAt);
   const toMerge = l1.slice(0, Math.min(L1_BATCH, l1.length - L1_KEEP_RECENT));
   if (toMerge.length < 2) return null;
-  const dump = toMerge.map((m, i) => `[${i + 1}] ${m.summary}`).join('\n\n');
-  let merged;
+  const dump = toMerge.map((m, i) => {
+    const t = m.title ? `[${m.title}] ` : '';
+    return `[${i + 1}] ${t}${m.summary}`;
+  }).join('\n\n');
+  let raw;
   try {
     const settings = (await db.get('settings', 'default')) || {};
-    merged = await ai.callAI({
+    raw = await ai.callAI({
       systemPrompt: DEFAULT_MEMORY_SYS_L2,
       messages: [{ role: 'user', content: dump }],
       temperature: 0.3,
@@ -1643,6 +1705,11 @@ async function maybeRollupToL2(sessionId) {
     console.warn('[context] L2 rollup AI call failed (non-fatal):', e);
     return null;
   }
+  // V4 解析:期望 1 张 [CARD]。模型走样(只吐 summary 没 [CARD] 块)→ 退回
+  //   parseCardBlock 兜底,再失败用整段 raw 当 summary。importance 默认
+  //   high — L2 本身就是被挑出来保留的章节,不该跟"日常"同级。
+  const cards = parseMemoryOutput(raw);
+  const card = cards[0] || { summary: (raw || '').trim() };
   const newId = db.newId();
   // 1a-fix: L2 之前漏了 fromTs/toTs,formatMemoryWithDate 退到 createdAt
   // 会显示成「L2 合并那天」而不是它覆盖的真实对话时间。从 toMerge 这批
@@ -1651,7 +1718,10 @@ async function maybeRollupToL2(sessionId) {
     id: newId,
     sessionId,
     tier: 2,
-    summary: merged.trim(),
+    ...(card.title ? { title: card.title } : {}),
+    summary: card.summary,
+    ...(card.tag ? { tag: card.tag } : {}),
+    importance: card.importance || 'high',
     fromMsgId: toMerge[0].fromMsgId,
     toMsgId: toMerge[toMerge.length - 1].toMsgId,
     fromTs: toMerge[0].fromTs ?? toMerge[0].createdAt,

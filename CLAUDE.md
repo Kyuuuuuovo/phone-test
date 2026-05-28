@@ -8,7 +8,7 @@
 
 ### 后端核心(`src/core/`)
 
-- `db.js` —— IndexedDB 封装。`STORES` 常量是数据模型唯一来源。改动需 bump `DB_VERSION`。当前 `DB_VERSION = 15`。导出 `init / get / set / getAll / query(store, indexName, value) / del / clear / newId / updateSettings / txnPut(plan) / txnReplace(storeName, rows)`。`txnReplace` 是 `clear + put-many` 在同一 IDB tx 内,data-backup 导入用,避免半 store 数据。
+- `db.js` —— IndexedDB 封装。`STORES` 常量是数据模型唯一来源。改动需 bump `DB_VERSION`。当前 `DB_VERSION = 16`。导出 `init / get / set / getAll / query(store, indexName, value) / del / clear / newId / updateSettings / txnPut(plan) / txnReplace(storeName, rows)`。`txnReplace` 是 `clear + put-many` 在同一 IDB tx 内,data-backup 导入用,避免半 store 数据。
 - `util.js` —— 公共小工具。`esc(s)` HTML 转义、`dayKeyOf(ts)` 本地 `YYYY-MM-DD`、`parseTolerantJSON(raw, { expect })` LLM 输出容错解析。**关键改进**:`parseTolerantJSON` 用 stack-balanced 扫描代替 5 处旧文件里的 `match(/\[[\s\S]*\]/)` 贪婪正则 — 后者遇到模型在 JSON 之后追加带 `]` 的文字(`[注:see ref [1]]`)会扩到末尾炸 parse。新代码识别 `{` `}` `[` `]` 配对 + 字符串字面量保护,精确切到第一段完整 JSON 块。`expect: 'array' | 'object' | 'any'`(默认 array)。旧 copy(各 feature 文件里的本地 `esc` / `dayKeyOf`)按"碰到了再迁"策略,不一次性扫,避免 noise diff;新写代码直接 import。
 - `pet.js` —— 桌宠模块。常量 `BEAR_PERSONA / AMBIENT_LINES`(作者锁定文案,普通用户改不到),保留 ID `BEAR_CHARACTER_ID = '__bear__'` / `BEAR_SESSION_ID = '__bear_session__'`;`ensureBearExists()` boot 时幂等保证两条 row 存在;`pickAmbientLine()` 按规则(无 API / 无角色 / lastMessageAt 老旧 / 时段)挑一条气泡文案,**不调 API**。聊天复用现有 chat 管线,不另起。
 - `bottle.js` —— 漂流瓶核心。`scanDueBottles(db, ai)` 找 `replyDueAt <= now` 的 drifting 瓶子懒生成回信(boot + open app 时调用);`replyAsContact` / `replyAsStranger` 分两种受众生成回信(联系人模式注入"匿名"事实让角色不知道作者是谁);`fishBottle` 让 AI 现造陌生人 + 瓶子内容;`promoteStrangerToFriend` 把瓶子上的 `generatedPersona` 升格成正式 character。**所有 prompt 文案是 // TODO(作者填写) 占位**,Claude 不替作者定稿语气。
@@ -65,7 +65,7 @@
 
 ---
 
-## 数据模型(`db.js` STORES,DB_VERSION = 15)
+## 数据模型(`db.js` STORES,DB_VERSION = 16)
 
 | store | 主键 | 索引 | 说明 |
 |---|---|---|---|
@@ -90,7 +90,7 @@
 | `bottles` | `id` | status, castAt | 漂流瓶(网络隐喻,不是物理瓶子),字段 content / authorIsUser / audience(`contacts`/`strangers`) / status(`drifting`/`replied`/`read`) / replierCharacterId?(contacts 模式回信的角色 id) / generatedPersona?({name,persona,vibe,avatar?})(strangers 模式现造的人格) / reply? / castAt / replyDueAt? / repliedAt? / promotedCharacterId?。一瓶一回,要续聊走 `promoteStrangerToFriend` 升格成正式 character |
 | `timeline` | `id` | sessionId | 每会话**每事件**一行(用户翻看用,**不进 system prompt**)。字段 sessionId / dayKey(`YYYY-MM-DD` 或 `start~end` 合并行) / summary(单事件 ≤25 字;merged 行用 `\n` 拼多事件) / `eventIdx?`(同 dayKey 内排序,0-based;merged 行没有这字段) / `fromTs?` / `toTs?`(整天时间窗) / `mergedFrom?[]` / `mergedInto?` / createdAt。**T31 多事件/天**:一次扫描把一天拆成 2-5 个独立事件多行写入,共享 dayKey/fromTs/toTs。每 dayKey 任一行存在就 skip(防重复) — 要刷新得删 timeline 行 |
 | `milestones` | `id` | dayKey, characterId | 用户手动标的纪念日。字段 dayKey(`YYYY-MM-DD`) / title / desc? / `recurring?`(每年同月日高亮) / characterId?(关联角色)/ createdAt。挂在独立「记忆 app」里(home 第二页),不进 system prompt,只用于月历视图 + 列表 |
-| `embeddings` | `id` | sessionId, sourceId | 向量记忆。字段 sourceType(`memory`/`msg`/`worldbook-entry`) / sourceId / sessionId / vector(`Float32Array`,IDB 直接 structured-clone 存原生数组) / dim / modelName / createdAt。每条 memory 生成时 fire-and-forget embed 一次,`requestReply` 时把最近 5 条对话拼成 query → cosine top-K(阈值 ≥ 0.35,默认 K=5)→ 注入 system prompt 的「# 相关记忆(按语义检索)」段。默认关,在 设置 → 向量记忆 启用 |
+| `embeddings` | `id` | sessionId, sourceId, **sourceType** | 向量记忆。字段 sourceType(`memory`/`worldbook-entry`) / sourceId / sessionId(`worldbook-entry` 行为 null)/ vector(`Float32Array`,IDB 直接 structured-clone 存原生数组) / dim / modelName / createdAt。每条 memory 生成时 fire-and-forget embed 一次,`requestReply` 时把最近 5 条对话拼成 query → cosine top-K(阈值 ≥ 0.35,默认 K=5)→ 注入 system prompt 的「# 相关记忆(按语义检索)」段。默认关,在 设置 → 向量记忆 启用。**v16 加 `sourceType` 索引** — 老版本世界书 vector 召回 `db.getAll('embeddings')` 整表扫,重度用户每轮都把累积的几千条记忆向量也卷进来 filter,现在直接 `query('embeddings','sourceType','worldbook-entry')` 走 index |
 | `keepsakes` | `id` | characterId, status | 千纸鹤 / 叠星星 — 关系信物,字段 characterId / type(`crane`/`star`) / theme / status(`folded`/`opened`/`kept`) / content? / nth / total / createdAt / openedAt?。lazy 生成:user 出题 → N 行 folded 不调 API;拆 → ai.callAI 生成 content → opened。`KEEPSAKE_SYS_TEMPLATE` 是作者占位 TODO |
 | `userProfiles` | `id` | characterId | per (角色×人设) 的"角色眼中的 ta"画像。id = composite `${charId}\|${personaId}`(personaId 空 = 共享)。字段 characterId / personaId / likes / dislikes / discoveries / createdAt / updatedAt。lookup 先精确 charId\|sessionPersonaId 再 fallback charId\| |
 | `cycle` | `id` | — | **新加,DB_VERSION 13**。生理期 单例 id=`default`。字段 enabled(默认 false)/ visibleToChat(默认 false,prompt 注入开关)/ averageLength(默认 28)/ periodLength(默认 5)/ fluctuation(默认 ±2 天)/ lastStartDayKey / history[{startDayKey, endDayKey?, note?}]。**双门控**:enabled + visibleToChat 都开 prompt 才注入(隐私敏感)。预测算法 `core/cycle.js#computeCycleStatus` |
@@ -356,6 +356,20 @@
 - ✅ **按钮重叠 → 间距修** 原 `.ma-row-edit right: 32px` 跟 del 按钮(占 right [6, 36])重叠 4px,改 `right: 40px` 留 9px 视觉间距(后来按钮整体改 inline 这条作废)
 - ✅ **film 卡片字对齐统一** `.ma-row` padding 0(齿孔条 + 反色 meta 布局必需)+ 各子元素 inline padding 不一(chips 12 / body 14 / title 0 / quotes 0)导致左对齐错位。统一 title / body / quotes / events / header padding-left/right 12px,跟 chips/meta margin 12 对齐
 - ✅ **film 反色条延伸到 ✎× 后面** background/color 从 `.ma-row-meta` 挪到 `.ma-row-meta-row` 容器,整 meta-row 反色;tools 在 fg 暗底用 surface 浅色 + hover 加浅底强调
+
+*M1-M9 记忆系统优化 batch(DB_VERSION 15→16)*
+> 一轮系统性梳理:vector 召回每轮重复 embed query、boost 阶段 N 次串行 db.get、世界书 vector 走 `db.getAll('embeddings')` 全表扫(累积越来越多 memory 向量)、linear + vector 注入同一段 summary 重复、L2 还是单段文本没 V4 结构、profile patch unbounded append、fire-and-forget embed 失败永久丢、force 模式 UI 反馈弱。
+
+- ✅ **M1 query embed LRU cache** `embedding.js` 加 `_queryCache` LRU(cap 50,key=url+model+text)。`embedText` / `embedTextForSummary` 顶部先查 cache,命中直接返回,miss 才打 API。`buildVectorRecallLines` + `buildWorldbookVectorLines` 一轮 query 同文本两次走两路 cfg,user 没单独配 summary cfg 时两边落到同一 endpoint → cache 完美命中,每轮省 1 次 embedding API 调用
+- ✅ **M2 vector + linear 去重** `topKMemoriesForQuery(sessionId, query, k, {excludeIds})` 接 Set/Array,buildSystemPromptParts 把 `[...l1Mem, ...l2Mem].map(m=>m.id)` 传进去 — linear 段全量注入的 memory id 自动从 vector 召回结果排除,prompt 不再同段 summary 出现两次
+- ✅ **M3 embedMemory 失败异步补齐** `topKMemoriesForQuery` 头部检测「session 有 memory 但没 vector」→ 模块级 `_backfillInflight` Set dedup,异步调 `embedMemory` 补 1-2 条(限速防 burst)。fire-and-forget 失败的孤儿 memory 每轮 reply 都尝试自愈,user 不用手动按「补齐旧总结」
+- ✅ **M4 boost 阶段批量 lookup** 原 `for (s of preWindow) await db.get('memories', sourceId)` 是 N 次串行往返,改成一次 `db.query('memories','sessionId')` 建 Map,boost 阶段 O(1) lookup
+- ✅ **M5 embeddings.sourceType 索引(DB 15→16)** `db.js` STORES.embeddings.indexes 加 `sourceType`,`topKWorldbookEntriesForQuery` 用 `db.query('embeddings','sourceType','worldbook-entry')` 替原 `db.getAll('embeddings')` + filter。重度用户每轮少扫几千条 memory 向量(原代码 worldbook 查询线性放大到全表)
+- ✅ **M6 quotes 选择性注入 prompt** `settings.memoryInjectQuotes`(默认关)+ `QUOTES_INJECT_THRESHOLD = 0.7`。开关开了之后只有 vector 召回的强命中卡(score ≥ 0.7)在 `vector-recall` 段附 quotes(`关键原话:\n  · ...`),linear L1/L2 全量段一刀切不附(那才会爆 token)。设置 → 记忆总结 → 「注入 system prompt」段加 toggle
+- ✅ **M7 L2 V4 化** `DEFAULT_MEMORY_SYS_L2` 改 `[CARD]` 块结构(title + 摘要 ≤400 + 标签 + importance,默认 high)。`maybeRollupToL2` 走 `parseMemoryOutput` 解析 + 兜底。**老 L2 row 不动**,渲染端 `formatMemoryWithDate` 已经处理 `title?` 可选 → 自动 fallback 到裸 summary 显示。新 L2 享受 tag boost(原来 L2 没 tag,boost 全部按"日常"算)
+- ✅ **M8 profile patch FIFO cap** `mergeProfilePatch` 接 `settings.memoryProfileCap`(默认 20,范围 5-100)。每段(likes / dislikes / discoveries)独立 cap,超出从开头切掉(最老 FIFO 淘汰)。防长期用户的「# 关于你」段无限增长。设置 → 记忆总结 → 「用户画像」段加输入框
+- ✅ **M9 force 模式 progress banner** chat-info 顶部加 `.compress-banner`(accent 浅底 + spinner + 取消按钮),替代原来改 settings-item label 文字的反馈。循环 maybeCompressMemory(force) 时 banner 显示「AI 压缩中… 第 N 天(上限 M)」,点取消设 `cancelRequested` flag 让 loop 在下一轮 break(等当前一轮压完,数据完整性优先)。完成 / 取消 / 失败三态分别 alert
+- ✅ **顺手** null guard for `session?.characterId` in `mergeProfilePatch` call(4.8 review 提的,会话压缩过程中被删的极端情形)
 
 ---
 

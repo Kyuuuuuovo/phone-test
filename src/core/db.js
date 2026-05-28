@@ -2,7 +2,7 @@
 // Data model frozen in STORES below — bump DB_VERSION when changing schema.
 
 export const DB_NAME = 'phone-app';
-export const DB_VERSION = 15;
+export const DB_VERSION = 16;
 
 // Object store definitions. Applied during onupgradeneeded.
 // keyPath = primary key field; indexes = secondary lookup paths.
@@ -146,16 +146,22 @@ export const STORES = {
     ],
   },
   // Embeddings — per-source-row vector store for semantic retrieval.
-  // Fields: id, sourceType ('memory'|'msg'), sourceId (memoryId or msgId),
-  // sessionId, vector (Float32Array — structured-clone-safe in IDB),
-  // dim, modelName, createdAt.
-  // Indexed by sessionId (per-session retrieval scope) and sourceId
-  // (dedup-check when re-embedding).
+  // Fields: id, sourceType ('memory'|'worldbook-entry'), sourceId (memoryId
+  // or entryId), sessionId (null for worldbook-entry rows since worldbooks
+  // attach to characters not sessions), vector (Float32Array —
+  // structured-clone-safe in IDB), dim, modelName, createdAt.
+  // Indexed by sessionId (per-session memory retrieval scope) and sourceId
+  // (dedup-check when re-embedding) and sourceType (v16: world-book vector
+  // recall used to db.getAll the whole table then filter sourceType, which
+  // grows linearly with every session's accumulated memory vectors —
+  // unbounded on heavy users; the index lets us pull only the rows we care
+  // about per query).
   embeddings: {
     keyPath: 'id',
     indexes: [
-      { name: 'sessionId', keyPath: 'sessionId' },
-      { name: 'sourceId',  keyPath: 'sourceId'  },
+      { name: 'sessionId',  keyPath: 'sessionId'  },
+      { name: 'sourceId',   keyPath: 'sourceId'   },
+      { name: 'sourceType', keyPath: 'sourceType' },
     ],
   },
   // 千纸鹤 / 叠星星 — 角色给 user 折的延迟揭晓信物。lazy 生成:user 出

@@ -36,6 +36,14 @@ export async function mountMemorySettings(container, params, router) {
   // T34: 记忆卡片显示控制 — 默认都开,user 想瘦身记忆卡片就关掉。
   const showQuotes = settings.memoryShowQuotes !== false;
   const showEvents = settings.memoryShowEvents !== false;
+  // memoryInjectQuotes — 把 quotes(关键原话)注入 prompt 的开关。默认关:
+  //   quotes 是给用户翻看的高密度信息,塞 prompt 会翻倍 token。只在 vector
+  //   召回的强命中卡(相关度 ≥0.7)附 quotes,linear L1/L2 全量段一刀切不附。
+  const injectQuotes = settings.memoryInjectQuotes === true;
+  // memoryProfileCap — 用户画像每段(likes / dislikes / 你发现)的条数上限。
+  //   超过时最老的 FIFO 淘汰,防 prompt 的「# 关于你」段无限增长。
+  const profileCap = Number.isFinite(settings.memoryProfileCap) && settings.memoryProfileCap > 0
+    ? settings.memoryProfileCap : 20;
 
   container.innerHTML = `
     <div class="page">
@@ -100,6 +108,21 @@ export async function mountMemorySettings(container, params, router) {
             <input type="checkbox" name="showEvents"${showEvents ? ' checked' : ''}>
             <span>显示「这次发生了」(红包/转账/语音/图片等手机原生事件链)</span>
           </label>
+
+          <h3 class="section-title" style="margin-top: 18px;">注入 system prompt</h3>
+          <p class="hint">下面这条控制 AI 能不能在回复时"读到"关键原话。默认关 — quotes 主要是给你翻看用的,塞进 prompt 会显著增加 token 用量。开了之后只在<b>向量召回</b>命中的强相关卡(相关度 ≥70%)附原话,L1/L2 全量段不附(那样会爆 token)。需要先在「设置 → 向量记忆」启用 embedding,这个开关才有意义。</p>
+          <label class="checkbox-row">
+            <input type="checkbox" name="injectQuotes"${injectQuotes ? ' checked' : ''}>
+            <span>把关键原话注入 prompt(仅向量召回强命中)</span>
+          </label>
+
+          <h3 class="section-title" style="margin-top: 18px;">用户画像</h3>
+          <p class="hint">每次记忆压缩时,AI 会顺带把对话里关于用户的新事实(喜好 / 不喜欢 / 发现)增量写到「关于你」画像里。长期下来每段会越积越多,这里 cap 一下 — 超过上限时最老的条目自然淘汰。</p>
+          <label>
+            <div class="label-text">每段上限(喜欢 / 不喜欢 / 你发现各自独立计算,默认 20)</div>
+            <input type="number" name="profileCap" min="5" max="100" step="1" value="${profileCap}">
+          </label>
+
           <div class="form-actions">
             <button type="submit" class="btn">保存</button>
           </div>
@@ -143,6 +166,9 @@ export async function mountMemorySettings(container, params, router) {
     s.memoryApiConfigId = memApiId || null;
     s.memoryShowQuotes = !!fd.get('showQuotes');
     s.memoryShowEvents = !!fd.get('showEvents');
+    s.memoryInjectQuotes = !!fd.get('injectQuotes');
+    const pc = parseInt(String(fd.get('profileCap') || '0'), 10) || 20;
+    s.memoryProfileCap = Math.max(5, Math.min(100, pc));
     // T17: memoryBatchSize 字段废弃 — 新规则按 dayKey 分组,每天一条 memory,
     //   不再需要"一次总结 N 条"概念。老 settings 里的值留着不动也不读。
     await db.set('settings', s);

@@ -27,6 +27,13 @@ export async function mountChatInfo(container, params, router) {
         <div class="title">聊天信息</div>
       </header>
       <div class="page-body">
+        <div class="compress-banner" hidden>
+          <div class="compress-banner-inner">
+            <span class="compress-spinner" aria-hidden="true"></span>
+            <span class="compress-text">正在提取记忆…</span>
+            <button type="button" class="compress-cancel">取消</button>
+          </div>
+        </div>
         <div class="chat-info-card">
           ${renderAvatar(character)}
           <div class="chat-info-name">${esc(character?.name ?? '(未知角色)')}${isBlocked ? ' <span class="blocked-badge">已拉黑</span>' : ''}</div>
@@ -173,8 +180,9 @@ export async function mountChatInfo(container, params, router) {
 
     } else if (action === 'force-compress') {
       // T14 + T17:强制压缩 — 不等 active.length > threshold,按 dayKey 分组,
-      //   压最旧一天。循环跑直到 settings.memoryForceBatchLimit 上限或
-      //   maybeCompressMemory 返回 null(没东西可压)。label 实时显示进度。
+      //   压最旧一天。循环跑直到 settings.memoryForceBatchLimit 上限、
+      //   maybeCompressMemory 返回 null(没东西可压),或用户点了 banner 上
+      //   的「取消」(cancelRequested flag)。
       const settings = (await db.get('settings', 'default')) || {};
       const batchLimit = Number.isFinite(settings.memoryForceBatchLimit) && settings.memoryForceBatchLimit > 0
         ? settings.memoryForceBatchLimit : 30;
@@ -183,28 +191,45 @@ export async function mountChatInfo(container, params, router) {
         message: `把"今天以外"的活跃消息按天分组逐天压缩,本次最多压 ${batchLimit} 天(在「设置 → 记忆总结」可调)。会连续调用 AI,可能慢。继续?`,
         confirmLabel: '提取',
       })) return;
-      const labelEl = item.querySelector('.settings-label');
-      const origLabel = labelEl.textContent;
+      // Banner 接管进度显示 — 比改 settings-item label 显眼,且可中断。
+      const banner = container.querySelector('.compress-banner');
+      const textEl = banner.querySelector('.compress-text');
+      const cancelBtn = banner.querySelector('.compress-cancel');
+      let cancelRequested = false;
+      const onCancel = () => {
+        cancelRequested = true;
+        cancelBtn.disabled = true;
+        textEl.textContent = '正在取消…(等当前一轮压完)';
+      };
+      cancelBtn.addEventListener('click', onCancel);
+      banner.hidden = false;
+      cancelBtn.disabled = false;
       let done = 0;
       let stoppedReason = 'limit';
       try {
         for (let i = 0; i < batchLimit; i++) {
-          labelEl.textContent = `AI 压缩中… ${i + 1}/${batchLimit}`;
+          if (cancelRequested) { stoppedReason = 'cancelled'; break; }
+          textEl.textContent = `AI 压缩中… 第 ${i + 1} 天(上限 ${batchLimit})`;
           const memId = await context.maybeCompressMemory(sessionId, { force: true });
           if (!memId) { stoppedReason = 'empty'; break; }
           done++;
         }
-        labelEl.textContent = origLabel;
-        if (done === 0) {
-          await openAlert(container, { title: '没东西可压', message: '今天以外没有未压缩的消息。' });
-        } else if (stoppedReason === 'empty') {
-          await openAlert(container, { title: '已全部提取', message: `共压了 ${done} 天,今天以外没有更早的活跃消息了。` });
-        } else {
-          await openAlert(container, { title: '已达上限', message: `共压了 ${done} 天(上限 ${batchLimit})。还有更早的天没压,可以再点一次继续。` });
-        }
       } catch (e) {
-        labelEl.textContent = origLabel;
+        banner.hidden = true;
+        cancelBtn.removeEventListener('click', onCancel);
         await openAlert(container, { title: `失败(已压 ${done} 天)`, message: String(e).slice(0, 200), danger: true });
+        return;
+      }
+      banner.hidden = true;
+      cancelBtn.removeEventListener('click', onCancel);
+      if (done === 0 && stoppedReason !== 'cancelled') {
+        await openAlert(container, { title: '没东西可压', message: '今天以外没有未压缩的消息。' });
+      } else if (stoppedReason === 'empty') {
+        await openAlert(container, { title: '已全部提取', message: `共压了 ${done} 天,今天以外没有更早的活跃消息了。` });
+      } else if (stoppedReason === 'cancelled') {
+        await openAlert(container, { title: '已取消', message: `已压完 ${done} 天就停下了,剩下的可以再点继续。` });
+      } else {
+        await openAlert(container, { title: '已达上限', message: `共压了 ${done} 天(上限 ${batchLimit})。还有更早的天没压,可以再点一次继续。` });
       }
 
     } else if (action === 'character') {

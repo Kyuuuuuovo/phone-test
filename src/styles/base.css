@@ -6036,6 +6036,49 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
   opacity: 0.85;
 }
 
+/* 「立即提取记忆」运行时进度条 — 替代原来改 settings-label 文字的反馈。
+   accent 浅底 + 顶部 inline 显示,带 spinner + 取消按钮。dismiss 走 hidden
+   不动 DOM 结构,避免 reflow 抖动。 */
+.compress-banner {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+}
+.compress-banner-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+.compress-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: mp-spin 0.9s linear infinite;
+  flex: 0 0 auto;
+}
+.compress-text {
+  flex: 1;
+  font-size: 13px;
+  color: var(--fg);
+}
+.compress-cancel {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--fg) 25%, transparent);
+  color: var(--fg);
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.compress-cancel:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* T33 跨会话 memory helper 行 — 每个会话一行,左边名字+计数,右边两按钮。
    桌宠在 memory app 短点时弹出。 */
 .mh-xs-list {
