@@ -176,9 +176,9 @@ const PINK_PALETTE = {
 
 // One-click presets — the editor renders a row of chips at the top that copies
 // the preset's values into the draft. Users can still tweak after applying.
-// 12 套预设。原 13 → 12:删「默认 iOS 蓝」(跟黑白灰逐字节重复)+ 删
+// 13 套预设。原 13 → 12 → 13:删「默认 iOS 蓝」(跟黑白灰逐字节重复)+ 删
 // 「黑白灰」(并进素白)。名字全两字。3 套改色(夜紫→浅紫、深青→荷紫、
-// 暖琥珀→琥珀),1 套新增(浅荷)。配色对照 docs / presets-all.html demo。
+// 暖琥珀→琥珀),2 套新增(浅荷、弥撒)。配色对照 docs / presets-all.html demo。
 //
 // id 命名:历史 id 保留不动(向后兼容,user 自定义 preset 不会撞);改色的
 // 套也保留旧 id(night-violet / deep-teal / warm-amber)避免老 settings 引用
@@ -569,6 +569,48 @@ export const THEME_PRESETS = [
         texture:        'none',
         transparency:   0,
         surfaceAlpha:   60,
+      },
+    },
+  },
+  // 弥撒 — 哥特黑红。bg 近纯黑 (#040305),accent 暗红 #8B131C,user 气泡用
+  //   demo 的 #8B131C → #4A0A10 暗红渐变(参考荷紫 preset 的 gradient 字符串
+  //   作法,base.css `var(--bubble-user)` shorthand 接 gradient OK)。char 气泡
+  //   用半透明深褐 rgba(10,5,6,0.66) + liquid 玻璃,在深底浮一层暗光。fontFamily
+  //   选 crimson(Crimson Pro + 思源宋体),衬线感贴近 demo 的 Cormorant Garamond
+  //   氛围,中文有 fallback。texture noise 还原 demo 的 fractalNoise 覆盖。
+  //   radius 9 求锐利,符合 demo 「降到 8-10 求锐」的指导。
+  //
+  //   ⚠ bubbleUser 是 linear-gradient 字符串,设置 → 外观 → 颜色 tab 的
+  //   `<input type="color">` 不认 gradient,user 进去看一眼就会"丢渐变",改完
+  //   保存就是单色。同 deep-teal(荷紫)的已知 caveat。
+  {
+    id: 'gothic-mass',
+    label: '弥撒',
+    theme: {
+      notch: false,
+      bg:           '#040305',
+      fg:           '#CFC3C3',
+      surface:      '#0A0506',
+      accent:       '#8B131C',
+      muted:        '#6B5358',
+      border:       '#4A0D12',
+      bubbleUser:   'linear-gradient(150deg,#8B131C 0%,#4A0A10 100%)',
+      bubbleUserFg: '#E6D6D6',
+      bubbleChar:   'rgba(10,5,6,0.66)',
+      bubbleCharFg: '#CFC3C3',
+      outsideBg:    '#000000',
+      bgPinned:     '#1A0C0F',
+      fontFamily:   'crimson',
+      fontSize:     15,
+      radius:       9,
+      effects: {
+        glass:          'liquid',
+        glassIntensity: 80,
+        gradient:       false,
+        gradientTo:     '#1A0C0F',
+        texture:        'noise',
+        transparency:   0,
+        surfaceAlpha:   55,
       },
     },
   },
