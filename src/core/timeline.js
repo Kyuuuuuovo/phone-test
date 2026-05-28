@@ -26,11 +26,12 @@ import * as db from './db.js';
 import * as ai from './ai.js';
 
 // AUTHOR-LOCKED sys prompt for daily summaries. Edit voice / tone here.
-// Empty string is allowed if you ever want zero guidance (model improvises).
-export const DEFAULT_TIMELINE_SYS = `你是会话日记助手。下面是同一天发生的对话内容。请用不超过 50 字的中文,一句话总结这天里发生的关键事件 / 情感转折 / 重要约定。不分段、不分点、不加引号或前缀,只输出那句话本身。`;
+// T28: prompt 简化 — user 反馈"乱七八糟的提示词,就是日期,事件,事件,不打标"。
+// 输出格式改成"事件,事件"逗号串,不再要 tag,不再要"情感转折/约定"等修饰。
+export const DEFAULT_TIMELINE_SYS = `把这一天的对话浓缩成 2-5 个关键事件,用逗号串起来。不超过 50 字。只输出事件本身,不解释、不加前缀。`;
 
-// AUTHOR-LOCKED sys prompt for merging multiple days. Same voice budget.
-export const DEFAULT_TIMELINE_MERGE_SYS = `你是时间线合并助手。下面是同一段关系中连续若干天的一句话总结。请合并成一句不超过 50 字的中文综合总结,聚焦这段时间的关键演变。不分段、不分点、不加引号或前缀,只输出那句话本身。`;
+// AUTHOR-LOCKED sys prompt for merging multiple days. Same style.
+export const DEFAULT_TIMELINE_MERGE_SYS = `把下面这几天的事件合并成一行,用逗号串起来。不超过 50 字。只输出事件本身,不解释、不加前缀。`;
 
 export const MAX_SUMMARY_LEN = 50;
 

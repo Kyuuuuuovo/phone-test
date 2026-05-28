@@ -132,20 +132,20 @@ export async function mountMemoryApp(container, params, router) {
       return `<div class="mem-folder-list">${all}${rows}</div>`;
     }
     // 默认 / planner / petal / film / cosmic — 横向 chip
-    // 「全部」(空 id)走特例 — 不显示 avatar 块,只显文字「All」+ chip-all class,
-    // 让各风格能给它独立样式(planner washi 贴纸感 / petal 圆角 / 等)。
+    // 「All」chip(空 id)有自己 avatar 块,内容是「All」文字,各风格 CSS
+    // 覆盖给它跟该风格其它 avatar 一致的视觉(方角 / 圆 / 白边 / glow 等)。
     const chip = (id, name, avatar) => {
       const isAll = !id;
       const color = stableColor(id || 'all');
       const active = (id || '') === filterCharId ? ' active' : '';
       const initial = (name || '?').slice(0, 1);
       const avatarHtml = isAll
-        ? ''
+        ? `<span class="mem-chip-avatar mem-chip-avatar-all">All</span>`
         : avatar
           ? `<span class="mem-chip-avatar"><img src="${esc(avatar)}" alt=""></span>`
           : `<span class="mem-chip-avatar" style="background:${color}">${esc(initial)}</span>`;
       const cls = isAll ? 'mem-char-chip mem-char-chip-all' : 'mem-char-chip';
-      const label = isAll ? 'All' : name;
+      const label = isAll ? '全部' : name;
       return `<button class="${cls}${active}" data-char-id="${esc(id || '')}" type="button">${avatarHtml}<span class="mem-chip-name">${esc(label)}</span></button>`;
     };
     return `
@@ -357,10 +357,10 @@ export async function mountMemoryApp(container, params, router) {
             : '';
           const meta = [t.dayKey || '', labelFor(t.sessionId)];
           if (t.mergedFrom) meta.push(`合并(${t.mergedFrom.length})`);
+          // T28: timeline 不再打 tag — user 反馈"不打标",timeline 只显日期+事件
           return buildMemCard({
             meta,
             body: t.summary,
-            tag: heuristicTag(t.summary),
             extras: mergedDetail,
             cardClass: t.mergedFrom ? 'merged-row' : '',
           });

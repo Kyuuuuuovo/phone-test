@@ -166,17 +166,18 @@ body[data-mono="1"] .memory-app-page .mem-chips {
 .memory-app-page .mem-chip-avatar img {
   width: 100%; height: 100%; object-fit: cover;
 }
-/* T24: 「全部 / All」chip 特例 — 无 avatar 块,padding 对称,字号略大些
-   像独立按钮而不是带头像的角色 chip。各风格可在自己 section 覆盖。 */
-.memory-app-page .mem-char-chip-all {
-  padding: 6px 14px;
-  font-size: 13px;
-  font-weight: 600;
+/* T28: 「All」chip 跟角色 chip 同结构 — 有 avatar 块,内容是「All」字样,
+   各风格在自己 section 覆盖具体形状(方角 / 圆 / polaroid 等)。
+   avatar 块底色默认走 accent + muted 混合让它跟角色 chip 视觉区分。 */
+.memory-app-page .mem-chip-avatar-all {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 35%, var(--muted)),
+    color-mix(in srgb, var(--accent) 15%, var(--muted)));
+  color: var(--surface);
+  font-size: 9px;
+  font-weight: 700;
   letter-spacing: 0.5px;
-  color: var(--muted);
-}
-.memory-app-page .mem-char-chip-all.active {
-  color: var(--fg);
+  text-transform: uppercase;
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -757,24 +758,9 @@ body[data-mem-style="planner"] .memory-app-page .mem-score {
 body[data-mem-style="planner"] .memory-app-page .mem-char-chip {
   border-style: dashed;
 }
-/* T24: planner 风格 All chip — washi tape 感(浅暖色实色 + 微旋转 + 短下划线
-   作"贴上去"的视觉),取代 dashed 边框圆 pill,跟手账"贴纸"质感更贴切。 */
-body[data-mem-style="planner"] .memory-app-page .mem-char-chip-all {
-  border-style: none;
-  background: linear-gradient(135deg,
-    color-mix(in srgb, var(--accent) 30%, var(--surface)),
-    color-mix(in srgb, var(--accent) 15%, var(--surface)));
-  color: var(--fg);
-  border-radius: 4px;
-  transform: rotate(-1.5deg);
-  padding: 4px 12px;
-  font-weight: 700;
-  position: relative;
-}
-body[data-mem-style="planner"] .memory-app-page .mem-char-chip-all.active {
-  box-shadow: 0 2px 6px color-mix(in srgb, var(--accent) 40%, transparent);
-  transform: rotate(-1.5deg) translateY(-1px);
-}
+/* T28 planner — All chip 的 avatar 用同一份方角(跟其它角色 chip 一致,T20
+   已经给 .mem-chip-avatar 加了 5px radius + 28px),avatar 内容是「All」
+   而非 stableColor。chip 本身仍是 dashed 边框圆 pill,跟其它 chip 形状统一。 */
 /* T20: planner 头像方角 + 比默认稍大,跟手账"贴照片"质感对齐 */
 body[data-mem-style="planner"] .memory-app-page .mem-chip-avatar {
   border-radius: 5px;
