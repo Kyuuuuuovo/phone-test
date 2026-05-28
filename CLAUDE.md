@@ -307,7 +307,7 @@
 ### TODO 待办
 
 **等用户文案 / 决策**:
-- 桌宠 `BEAR_PERSONA` + `AMBIENT_LINES` 7 场景(每个 1 条占位)、`bottle.js` 4 处 TODO、`KEEPSAKE_SYS_TEMPLATE`(user 表态自己改,Claude 不动)、`BEHAVIOR_GUIDANCE`(目前只有心声一段,9 个动作的「什么时机用」都没写)
+- 桌宠 `BEAR_PERSONA` + `AMBIENT_LINES` 7 场景(每个 1 条占位)、`bottle.js` 4 处 TODO、`BEHAVIOR_GUIDANCE`(目前只有心声一段,9 个动作的「什么时机用」都没写)。**`KEEPSAKE_SYS_TEMPLATE` 已 user 定稿(2026-05-28)**
 - 行程 3 天时间轴 + 月历美化风格(等 user 给 reference,demo 已 functional)
 - 监控反向注入聊天(user 在想 — 因为不只是当前帧,可能要包括历史画面)
 - 网站地址 / KKphone.com(等 user 买域名,有了我加 CNAME 文件)

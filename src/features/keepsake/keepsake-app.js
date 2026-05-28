@@ -19,23 +19,23 @@ import { openConfirm, openAlert, openModal } from '../../core/modal.js';
 const TYPE_LABELS = { crane: '纸鹤', star: '星星' };
 const TYPE_ICONS  = { crane: '🕊️', star: '⭐' };
 
-// TODO(作者填写): 拆开纸鹤 / 星星时调 ai 生成内容的 system prompt 模板。
-// 这条注入到 system role,后面 user role 给 context(主题 / 第 N 颗 / 角色
-// persona / 最近关系状态)。要求输出一段短文 30-150 字,不带前后缀。
-//
-// 占位版本(作者改)— 强调"这是 ta 此刻想对你说但没说出口的话",每颗
-// 不同,跟当前关系状态贴合。
-const KEEPSAKE_SYS_TEMPLATE = `你扮演【__CHAR_NAME__】。下面 user 会告诉你:你折了一只 __TYPE_LABEL__ 给 ta,主题是「__THEME__」,这是第 __NTH__ 颗(共 __TOTAL__ 颗)。
+// 作者锁定文案(2026-05-28 user 写定)。
+// sys 里 __USER_NAME__ / __CHAR_NAME__ / __CHAR_PERSONA__ 三个占位 — type /
+// nth / total / theme 放 userMsg 里(具体 task 上下文,sys 保持诗意框架)。
+const KEEPSAKE_SYS_TEMPLATE = `# 千纸鹤与星星
 
-请写出这颗 __TYPE_LABEL__ 里你想对 ta 说的话 — 是平时说不出口、藏在心里的那种,跟当前关系状态贴合。**每一颗内容必须不一样**(因为 ta 会一颗一颗拆,雷同就没意思了)。
+你偶尔会叠千纸鹤或星星给__USER_NAME__,把字写在里面。__USER_NAME__拆开才能看到。
 
-要求:
-- 30-150 字,一段话,不分段、不列点
-- 第一人称,跟你的人设语气一致
-- 不要重复 ta 出的主题原文,不要"亲爱的 X"这种俗套抬头,不要末尾署名
-- 内容是"此刻你想跟 ta 说但平时不会说的话"
+这些是你没说出口的东西——某次对话里咽回去的半句话,某个回忆浮上来时的念头,某些你想对ta说的话或者你自己也说不清为什么会想到的一个瞬间。
 
-你的人设:
+**千纸鹤** — 正方形纸,可以写几句。但不要多。
+**星星** — 窄纸带,只够写一句。
+
+那些留在心里会发霉的东西,趁叠纸的时候写下来吧。
+
+---
+
+你是【__CHAR_NAME__】。
 __CHAR_PERSONA__`;
 
 function escHtml(s) {
@@ -192,14 +192,17 @@ export async function mountKeepsakeApp(container, params, router) {
     const cardEl = container.querySelector(`[data-keepsake-id="${id}"]`);
     if (cardEl) cardEl.classList.add('loading');
     try {
+      // user 名字从 active persona 拿(settings.activePersonaId),没设就 fallback「你」。
+      const settings = (await db.get('settings', 'default')) || {};
+      const activePersona = settings.activePersonaId
+        ? await db.get('personas', settings.activePersonaId)
+        : null;
+      const userName = activePersona?.name || '你';
       const sys = KEEPSAKE_SYS_TEMPLATE
+        .replace(/__USER_NAME__/g, userName)
         .replace('__CHAR_NAME__', c.name || '角色')
-        .replace(/__TYPE_LABEL__/g, TYPE_LABELS[k.type] || '信物')
-        .replace('__THEME__', k.theme)
-        .replace('__NTH__', String(k.nth))
-        .replace('__TOTAL__', String(k.total))
         .replace('__CHAR_PERSONA__', c.persona || '');
-      const userMsg = `主题:${k.theme}\n这是第 ${k.nth} 颗,共 ${k.total} 颗。请写这颗 ${TYPE_LABELS[k.type]} 里你想说的话。`;
+      const userMsg = `这次叠的是${TYPE_LABELS[k.type]},第 ${k.nth} 颗 / 共 ${k.total} 颗,每一颗都要不一样。\n契机:${k.theme}\n直接写纸上那段字。不要"亲爱的"这种抬头,不要署名,不要"以下是..."之类的前缀。`;
       const content = await ai.callAI({
         systemPrompt: sys,
         messages: [{ role: 'user', content: userMsg }],
