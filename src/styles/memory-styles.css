@@ -680,71 +680,90 @@ body[data-mem-style="film"] .memory-app-page .ma-month-label {
 }
 
 /* ═════════════════════════════════════════════════════════════════════
-   风格 5 · 星河(cosmic)— 深色渐变 + 星点 + 发光
-   ★ 例外:基底深色渐变是 cosmic 的核心身份,**不取 --bg** — 即使 user 用
-     浅主题,cosmic 也是深的(类似"进入这个 app 进入了黑夜")。
-     但所有 accent 系发光(星点、tab 下划线、文字光晕)仍走 --accent,
-     换主题 accent 颜色,星河颜色就变。
+   风格 5 · 星河(cosmic)— 深夜紫黑 + 月光米白 + 星点
+   T32 重做:user 反馈白色刺眼 + 白字不明显。问题根因:之前文字色
+     `color-mix(--accent 25%, #fff)` 接近纯白(在浅主题 accent=灰系下尤其
+     刺眼);卡片底 `color-mix(--accent 14%, #000)` 在浅 accent 下又泛灰
+     不够「黑夜」。
+   方案:基底渐变 + 文字色 全部固定深夜配色(不依赖 --accent),只保留
+     星点 / chip 强调走 --accent 联动(身份)。
+     - 基底:深紫黑 #0d0a1e → #1a1232 渐变(真黑夜)
+     - 卡片底:rgba(255,255,255,0.045) 半透薄白叠(玻璃感)
+     - 边框:rgba(255,255,255,0.10) 微白线
+     - 文字主色:月光米白 #e6dfc8(暖白,不刺眼)
+     - 文字次色:柔紫 #a89cc8
    ═════════════════════════════════════════════════════════════════════ */
 body[data-mem-style="cosmic"] .memory-app-page.page {
   background:
-    radial-gradient(1px 1px at 18% 22%, color-mix(in srgb, var(--accent) 85%, white), transparent),
-    radial-gradient(1px 1px at 62% 68%, color-mix(in srgb, var(--accent) 65%, white), transparent),
-    radial-gradient(2px 2px at 81% 18%, color-mix(in srgb, var(--accent) 70%, white), transparent),
-    radial-gradient(1px 1px at 38% 88%, color-mix(in srgb, var(--accent) 55%, white), transparent),
-    radial-gradient(1px 1px at 9% 64%, color-mix(in srgb, var(--accent) 50%, white), transparent),
-    radial-gradient(2px 2px at 92% 52%, color-mix(in srgb, var(--accent) 60%, white), transparent),
-    radial-gradient(1px 1px at 48% 38%, color-mix(in srgb, var(--accent) 50%, white), transparent),
-    radial-gradient(1px 1px at 72% 8%, color-mix(in srgb, var(--accent) 50%, white), transparent),
-    linear-gradient(180deg,
-      color-mix(in srgb, var(--accent) 18%, #000) 0%,
-      color-mix(in srgb, var(--accent) 32%, #000) 100%);
-  color: color-mix(in srgb, var(--accent) 25%, #fff);
+    radial-gradient(1px 1px at 18% 22%, color-mix(in srgb, var(--accent) 60%, white), transparent),
+    radial-gradient(1px 1px at 62% 68%, color-mix(in srgb, var(--accent) 50%, white), transparent),
+    radial-gradient(2px 2px at 81% 18%, color-mix(in srgb, var(--accent) 55%, white), transparent),
+    radial-gradient(1px 1px at 38% 88%, color-mix(in srgb, var(--accent) 45%, white), transparent),
+    radial-gradient(1px 1px at 9% 64%, color-mix(in srgb, var(--accent) 40%, white), transparent),
+    radial-gradient(2px 2px at 92% 52%, color-mix(in srgb, var(--accent) 50%, white), transparent),
+    radial-gradient(1px 1px at 48% 38%, color-mix(in srgb, var(--accent) 40%, white), transparent),
+    radial-gradient(1px 1px at 72% 8%, color-mix(in srgb, var(--accent) 40%, white), transparent),
+    linear-gradient(180deg, #0d0a1e 0%, #1a1232 100%);
+  color: #e6dfc8;
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-tabs {
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-tab {
   border: none;
   background: none;
-  color: color-mix(in srgb, var(--accent) 60%, white);
+  color: #a89cc8;
   padding: 8px 14px;
   border-radius: 0;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-tab.active {
-  color: color-mix(in srgb, var(--accent) 30%, white);
+  color: #e6dfc8;
   border-bottom-color: var(--accent);
-  text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 50%, transparent);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-row {
-  background: color-mix(in srgb, var(--accent) 14%, #000);
+  background: rgba(255, 255, 255, 0.045);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.10);
   border-radius: 12px;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-row:hover {
-  border-color: color-mix(in srgb, var(--accent) 65%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 55%, rgba(255, 255, 255, 0.15));
   box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-row-meta {
-  color: color-mix(in srgb, var(--accent) 70%, white);
+  color: #a89cc8;
   font-size: 11px;
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-row-body {
-  color: color-mix(in srgb, var(--accent) 25%, #fff);
+  color: #e6dfc8;
   font-size: 13.5px;
 }
+body[data-mem-style="cosmic"] .memory-app-page .ma-row-title {
+  color: #f0e9d4;
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-row-quotes,
+body[data-mem-style="cosmic"] .memory-app-page .ma-row-events {
+  border-top-color: rgba(255, 255, 255, 0.12);
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-row-quotes-label,
+body[data-mem-style="cosmic"] .memory-app-page .ma-row-events-label {
+  color: #8c80a8;
+}
+body[data-mem-style="cosmic"] .memory-app-page .ma-row-quote {
+  color: #d6cfb8;
+}
 body[data-mem-style="cosmic"] .memory-app-page .ma-cell {
-  background: color-mix(in srgb, var(--accent) 12%, #000);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  color: color-mix(in srgb, var(--accent) 25%, #fff);
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: #e6dfc8;
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-cell.today {
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  background: color-mix(in srgb, var(--accent) 25%, rgba(255, 255, 255, 0.05));
   border-color: color-mix(in srgb, var(--accent) 70%, transparent);
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-cell.has-event {
@@ -754,46 +773,46 @@ body[data-mem-style="cosmic"] .memory-app-page .ma-cell-dots .dot {
   box-shadow: 0 0 6px currentColor;
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-cal-nav .ma-nav-btn {
-  background: color-mix(in srgb, var(--accent) 14%, #000);
-  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
-  color: color-mix(in srgb, var(--accent) 25%, #fff);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #e6dfc8;
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-month-label {
-  color: color-mix(in srgb, var(--accent) 30%, white);
+  color: #f0e9d4;
   text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-legend {
-  color: color-mix(in srgb, var(--accent) 70%, white);
+  color: #a89cc8;
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-weekday {
-  color: color-mix(in srgb, var(--accent) 55%, white);
+  color: #8c80a8;
 }
 body[data-mem-style="cosmic"] .memory-app-page .hint,
 body[data-mem-style="cosmic"] .memory-app-page p {
-  color: color-mix(in srgb, var(--accent) 75%, white);
+  color: #c4baa0;
 }
 /* 切换 button 在深底上要够亮 */
 body[data-mem-style="cosmic"] .memory-app-page .ma-style-btn {
-  background: color-mix(in srgb, var(--accent) 14%, #000);
-  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
-  color: color-mix(in srgb, var(--accent) 25%, #fff);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #e6dfc8;
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-style-menu {
-  background: color-mix(in srgb, var(--accent) 14%, #000);
-  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+  background: #1a1232;
+  border-color: rgba(255, 255, 255, 0.15);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 24px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-style-opt {
-  color: color-mix(in srgb, var(--accent) 25%, #fff);
+  color: #e6dfc8;
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-style-opt:hover {
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  background: rgba(255, 255, 255, 0.06);
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-style-opt.active {
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  background: color-mix(in srgb, var(--accent) 22%, rgba(255, 255, 255, 0.05));
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-style-opt-desc {
-  color: color-mix(in srgb, var(--accent) 60%, white);
+  color: #a89cc8;
 }
 
 /* ═════════════════════════════════════════════════════════════════════
@@ -913,6 +932,46 @@ body[data-mem-style="petal"] .memory-app-page .mem-char-chip.active .mem-chip-av
               0 4px 12px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
+/* T32 film 手机端减压 — phone-frame 在 ≤440px viewport 缩到 100% 宽,卡片堆叠
+   chips + meta + title + body + quotes + events 容易挤,统一缩 padding / margin
+   / chip 字号,让密度合理化。base.css 也用 max-width:440 做 mobile breakpoint。 */
+@media (max-width: 440px) {
+  body[data-mem-style="film"] .memory-app-page .ma-row {
+    padding-top: 12px;
+  }
+  body[data-mem-style="film"] .memory-app-page .ma-row::after {
+    height: 4px;
+  }
+  body[data-mem-style="film"] .memory-app-page .ma-row .mem-chips {
+    padding: 6px 10px 0;
+    gap: 3px;
+  }
+  body[data-mem-style="film"] .memory-app-page .mem-chips > span {
+    font-size: 8.5px;
+    padding: 1px 5px;
+  }
+  body[data-mem-style="film"] .memory-app-page .ma-row-meta {
+    margin: 6px 10px 4px;
+    padding: 2px 8px;
+    font-size: 9.5px;
+  }
+  body[data-mem-style="film"] .memory-app-page .ma-row-title {
+    font-size: 13px;
+    padding: 0 10px;
+    margin-bottom: 1px;
+  }
+  body[data-mem-style="film"] .memory-app-page .ma-row-body {
+    padding: 0 10px 10px;
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  body[data-mem-style="film"] .memory-app-page .ma-row-quotes,
+  body[data-mem-style="film"] .memory-app-page .ma-row-events {
+    margin: 4px 10px 0;
+    padding-top: 4px;
+  }
+}
+
 /* film — meta 独立行(monospace 暗底 label),chips 显在齿孔下方第一行
    原 ma-row-meta 已 monospace + 反色,这里加 chip 的胶片风:小、方角、灰底 */
 body[data-mem-style="film"] .memory-app-page .ma-row .mem-chips {
@@ -992,13 +1051,24 @@ body[data-mem-style="cosmic"] .memory-app-page .ma-row {
   margin-left: 14px;
 }
 body[data-mem-style="cosmic"] .memory-app-page .mem-chips > span {
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  color: color-mix(in srgb, var(--accent) 30%, white);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e6dfc8;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+/* high importance chip — 深底上要够亮的暖红才显眼 */
+body[data-mem-style="cosmic"] .memory-app-page .mem-imp-high {
+  background: rgba(240, 130, 130, 0.20);
+  color: #f5b8b8;
+  border-color: rgba(240, 130, 130, 0.35);
+}
+/* L2 tier chip — 深底上用 accent glow */
+body[data-mem-style="cosmic"] .memory-app-page .mem-tier-l2 {
+  background: color-mix(in srgb, var(--accent) 22%, rgba(255, 255, 255, 0.05));
+  color: color-mix(in srgb, var(--accent) 40%, white);
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-session-group summary {
   position: relative;
-  color: color-mix(in srgb, var(--accent) 30%, white);
+  color: #e6dfc8;
   padding: 8px 0;
 }
 body[data-mem-style="cosmic"] .memory-app-page .ma-session-group summary::after {
@@ -1009,9 +1079,9 @@ body[data-mem-style="cosmic"] .memory-app-page .ma-session-group summary::after 
   background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 60%, transparent), transparent);
 }
 body[data-mem-style="cosmic"] .memory-app-page .mem-char-chip {
-  background: color-mix(in srgb, var(--accent) 16%, #000);
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
-  color: color-mix(in srgb, var(--accent) 25%, #fff);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #e6dfc8;
 }
 /* T27 cosmic — section 顶部 glow-line(横向渐变发光线),取代普通章节分隔 */
 body[data-mem-style="cosmic"] .memory-app-page .ma-glow-line {
@@ -1024,29 +1094,30 @@ body[data-mem-style="cosmic"] .memory-app-page .ma-glow-line {
 }
 /* T20: cosmic 头像圆形 + accent 边 + glow(星际"星球"质感) */
 body[data-mem-style="cosmic"] .memory-app-page .mem-chip-avatar {
-  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  background: color-mix(in srgb, var(--accent) 14%, #000);
-  color: color-mix(in srgb, var(--accent) 30%, #fff);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e6dfc8;
 }
 body[data-mem-style="cosmic"] .memory-app-page .mem-char-chip.active .mem-chip-avatar {
   border-color: var(--accent);
   box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 body[data-mem-style="cosmic"] .memory-app-page .mem-folder {
-  background: color-mix(in srgb, var(--accent) 14%, #000);
-  border-bottom-color: color-mix(in srgb, var(--accent) 25%, transparent);
+  background: rgba(255, 255, 255, 0.045);
+  border-bottom-color: rgba(255, 255, 255, 0.10);
+  color: #e6dfc8;
 }
 body[data-mem-style="cosmic"] .memory-app-page .mem-folder.active {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--accent) 20%, rgba(255, 255, 255, 0.05));
 }
 body[data-mem-style="cosmic"] .memory-app-page .mem-vector-hits {
-  background: color-mix(in srgb, var(--accent) 12%, #000);
-  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 body[data-mem-style="cosmic"] .memory-app-page .mem-vh-input {
-  background: color-mix(in srgb, var(--accent) 12%, #000);
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
-  color: color-mix(in srgb, var(--accent) 25%, #fff);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #e6dfc8;
 }
 
 /* ═════════════════════════════════════════════════════════════════════

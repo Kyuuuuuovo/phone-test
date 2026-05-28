@@ -29,13 +29,26 @@ import * as ai from './ai.js';
 // T28: prompt 简化 — user 反馈"就是日期,事件,事件,不打标"。
 // T31: 改成多行,每行一个事件 — 朋友的酒馆站参考,一天 N 行比"逗号串成 50 字
 //   一行"更适合翻阅。每条事件 ≤25 字,2-5 条。生成端 split('\n') 写多行,带 eventIdx。
-export const DEFAULT_TIMELINE_SYS = `把这一天的对话拆成 2-5 个独立事件,每行一个事件,每行不超过 25 字。
+// T32: 每行加 HH:MM 前缀 — dump 给消息时已带 [HH:MM] 时间戳,模型据此标记
+//   该事件主要发生的时刻。前缀格式严格 `HH:MM 事件内容`(空格分隔),解析端
+//   的去编号正则避开 HH:MM,渲染端直接显示。
+export const DEFAULT_TIMELINE_SYS = `把这一天的对话拆成 2-5 个独立事件,每行一个事件。
+**每行必须以 HH:MM 时间开头,空格后接事件内容**(时间从对话里的 [HH:MM] 时间戳取该事件主要发生的时刻)。
+事件内容不超过 25 字。
 只输出事件本身,**每行一个事件**,不要编号、不要日期前缀、不要解释、不要任何包裹。
-事件按时间顺序由早到晚。`;
+事件按时间顺序由早到晚。
+
+示例:
+09:23 收到她的红包
+14:50 一起去吃午饭
+22:10 道晚安`;
 
 // AUTHOR-LOCKED sys prompt for merging multiple days. Same multi-line shape.
-export const DEFAULT_TIMELINE_MERGE_SYS = `把下面这几天的事件压缩到一起,提取 3-6 个关键事件,每行一个,每行不超过 25 字。
-只输出事件本身,**每行一个事件**,不要编号、不要日期前缀、不要解释。`;
+// T32: 合并跨天事件,前缀改 `MM-DD HH:MM` — 跨天事件没法只用 HH:MM 标位。
+export const DEFAULT_TIMELINE_MERGE_SYS = `把下面这几天的事件压缩到一起,提取 3-6 个关键事件,每行一个。
+**每行以 MM-DD HH:MM 开头,空格后接事件内容**(若原行已带时间则沿用,否则按上下文推断)。
+事件内容不超过 25 字。
+只输出事件本身,**每行一个事件**,不要编号、不要解释。`;
 
 export const MAX_SUMMARY_LEN = 25;
 
@@ -147,11 +160,22 @@ function splitTimelineEvents(raw) {
   }
   const out = [];
   for (let s of lines) {
-    // 去前缀编号 / 项目符号
-    s = s.replace(/^(?:[-*•·]|[(\[]?\s*\d+\s*[)\].、:]?\s*)/, '').trim();
+    // 去前缀编号 / 项目符号 — T32 保留 HH:MM 时间戳前缀(原正则 `\d+[:.、)]?` 会
+    // 吃掉 `09:` 把 `09:23 xxx` 砍成 `23 xxx`),改成只匹配明显的编号格式。
+    s = s.replace(/^(?:[-*•·]|\(\s*\d+\s*\)|\d+\s*[.、)]\s*)/, '').trim();
     s = s.replace(/^[「『"'\s]+/, '').replace(/[」』"'\s]+$/, '');
     if (!s) continue;
-    if (s.length > MAX_SUMMARY_LEN) s = s.slice(0, MAX_SUMMARY_LEN - 1) + '…';
+    // clamp 25 字 — 时间戳前缀(HH:MM 5 字 或 MM-DD HH:MM 11 字)不算在 25 字
+    //   预算内,只对事件内容部分截断,否则带前缀的事件会被腰斩。
+    const timeMatch = s.match(/^(\d{1,2}:\d{2}\s+|\d{2}-\d{2}\s+\d{1,2}:\d{2}\s+)/);
+    if (timeMatch) {
+      const prefix = timeMatch[0];
+      const body = s.slice(prefix.length);
+      const trimmed = body.length > MAX_SUMMARY_LEN ? body.slice(0, MAX_SUMMARY_LEN - 1) + '…' : body;
+      s = prefix + trimmed;
+    } else if (s.length > MAX_SUMMARY_LEN) {
+      s = s.slice(0, MAX_SUMMARY_LEN - 1) + '…';
+    }
     out.push(s);
     if (out.length >= 5) break;
   }
@@ -239,8 +263,13 @@ function trimSummary(raw) {
 
 // Same convention as context.renderActionsAsText, but compact for daily
 // dumps where token budget matters more than fidelity.
+// T32: 拼上 [HH:MM] 时间戳让模型知道每条消息发生的时刻,prompt 要求按这个
+//   时间标记事件 hh:mm。
 function formatMsgForTimeline(m) {
   const speaker = m.role === 'user' ? '用户' : (m.role === 'character' ? '角色' : 'system');
+  const d = new Date(m.createdAt || 0);
+  const pad = (n) => String(n).padStart(2, '0');
+  const hhmm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   const text = (m.actions || []).map(a => {
     switch (a.type) {
       case 'text':       return a.content || '';
@@ -256,5 +285,5 @@ function formatMsgForTimeline(m) {
     }
   }).filter(Boolean).join(' / ');
   if (!text) return '';
-  return `${speaker}: ${text}`;
+  return `[${hhmm}] ${speaker}: ${text}`;
 }
