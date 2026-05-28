@@ -307,7 +307,7 @@
 ### TODO 待办
 
 **等用户文案 / 决策**:
-- 桌宠 `BEAR_PERSONA` + `AMBIENT_LINES` 7 场景(每个 1 条占位)、`bottle.js` 4 处 TODO、`BEHAVIOR_GUIDANCE`(目前只有心声一段,9 个动作的「什么时机用」都没写)。**`KEEPSAKE_SYS_TEMPLATE` 已 user 定稿(2026-05-28)**
+- 桌宠 `BEAR_PERSONA` + `AMBIENT_LINES` 7 场景(每个 1 条占位)、`bottle.js` 4 处 TODO。**`KEEPSAKE_SYS_TEMPLATE` + `BEHAVIOR_GUIDANCE` 已 user 定稿**(后者 9 个动作语境完整,见 `src/core/behavior.js`)
 - 行程 3 天时间轴 + 月历美化风格(等 user 给 reference,demo 已 functional)
 - 监控反向注入聊天(user 在想 — 因为不只是当前帧,可能要包括历史画面)
 - 网站地址 / KKphone.com(等 user 买域名,有了我加 CNAME 文件)
@@ -344,7 +344,7 @@
 - 静态 dev server:`node dev-server.mjs`(端口 5173,零依赖)。**任何 ES modules 必须经 http 服务,不要 file://**。
 - Claude Code 自带 Launch preview:`.claude/launch.json` 已配。**前提是 Claude Code 在项目目录开会话**——在别的 cwd 开它就只会自动找 cwd 下的 launch.json。
 - git 双机:笔记本写 + push,SSH 主机 pull。
-- GitHub Pages 给最终用户:push 后 Pages 自动更新,用户刷新拿新版。
+- GitHub Pages 给最终用户:push 后 Pages 自动更新。**iOS PWA(添加到主屏幕)用户**靠 Service Worker `sw.js` detect 更新:每次 commit 前把 `sw.js` 里的 `CACHE = 'phone-app-vN'` 改大一位(`v1`→`v2`→...),user 下次打开 PWA 自动弹「有新版,点击重启」banner。**不改 vN 就不会弹**(`base.css` / `chat.js` 单独改不触发),这一步是 commit 流程的硬性环节。
 - 本仓库 git config(local):`user.name=Kyuu`,`user.email=252411668+Kyuuuuuovo@users.noreply.github.com`
 
 ---

@@ -253,6 +253,49 @@ async function boot() {
 
   await router.navigate('home');
   console.log('[boot] mounted home');
+
+  // T18: Service Worker 注册 — iOS PWA(添加到主屏幕)无刷新按钮,SW 负责
+  //   detect 新版本 + 通知 user 重启。file:// (本地双击 index.html) 跳过,
+  //   localhost dev server / GH Pages 都注册。register('sw.js') 是相对路径,
+  //   localhost / GH Pages 子目录部署都自动 resolve(scope = sw.js 所在目录)。
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    try {
+      const reg = await navigator.serviceWorker.register('sw.js');
+      // 启动主动 check,触发 updatefound 如果 sw.js 字节有变化
+      reg.update().catch(() => {});
+      reg.addEventListener('updatefound', () => {
+        const newSw = reg.installing;
+        if (!newSw) return;
+        newSw.addEventListener('statechange', () => {
+          // 新 SW 装好 + 已有 controller(说明这是 update,不是首次安装)
+          if (newSw.state === 'installed' && navigator.serviceWorker.controller) {
+            showUpdateBanner();
+          }
+        });
+      });
+    } catch (err) {
+      console.warn('[sw] register failed:', err);
+    }
+  }
+}
+
+// 显示「有新版,点击重启」banner — T18 配合 SW updatefound 用。
+// 避免重复显示 + 提供「重启」「关闭」两个交互。
+function showUpdateBanner() {
+  if (document.querySelector('.update-banner')) return;
+  const banner = document.createElement('div');
+  banner.className = 'update-banner';
+  banner.innerHTML = `
+    <span class="ub-text">有新版本,点击重启</span>
+    <button class="ub-btn" type="button">重启</button>
+    <button class="ub-dismiss" type="button" aria-label="关闭">×</button>
+  `;
+  document.body.appendChild(banner);
+  banner.querySelector('.ub-btn').addEventListener('click', () => {
+    // SW 已 skipWaiting + claim,直接 reload 就能拿新版资源
+    location.reload();
+  });
+  banner.querySelector('.ub-dismiss').addEventListener('click', () => banner.remove());
 }
 
 // Set up the floating pet orb: load avatar / position from settings, wire

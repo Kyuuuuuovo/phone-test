@@ -5826,6 +5826,52 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
   color: var(--muted);
   opacity: 0.85;
 }
+
+/* T18 PWA 新版本提示 banner — SW updatefound 触发后顶部 slide-in,user 点
+   重启 = location.reload。视觉跟 schedule-banner 风格对齐但走 accent 色
+   (不是 danger),因为这是"好消息有更新"不是"出错了"。 */
+.update-banner {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--accent);
+  color: white;
+  border-radius: 0 0 12px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  font-size: 13px;
+  max-width: calc(100% - 16px);
+  animation: ub-slide-in 0.3s ease;
+}
+@keyframes ub-slide-in {
+  from { transform: translate(-50%, -100%); }
+  to   { transform: translate(-50%, 0); }
+}
+.update-banner .ub-text { white-space: nowrap; }
+.update-banner .ub-btn {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: white;
+  color: var(--accent);
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.update-banner .ub-dismiss {
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  margin-left: -4px;
+}
 .archive-banner-content {
   padding: 8px 12px 12px;
   display: flex;
