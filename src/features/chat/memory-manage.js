@@ -68,15 +68,28 @@ export async function mountMemoryManage(container, params, router) {
         <p class="hint">还没有总结。聊到超过设定轮数(去 设置 → 记忆总结 调整)后会自动生成。</p>
       ` : `
         <div class="memory-list">
-          ${memories.map(m => `
-            <div class="memory-card" data-mem-id="${esc(m.id)}">
-              <div class="memory-meta">
-                <span>${esc(formatTime(m.createdAt))}${m.tier === 2 ? ' · 远期' : ''}</span>
-                <button type="button" class="memory-delete" title="删除这条总结">×</button>
+          ${memories.map(m => {
+            const titleHtml = m.title ? `<div class="memory-title">${esc(m.title)}</div>` : '';
+            const impHtml = m.importance === 'high' ? `<span class="memory-imp-high">重要</span>` : '';
+            const quotesHtml = (Array.isArray(m.quotes) && m.quotes.length > 0) ? `
+              <div class="memory-quotes">
+                <div class="memory-quotes-label">关键原话</div>
+                ${m.quotes.map(q => `<div class="memory-quote">${esc(q)}</div>`).join('')}
               </div>
-              <div class="memory-summary">${esc(normalizeMemorySummary(m.summary) || '(空)')}</div>
-            </div>
-          `).join('')}
+            ` : '';
+            const cardCls = m.importance === 'high' ? 'memory-card memory-card-imp-high' : 'memory-card';
+            return `
+              <div class="${cardCls}" data-mem-id="${esc(m.id)}">
+                <div class="memory-meta">
+                  <span>${esc(formatTime(m.createdAt))}${m.tier === 2 ? ' · 远期' : ''}${impHtml ? ' ' : ''}${impHtml}</span>
+                  <button type="button" class="memory-delete" title="删除这条总结">×</button>
+                </div>
+                ${titleHtml}
+                <div class="memory-summary">${esc(normalizeMemorySummary(m.summary) || '(空)')}</div>
+                ${quotesHtml}
+              </div>
+            `;
+          }).join('')}
         </div>
       `}
 

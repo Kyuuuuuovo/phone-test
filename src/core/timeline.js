@@ -26,14 +26,18 @@ import * as db from './db.js';
 import * as ai from './ai.js';
 
 // AUTHOR-LOCKED sys prompt for daily summaries. Edit voice / tone here.
-// T28: prompt 简化 — user 反馈"乱七八糟的提示词,就是日期,事件,事件,不打标"。
-// 输出格式改成"事件,事件"逗号串,不再要 tag,不再要"情感转折/约定"等修饰。
-export const DEFAULT_TIMELINE_SYS = `把这一天的对话浓缩成 2-5 个关键事件,用逗号串起来。不超过 50 字。只输出事件本身,不解释、不加前缀。`;
+// T28: prompt 简化 — user 反馈"就是日期,事件,事件,不打标"。
+// T31: 改成多行,每行一个事件 — 朋友的酒馆站参考,一天 N 行比"逗号串成 50 字
+//   一行"更适合翻阅。每条事件 ≤25 字,2-5 条。生成端 split('\n') 写多行,带 eventIdx。
+export const DEFAULT_TIMELINE_SYS = `把这一天的对话拆成 2-5 个独立事件,每行一个事件,每行不超过 25 字。
+只输出事件本身,**每行一个事件**,不要编号、不要日期前缀、不要解释、不要任何包裹。
+事件按时间顺序由早到晚。`;
 
-// AUTHOR-LOCKED sys prompt for merging multiple days. Same style.
-export const DEFAULT_TIMELINE_MERGE_SYS = `把下面这几天的事件合并成一行,用逗号串起来。不超过 50 字。只输出事件本身,不解释、不加前缀。`;
+// AUTHOR-LOCKED sys prompt for merging multiple days. Same multi-line shape.
+export const DEFAULT_TIMELINE_MERGE_SYS = `把下面这几天的事件压缩到一起,提取 3-6 个关键事件,每行一个,每行不超过 25 字。
+只输出事件本身,**每行一个事件**,不要编号、不要日期前缀、不要解释。`;
 
-export const MAX_SUMMARY_LEN = 50;
+export const MAX_SUMMARY_LEN = 25;
 
 // Local-time YYYY-MM-DD from a timestamp. We use local date so the user's
 // sense of "today" matches the timeline's day boundaries.
@@ -99,19 +103,24 @@ export async function generateMissingDays(sessionId, { onProgress, maxDays = 30 
         messages: [{ role: 'user', content: `日期:${dayKey}\n\n这天的对话:\n${dump}` }],
         temperature: 0.4,
       });
-      const summary = trimSummary(raw);
-      if (!summary) { errors++; continue; }
-      // T30: 存 fromTs/toTs 让 UI 显示带 HH:MM 的时间段(老 timeline 没这俩
-      //   字段,UI 端 fallback 到 dayKey 显示)。msgs 已经按 createdAt 排序。
-      await db.set('timeline', {
+      // T31 多事件/天:按 \n 拆,过滤空/前缀号,每行 trim + clamp 到 25 字。
+      // 模型偶尔回逗号串(老 prompt 习惯) — 用 splitTimelineEvents 兜底也拆开。
+      const events = splitTimelineEvents(raw);
+      if (events.length === 0) { errors++; continue; }
+      const fromTs = msgs[0]?.createdAt ?? null;
+      const toTs   = msgs[msgs.length - 1]?.createdAt ?? null;
+      const now = Date.now();
+      const rows = events.map((summary, idx) => ({
         id: db.newId(),
         sessionId,
         dayKey,
         summary,
-        fromTs: msgs[0]?.createdAt ?? null,
-        toTs:   msgs[msgs.length - 1]?.createdAt ?? null,
-        createdAt: Date.now(),
-      });
+        eventIdx: idx,
+        fromTs,
+        toTs,
+        createdAt: now + idx,  // +idx 让 createdAt 严格递增,任何按 createdAt 排序的视图同天内顺序稳定
+      }));
+      for (const r of rows) await db.set('timeline', r);
       generated++;
     } catch (e) {
       console.warn(`[timeline] failed for ${dayKey}:`, e);
@@ -119,6 +128,34 @@ export async function generateMissingDays(sessionId, { onProgress, maxDays = 30 
     }
   }
   return { generated, skipped: todoKeys.length - generated - errors, errors, remaining };
+}
+
+// 把模型输出拆成多个事件。优先按行(\n)拆,行内若还残留全角/半角逗号串
+// (老 prompt 输出习惯)再 fallback 按逗号拆。每条 trim + clamp 25 字 + 去
+// 前缀编号(1. / 1、 / - 之类)。空行 / 拆完空字符串自动 filter 掉。
+function splitTimelineEvents(raw) {
+  if (typeof raw !== 'string') return [];
+  const cleaned = raw.trim()
+    .replace(/^```(?:json|text)?\s*/i, '')
+    .replace(/\s*```\s*$/i, '')
+    .trim();
+  if (!cleaned) return [];
+  let lines = cleaned.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  // 模型把多事件挤一行用逗号分,fallback 拆
+  if (lines.length === 1 && /[,,、]/.test(lines[0])) {
+    lines = lines[0].split(/[,,、]/).map(s => s.trim()).filter(Boolean);
+  }
+  const out = [];
+  for (let s of lines) {
+    // 去前缀编号 / 项目符号
+    s = s.replace(/^(?:[-*•·]|[(\[]?\s*\d+\s*[)\].、:]?\s*)/, '').trim();
+    s = s.replace(/^[「『"'\s]+/, '').replace(/[」』"'\s]+$/, '');
+    if (!s) continue;
+    if (s.length > MAX_SUMMARY_LEN) s = s.slice(0, MAX_SUMMARY_LEN - 1) + '…';
+    out.push(s);
+    if (out.length >= 5) break;
+  }
+  return out;
 }
 
 // Merge multiple timeline entries into one combined row. Originals are
@@ -148,8 +185,11 @@ export async function mergeDays(sessionId, entryIds) {
     messages: [{ role: 'user', content: dump }],
     temperature: 0.4,
   });
-  const merged = trimSummary(raw);
-  if (!merged) throw new Error('合并失败:模型没返回有效文本');
+  // T31: 合并行也是多事件 — splitTimelineEvents 拆完用 \n join 存进单行 summary,
+  //   渲染端按 \n split 显示。merged 行不写 eventIdx(它本身是聚合行)。
+  const events = splitTimelineEvents(raw);
+  if (events.length === 0) throw new Error('合并失败:模型没返回有效文本');
+  const mergedSummary = events.join('\n');
 
   const newId = db.newId();
   const mergedDayKey = `${items[0].dayKey}~${items[items.length - 1].dayKey}`;
@@ -157,7 +197,7 @@ export async function mergeDays(sessionId, entryIds) {
     id: newId,
     sessionId,
     dayKey: mergedDayKey,
-    summary: merged,
+    summary: mergedSummary,
     mergedFrom: items.map(it => it.id),
     createdAt: Date.now(),
   });

@@ -513,16 +513,20 @@ export const GROUP_LABELS = {
 function formatMemoryWithDate(m, timeOn) {
   // T15 normalize:老 V2 数据 summary 可能是整段 JSON 字符串,剥离一下
   const cleanSummary = normalizeMemorySummary(m.summary || '');
-  if (!timeOn) return cleanSummary;
+  // V4 多卡:title 简短,放在 summary 前面让模型更好定位章节(quotes 不注入
+  // prompt — 给用户翻看的,模型有 summary 已够,quotes 进 prompt 翻倍 token)。
+  const titlePrefix = m.title ? `[${m.title}] ` : '';
+  const body = `${titlePrefix}${cleanSummary}`;
+  if (!timeOn) return body;
   const fromTs = m.fromTs ?? m.createdAt;
   const toTs   = m.toTs   ?? m.createdAt;
-  if (!Number.isFinite(fromTs)) return cleanSummary;
+  if (!Number.isFinite(fromTs)) return body;
   const fmt = (ts) => {
     const d = new Date(ts);
     return `${d.getMonth()+1}月${d.getDate()}日`;
   };
   const range = fmt(fromTs) === fmt(toTs) ? `【${fmt(fromTs)}】` : `【${fmt(fromTs)}–${fmt(toTs)}】`;
-  return `${range} ${cleanSummary}`;
+  return `${range} ${body}`;
 }
 
 // Anchor line for the "# 当前时间" segment. Mirrors surveillance.js's
@@ -1038,14 +1042,25 @@ function renderActionsAsText(actions, ctx) {
 // having to re-specify the structural rules.
 // V1:纯文本 summary。V2:bundle 进 JSON {summary, tag},tag 用于检索 boost。
 // V1:纯文本 summary。V2 (JSON):bundle {summary, tag} JSON 输出 — 易被 LLM 在
-// summary 内容里用未 escape 的双引号(中文「他叫我"哥哥"」)破坏 JSON,fallback
-// 整段当 summary 存。V3 (行式):用 `摘要:` / `标签:` 两行,summary 里随便什么
-// 字符都不破坏 schema。这是当前版本。
-const DEFAULT_MEMORY_SYS = '你是对话压缩助手。把下面这段对话压成不超过 300 字的中文摘要,只保留关键信息(谁说了什么、做了什么、关系/情绪变化、约定、提到的人物或地点)。';
+// summary 内容里用未 escape 的双引号破坏 JSON。V3 (行式):用 `摘要:` / `标签:`
+// 两行,summary 里随便什么字符都不破坏 schema。V4 (多卡 [CARD] 块):一次压缩
+// 可产出 1-3 张「故事卡」,每卡 title + summary + quotes + tag + importance。
+// V4 仍 fallback 兼容 V3 老输出,parseMemoryOutput 返回 array,旧 V3 直接当 1 卡。
+const DEFAULT_MEMORY_SYS = '你是对话压缩助手。把下面这段对话压成 1-3 张「故事卡」,每张卡聚焦一个独立故事段落。模型自己判断:对话明显涵盖多个独立主题(比如先吵架后和好,或先回家后出门)时切多张;单一主题就只出 1 张。';
+
 const MEMORY_OUTPUT_RULES = `
-**输出格式严格按下面两行,不要 JSON、不要 markdown 包裹、不要前后缀文字**:
-摘要: <这一段对话的中文摘要,300 字内,可以放心使用任何标点符号包括双引号>
+**输出格式严格按下面 [CARD] 块结构,不要 JSON、不要 markdown 包裹、不要前后缀文字**:
+
+[CARD]
+标题: <8 字内,概括这段对话的主题(像章节名)>
+摘要: <这一段的中文摘要,不超过 300 字。可放心使用任何标点包括双引号。>
+关键原话: <可省略;每行一条,格式 "说话人→对方: 原话内容";最多 3 条>
 标签: <6 类之一>
+重要度: <high 或 low>
+[/CARD]
+
+如对话明显涵盖 2-3 个独立段落,可连续输出多个 [CARD] 块,最多 3 张卡。
+不确定就只出 1 张卡把所有内容压进去。
 
 标签从下列 6 类挑 1 个:
 - 转折 — 关系的关键节点(初见 / 表白 / 误会冰释 / 分别 等)
@@ -1055,32 +1070,74 @@ const MEMORY_OUTPUT_RULES = `
 - 约定 — 计划 / 承诺
 - 日常 — 闲聊、未归类(兜底)
 
-拿不准就选「日常」。`;
+重要度只填 high 或 low — high 仅留给关系转折 / 情感高点 / 关键约定;日常聊天填 low。拿不准就「日常 + low」。`;
 
-// V3 解析:按行式提取「摘要:」「标签:」。比 JSON.parse 鲁棒得多 —— summary
-// 内部 quote / 反斜杠 / 控制字符都不影响 schema。
-// 中英文冒号都接受(LLM 偶尔会输 ASCII `:`)。
+// 解析单个 CARD 块内容(不含 [CARD] / [/CARD] 标记),返回 {title?, summary,
+// quotes?, tag?, importance}。各字段缺失时省略(quotes 空数组也省略)。
+function parseCardBlock(block) {
+  const card = { summary: '', importance: 'low' };
+  // 标题
+  const titleMatch = block.match(/(?:^|\n)\s*(?:标题|TITLE)[::]\s*(.+?)(?=\n|$)/);
+  if (titleMatch) {
+    let t = titleMatch[1].trim().replace(/^[「『"']+/, '').replace(/[」』"']+$/, '');
+    if (t && t.length <= 40) card.title = t;
+  }
+  // 摘要 — 到下一个关键字行或块末
+  const sumMatch = block.match(/(?:^|\n)\s*(?:摘要|SUMMARY)[::]\s*([\s\S]*?)(?=\n\s*(?:关键原话|标签|重要度|QUOTE|TAG|IMPORTANCE)[::]|\s*$)/);
+  if (sumMatch) card.summary = sumMatch[1].trim();
+  // 关键原话 — 多行收集
+  const quotes = [];
+  const quoteRe = /(?:^|\n)\s*(?:关键原话|QUOTE)[::]\s*(.+?)(?=\n|$)/g;
+  let qm;
+  while ((qm = quoteRe.exec(block)) !== null) {
+    const q = qm[1].trim();
+    if (q && q.length <= 200) quotes.push(q);
+  }
+  if (quotes.length > 0) card.quotes = quotes.slice(0, 5);
+  // 标签
+  const tagMatch = block.match(/(?:^|\n)\s*(?:标签|TAG)[::]\s*(\S+)/);
+  if (tagMatch) {
+    let tag = tagMatch[1].trim();
+    const tagWord = tag.match(/^[一-龥A-Za-z]+/);
+    tag = tagWord ? tagWord[0] : '';
+    if (MEMORY_TAGS.includes(tag)) card.tag = tag;
+  }
+  // 重要度
+  const impMatch = block.match(/(?:^|\n)\s*(?:重要度|IMPORTANCE)[::]\s*(\S+)/);
+  if (impMatch) {
+    const v = impMatch[1].trim().toLowerCase();
+    if (v === 'high' || v === 'low') card.importance = v;
+  }
+  return card;
+}
+
+// V4 解析:返回一个 cards 数组。每张卡 {title?, summary, quotes?, tag?, importance}。
+// 先尝试匹配 [CARD]...[/CARD] 块 → 多卡;若没匹配到尝试 V3 单卡格式;再不行
+// 退回整段当 summary 一张 low 卡。模型走样输出 (markdown 包裹 / json 包裹) 都
+// 自动剥离。中英文冒号都接受。
 function parseMemoryOutput(raw) {
-  if (typeof raw !== 'string') return { summary: '', tag: '' };
-  const trimmed = raw.trim()
+  if (typeof raw !== 'string') return [];
+  const cleaned = raw.trim()
     .replace(/^```(?:json|text)?\s*/i, '')
     .replace(/\s*```\s*$/i, '')
     .trim();
-  // 摘要从「摘要:」/「SUMMARY:」开始,到下一个「标签:」/「TAG:」之前 / 或文末。
-  const sumMatch = trimmed.match(/(?:^|\n)\s*(?:摘要|SUMMARY)[::]\s*([\s\S]*?)(?=\n\s*(?:标签|TAG)[::]|\s*$)/);
-  const tagMatch = trimmed.match(/(?:^|\n)\s*(?:标签|TAG)[::]\s*(\S+)/);
-  let summary = sumMatch ? sumMatch[1].trim() : '';
-  let tag = tagMatch ? tagMatch[1].trim() : '';
-  // tag 后可能粘了句号 / 多余文字 — 只取首段连续中英文字符
-  if (tag) {
-    const m = tag.match(/^[一-龥A-Za-z]+/);
-    tag = m ? m[0] : '';
+
+  // V4 多卡
+  const cards = [];
+  const blockRe = /\[CARD\]([\s\S]*?)\[\/CARD\]/gi;
+  let m;
+  while ((m = blockRe.exec(cleaned)) !== null) {
+    const card = parseCardBlock(m[1].trim());
+    if (card.summary) cards.push(card);
   }
-  // 都没匹配到 → 退回整段当 summary
-  if (!summary) summary = trimmed;
-  // 标签校验
-  if (!MEMORY_TAGS.includes(tag)) tag = '';
-  return { summary, tag };
+  if (cards.length > 0) return cards.slice(0, 3);
+
+  // V3 单卡 fallback
+  const single = parseCardBlock(cleaned);
+  if (single.summary) return [single];
+
+  // 兜底:整段当 summary 一张 low 卡
+  return [{ summary: cleaned, importance: 'low' }];
 }
 
 // 老数据兜底:V2 时代生成的 memory.summary 字段可能存了整段 JSON 字符串
@@ -1206,57 +1263,53 @@ export async function maybeCompressMemory(sessionId, opts = {}) {
     temperature: 0.3,
   });
 
-  // V3 行式解析 — parseMemoryOutput 即使 summary 内有未转义引号也不会破坏
-  // schema。tag 不匹配 6 类时留空,memory app 启发式 fallback 处理。
-  const { summary, tag } = parseMemoryOutput(raw);
+  // V4 多卡解析。每张卡独立写一行 memory,共享 groupId 方便记忆 app 一起 undo。
+  // 兜底:模型没产出有效卡时 parseMemoryOutput 会塞一张 raw 当 summary 的 low 卡。
+  const cards = parseMemoryOutput(raw);
+  if (cards.length === 0) {
+    cards.push({ summary: (raw || '').trim() || '(空)', importance: 'low' });
+  }
 
-  const memId = db.newId();
-  const newMem = {
-    id: memId,
+  const stamp = Date.now();
+  const groupId = cards.length > 1 ? db.newId() : null;
+  const newMems = cards.map(card => ({
+    id: db.newId(),
     sessionId,
     tier: 1,
-    summary,
-    ...(tag ? { tag } : {}),
+    ...(card.title ? { title: card.title } : {}),
+    summary: card.summary,
+    ...(card.quotes && card.quotes.length > 0 ? { quotes: card.quotes } : {}),
+    ...(card.tag ? { tag: card.tag } : {}),
+    importance: card.importance || 'low',
+    ...(groupId ? { groupId } : {}),
     fromMsgId: overflow[0].id,
     toMsgId: overflow[overflow.length - 1].id,
-    // 1a: 保留这段记忆覆盖的 wall-clock 时间范围。注入时拼成日期前缀
-    // 【M月D日–M月D日】(同一天就显示一次),模型有时间锚点对应每段记忆。
-    // 老 memory 没这俩字段 → buildSystemPromptParts 里 fallback 到 createdAt。
+    // 1a: 保留这段记忆覆盖的 wall-clock 时间范围。多卡同源 → 共享同一窗口
+    // (模型把对话切成 N 卡,但底层覆盖的 chatMessages 范围一致)。
     fromTs: overflow[0].createdAt,
     toTs: overflow[overflow.length - 1].createdAt,
-    createdAt: Date.now(),
-  };
-  // Stamp every overflow row with the archive metadata so the atomic
-  // multi-store write below puts memory + archived msgs together. If
-  // the tx aborts partway, none of them commit — so the next
-  // maybeCompressMemory sees the same overflow set and retries, instead
-  // of finding "5 of 10 archived" and silently leaving the rest unarchived.
-  const stamp = Date.now();
+    createdAt: stamp,
+  }));
+
+  // archivedIntoMemoryId 指向第一张卡 — UI 的「点开看被总结的 N 条聊天」
+  // 只需要知道这段 overflow 折在哪个 memory id 后面,任意一张卡都行。
   for (const msg of overflow) {
     msg.archived = true;
     msg.archivedAt = stamp;
-    msg.archivedIntoMemoryId = memId;
+    msg.archivedIntoMemoryId = newMems[0].id;
   }
   await db.txnPut({
-    memories: [newMem],
+    memories: newMems,
     chatMessages: overflow,
   });
-  // Fire-and-forget embed of the new memory. Failures don't block the
-  // reply flow; embedding.embedMemory returns null when disabled /
-  // unconfigured / failing.
-  embedding.embedMemory(newMem).catch(e => console.warn('[context] embed failed:', e));
-  // (the per-row archive stamping + db.txnPut above replaced the old
-  // per-row await db.set loop. Reason in CLAUDE.md polish notes.)
-  // After L1 compression, check if tier-1 summaries themselves have piled
-  // up enough to warrant a tier-2 rollup. Cheap when not needed.
+  // 每张卡独立 embed — 故事粒度比单大段更精准,vector recall 能命中具体段落。
+  for (const m of newMems) {
+    embedding.embedMemory(m).catch(e => console.warn('[context] embed failed:', e));
+  }
   await maybeRollupToL2(sessionId);
-  // Timeline: when a memory just got compressed, the archived msgs span
-  // some past days that now warrant a per-day one-line summary. Fire-
-  // and-forget so the (potentially several) timeline API calls never
-  // block the reply path. Errors are logged, not surfaced.
   timeline.generateMissingDays(sessionId).catch(e =>
     console.warn('[context] timeline gen failed (non-fatal):', e));
-  return memId;
+  return newMems[0].id;
 }
 
 // L2 rollup: when tier-1 summaries exceed L1_KEEP_RECENT, fold the oldest

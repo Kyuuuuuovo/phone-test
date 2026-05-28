@@ -2,7 +2,7 @@
 // Data model frozen in STORES below — bump DB_VERSION when changing schema.
 
 export const DB_NAME = 'phone-app';
-export const DB_VERSION = 14;
+export const DB_VERSION = 15;
 
 // Object store definitions. Applied during onupgradeneeded.
 // keyPath = primary key field; indexes = secondary lookup paths.
@@ -46,6 +46,12 @@ export const STORES = {
       { name: 'createdAt', keyPath: 'createdAt' },
     ],
   },
+  // 长对话压缩摘要。一次压缩可能产生 1-3 张「故事卡」,各占一行,共享 groupId
+  // 方便一起 undo。字段:id / sessionId / tier (1=L1 近期 / 2=L2 远期) /
+  //   title? / summary / quotes?: string[] / tag? (转折/亲密/冲突/发现/约定/日常) /
+  //   importance? ('high'|'low',默认 low) / groupId? / fromMsgId / toMsgId /
+  //   fromTs / toTs / createdAt。importance 只影响记忆 app 显示排序,两档都注入
+  //   prompt(日常聊天大部分是 low,排除掉就没记忆了)。
   memories: {
     keyPath: 'id',
     indexes: [
@@ -110,11 +116,14 @@ export const STORES = {
       { name: 'castAt',  keyPath: 'castAt'  },
     ],
   },
-  // Timeline — per-session one-line-per-day summaries. Separate from
-  // `memories` (which feeds the model); timeline is for the USER to skim.
+  // Timeline — per-session per-event timeline rows for the USER to skim.
+  // Separate from `memories` (which feeds the model). 一天可以多条:同 dayKey
+  // 出现多行,按 eventIdx 排序展示。
   // Fields: id, sessionId, dayKey ('YYYY-MM-DD' or 'start~end' for merges),
-  // summary (≤40 chars), mergedFrom?[] (ids on a merged row),
-  // mergedInto? (id on originals that have been merged), createdAt.
+  //   summary (≤25 chars per event), eventIdx? (0-based,同 dayKey 内排序),
+  //   fromTs? / toTs? (整天的时间窗,用于显示 HH:MM 段),
+  //   mergedFrom?[] (ids on a merged row),
+  //   mergedInto? (id on originals that have been merged), createdAt.
   // Indexed by sessionId so the list view + lazy-generation scan are O(rows-this-session).
   timeline: {
     keyPath: 'id',

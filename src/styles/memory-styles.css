@@ -120,6 +120,51 @@ body[data-mono="1"] .memory-app-page .mem-chips {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+/* V4 重要度 chip — high 红系,low 不显示(默认值,占多数) */
+.memory-app-page .mem-imp-high {
+  background: rgba(220, 90, 90, 0.18);
+  color: #b94545;
+  font-weight: 600;
+}
+
+/* V4 多卡 — 故事卡标题(可空,空时整行不渲染) */
+.memory-app-page .ma-row-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 2px;
+  line-height: 1.4;
+}
+
+/* V4 多卡 — 关键原话区(默认展开,跟参考站一致) */
+.memory-app-page .ma-row-quotes {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.memory-app-page .ma-row-quotes-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+.memory-app-page .ma-row-quote {
+  color: color-mix(in srgb, var(--fg) 80%, var(--muted));
+  padding: 2px 0;
+  word-break: break-word;
+}
+
+/* V4 重要度 high 卡 — 左侧 accent 色条强调 */
+.memory-app-page .ma-row.ma-row-imp-high {
+  border-left: 3px solid color-mix(in srgb, #b94545 65%, var(--border));
+  padding-left: 9px;
+}
+
+/* timeline 多事件 / 合并行 — body 用 pre-line 让 \n 渲染成换行 */
+.memory-app-page .ma-row-body { white-space: pre-line; }
 
 /* ─────────────────────────────────────────────────────────────────────
    通用:横向 chip 角色选择器(planner / petal / film / cosmic 共用)

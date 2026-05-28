@@ -159,19 +159,33 @@ export async function mountMemoryApp(container, params, router) {
   // 入参:meta=string[](会用 · join)、body=主文本、tier=1/2(可选)、
   //   timeRange='5月22日'/'5月22日–5月23日'(可选)、tag='转折'等(可选)、
   //   score=0..1(可选,vector hits 用)、extras=尾部 HTML、dataAttrs=自定义属性。
-  function buildMemCard({ meta = [], body, tier, timeRange, tag, score, extras = '', dataAttrs = '', cardClass = '' }) {
+  //   title=可选标题(V4 多卡:[CARD] 的「标题」字段)、quotes=string[](V4 关键原话)、
+  //   importance='high'|'low'(V4 重要度,high 加 accent 边)。
+  function buildMemCard({ meta = [], body, tier, timeRange, tag, score, extras = '', dataAttrs = '', cardClass = '', title, quotes, importance }) {
     const tierChip = tier
       ? `<span class="mem-tier mem-tier-${tier === 2 ? 'l2' : 'l1'}">${tier === 2 ? 'L2' : 'L1'}</span>`
       : '';
     const timeChip   = timeRange ? `<span class="mem-timerange">${esc(timeRange)}</span>` : '';
     const tagChip    = tag       ? `<span class="mem-tag mem-tag-${esc(tag)}">${esc(tag)}</span>` : '';
     const scoreChip  = (score != null) ? `<span class="mem-score">${Math.round(score * 100)}%</span>` : '';
-    const chips = [tierChip, timeChip, tagChip, scoreChip].filter(Boolean).join('');
+    const impChip    = importance === 'high' ? `<span class="mem-imp mem-imp-high">重要</span>` : '';
+    const chips = [tierChip, impChip, timeChip, tagChip, scoreChip].filter(Boolean).join('');
+    const titleHtml = title ? `<div class="ma-row-title">${esc(title)}</div>` : '';
+    // quotes 默认展开 — 一般 1-3 条不长,跟参考站一样直接显示。
+    const quotesHtml = (Array.isArray(quotes) && quotes.length > 0) ? `
+      <div class="ma-row-quotes">
+        <div class="ma-row-quotes-label">关键原话</div>
+        ${quotes.map(q => `<div class="ma-row-quote">${esc(q)}</div>`).join('')}
+      </div>
+    ` : '';
+    const cardClasses = [cardClass, importance === 'high' ? 'ma-row-imp-high' : ''].filter(Boolean).join(' ');
     return `
-      <div class="ma-row${cardClass ? ' ' + cardClass : ''}"${dataAttrs ? ' ' + dataAttrs : ''}>
+      <div class="ma-row${cardClasses ? ' ' + cardClasses : ''}"${dataAttrs ? ' ' + dataAttrs : ''}>
         ${chips ? `<div class="mem-chips">${chips}</div>` : ''}
         ${meta.length > 0 ? `<div class="ma-row-meta">${meta.map(esc).join(' · ')}</div>` : ''}
+        ${titleHtml}
         <div class="ma-row-body">${esc(body || '(空)')}</div>
+        ${quotesHtml}
         ${extras}
       </div>
     `;
@@ -331,7 +345,16 @@ export async function mountMemoryApp(container, params, router) {
       const sidByChar = new Set(sessions.filter(s => s.characterId === filterCharId).map(s => s.id));
       topLevel = topLevel.filter(t => sidByChar.has(t.sessionId));
     }
-    topLevel.sort((a, b) => (b.dayKey || '').localeCompare(a.dayKey || ''));
+    // T31: 同 dayKey 多事件 — 主排序按 dayKey 倒序(最新天在最上),同天内按
+    //   eventIdx 升序(早 → 晚)。老数据没 eventIdx 回退到 createdAt。
+    topLevel.sort((a, b) => {
+      const dk = (b.dayKey || '').localeCompare(a.dayKey || '');
+      if (dk !== 0) return dk;
+      const ai = Number.isFinite(a.eventIdx) ? a.eventIdx : 0;
+      const bi = Number.isFinite(b.eventIdx) ? b.eventIdx : 0;
+      if (ai !== bi) return ai - bi;
+      return (a.createdAt || 0) - (b.createdAt || 0);
+    });
     const labelFor = (sid) => {
       const s = sessions.find(x => x.id === sid);
       if (!s) return '(未知会话)';
@@ -649,6 +672,9 @@ export async function mountMemoryApp(container, params, router) {
                 timeRange: timeRangeOf(h.memory, msgIdx),
                 tag: tagOf(h.memory),
                 score: h.score,
+                title: h.memory.title,
+                quotes: h.memory.quotes,
+                importance: h.memory.importance,
                 cardClass: 'vh-row',
               });
             }).join('')}
@@ -686,6 +712,9 @@ export async function mountMemoryApp(container, params, router) {
                 tier: m.tier,
                 timeRange: timeRangeOf(m, msgIdx),
                 tag: tagOf(m),
+                title: m.title,
+                quotes: m.quotes,
+                importance: m.importance,
                 extras: `<button class="ma-row-edit" type="button" title="编辑">✎</button><button class="ma-row-del" type="button" title="删除">×</button>`,
                 dataAttrs: `data-memory-id="${esc(m.id)}"`,
               })).join('')}
