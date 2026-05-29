@@ -118,6 +118,21 @@ async function importTavernWorldbook(router, refresh) {
     if (data?.data?.character_book) book = data.data.character_book;
     else if (data?.entries)         book = data;
     else if (Array.isArray(data))   book = { entries: data };
+    else if (Array.isArray(data?.blocks)) {
+      // 有些工具把世界书导成 { blocks: [{content, enabled, keywords, sort_order, …}] }
+      // —— 字段名不同但能对上,转成下面统一处理的 entries 形状。按"有 blocks 数组"
+      // 这个结构识别,不绑定具体来源。
+      book = {
+        name: data.name,
+        entries: data.blocks.map((b, i) => ({
+          content: b?.content,
+          enabled: b?.enabled,
+          keys: Array.isArray(b?.keywords) ? b.keywords : [],
+          comment: b?.title || b?.category || '',
+          insertion_order: Number.isFinite(b?.sort_order) ? b.sort_order : i,
+        })),
+      };
+    }
     if (!book) {
       await openAlert(document.body, { title: '导入失败', message: '文件里没找到 worldbook / character_book 字段。', danger: true });
       return;

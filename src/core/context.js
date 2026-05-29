@@ -192,8 +192,9 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
   const charNameForPrompt = (character?.name || '').trim() || '角色';
   // {user}/{char} 占位符 → 真名。兼容酒馆双括号 {{user}}/{{char}} —— 先替双括号,
   // 再替单括号(否则单括号规则会把 {{user}} 里层的 {user} 吃掉、剩一对外括号)。
-  // \s* 容忍 {{ user }},gi 容忍大小写。**只作用于对话规范 / 动作规约这两段作者
-  // 文案**,不碰人设 / 世界书(那是用户内容,按 user 要求不替换)。
+  // \s* 容忍 {{ user }},gi 容忍大小写。作用于对话规范 / 动作规约(作者文案)+
+  // 角色设定 / 世界观 / 用户人设(用户内容)—— 酒馆素材里 {{user}}/{{char}} 满天
+  // 飞,注入前统一换成真名,免得模型读到字面占位符。
   const subUser = (s) => (s || '')
     .replace(/\{\{\s*user\s*\}\}/gi, userNameForPrompt)
     .replace(/\{\{\s*char\s*\}\}/gi, charNameForPrompt)
@@ -220,7 +221,7 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
   parts.push({
     key: 'wb-before',
     title: '# 世界观 / 背景设定(前置)',
-    body: wbBy.before.join('\n\n'),
+    body: subUser(wbBy.before.join('\n\n')),
     kind: 'data',
     editRoute: 'worldbook-list',
   });
@@ -228,7 +229,7 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
   parts.push({
     key: 'character',
     title: '# 角色设定',
-    body: character.persona || character.name || '(无设定)',
+    body: subUser(character.persona || character.name || '(无设定)'),
     kind: 'data',
     editRoute: 'character-detail',
     editParams: { id: character.id },
@@ -237,7 +238,7 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
   parts.push({
     key: 'wb-inline',
     title: '# 世界观 / 背景设定',
-    body: wbBy.inline.join('\n\n'),
+    body: subUser(wbBy.inline.join('\n\n')),
     kind: 'data',
     editRoute: 'worldbook-list',
   });
@@ -245,7 +246,7 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
   parts.push({
     key: 'user-persona',
     title: '# 用户人设',
-    body: persona ? (persona.persona || persona.name || '(未填写)') : '',
+    body: subUser(persona ? (persona.persona || persona.name || '(未填写)') : ''),
     kind: 'data',
     editRoute: persona ? 'persona-detail' : 'persona-list',
     editParams: persona ? { id: persona.id } : undefined,
@@ -259,7 +260,7 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
   parts.push({
     key: 'user-status',
     title: '# 用户当前状态',
-    body: statusBody,
+    body: subUser(statusBody),
     kind: 'data',
     editRoute: 'messaging',  // 「我」tab,但 messaging 是 tab 容器
   });
@@ -267,7 +268,7 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
   parts.push({
     key: 'wb-after',
     title: '# 世界观 / 背景设定(用户人设后)',
-    body: wbBy.after.join('\n\n'),
+    body: subUser(wbBy.after.join('\n\n')),
     kind: 'data',
     editRoute: 'worldbook-list',
   });
