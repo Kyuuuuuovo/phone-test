@@ -1657,58 +1657,40 @@ async function _maybeCompressMemoryImpl(sessionId, opts = {}) {
   return newMems[0].id;
 }
 
-// Timeline v3 — auto merge oldest when total > threshold。把最老 N 条合并成
-//   一行(单次 AI 调用)。settings.timelineAutoMergeEnabled 关掉跳过;
-//   threshold 默认 30,合并批次 5 条;最终保留 ~threshold-(批次-1) 条。
-const TL_MERGE_BATCH = 5;
-const TL_MERGE_PROMPT = `把下面这几条时间线行合并成一行,提取最关键的弧线。
-保持格式:**YYYY-MM-DD HH:MM-HH:MM 真名 真名 简短事件**。
-时间窗用第一条开始 到 最后一条结束(可跨多天:YYYY-MM-DD HH:MM - YYYY-MM-DD HH:MM)。
-事件描述≤40 字。只输出这一行,不要解释、不要前缀、不要包裹。`;
-
+// Timeline 自动压缩 —— 把「今天以外、同一天有多条」的时间线压成这天一条。
+//   不跨天合并(20 天各 1 条不动),也不按总数触发,所以不调 AI:直接把当天
+//   多条事件按时间拼成一条(memory app 把 \n 渲染成换行,等于这天一个条目里
+//   列出当天的事件)。settings.timelineAutoMergeEnabled 关掉则跳过。
+//   今天还在累积 → 不压;区间行(start~end)/ 已合并行 → 不动。
+//   保留原行打 mergedInto(不删)—— 否则 generateMissingDays 的 existingKeys
+//   丢了这些天的 dayKey,下次扫描会把它们当「缺失天」重新生成出重复内容。
 async function maybeAutoMergeTimeline(sessionId) {
   const settings = (await db.get('settings', 'default')) || {};
   if (settings.timelineAutoMergeEnabled === false) return;
-  const threshold = Number.isFinite(settings.timelineAutoMergeThreshold) && settings.timelineAutoMergeThreshold > 0
-    ? settings.timelineAutoMergeThreshold : 30;
-  let rows = (await db.query('timeline', 'sessionId', sessionId))
-    .filter(t => !t.mergedInto)
-    .sort((a, b) => (a.fromTs ?? a.createdAt ?? 0) - (b.fromTs ?? b.createdAt ?? 0));
-  // 多轮循环 — 每次超阈值就合并最老 5 条,直到不超
-  while (rows.length > threshold) {
-    const toMerge = rows.slice(0, TL_MERGE_BATCH);
-    const dump = toMerge.map(t => t.summary).join('\n');
-    let mergedLine;
-    try {
-      mergedLine = await ai.callAI({
-        systemPrompt: TL_MERGE_PROMPT,
-        messages: [{ role: 'user', content: dump }],
-        temperature: 0.3,
-        apiConfigId: settings.memoryApiConfigId || null,
-      });
-      mergedLine = String(mergedLine || '').trim().split('\n')[0].trim();
-    } catch (e) {
-      console.warn('[context] timeline auto merge AI fail:', e);
-      return;  // 不抛,不卡 user 流程
-    }
-    if (!mergedLine) return;
+  const today = dayKeyOf(Date.now());
+  const rows = (await db.query('timeline', 'sessionId', sessionId)).filter(t => !t.mergedInto);
+  const byDay = new Map();
+  for (const t of rows) {
+    const dk = t.dayKey;
+    if (!dk || dk.includes('~') || dk === today) continue;  // 无 dayKey / 区间行 / 今天 → 不压
+    if (!byDay.has(dk)) byDay.set(dk, []);
+    byDay.get(dk).push(t);
+  }
+  for (const [dk, dayRows] of byDay) {
+    if (dayRows.length < 2) continue;  // 这天只有一条,不用压
+    dayRows.sort((a, b) => (a.eventIdx ?? 0) - (b.eventIdx ?? 0) || (a.createdAt ?? 0) - (b.createdAt ?? 0));
     const newRow = {
       id: db.newId(),
       sessionId,
-      summary: mergedLine,
-      fromTs: toMerge[0].fromTs ?? toMerge[0].createdAt,
-      toTs:   toMerge[toMerge.length - 1].toTs ?? toMerge[toMerge.length - 1].createdAt,
-      mergedFrom: toMerge.map(t => t.id),
-      createdAt: Date.now(),
+      dayKey: dk,
+      summary: dayRows.map(t => t.summary).join('\n'),
+      fromTs: dayRows[0].fromTs ?? dayRows[0].createdAt,
+      toTs:   dayRows[dayRows.length - 1].toTs ?? dayRows[dayRows.length - 1].createdAt,
+      mergedFrom: dayRows.map(t => t.id),
+      createdAt: dayRows[0].createdAt ?? Date.now(),
     };
     await db.set('timeline', newRow);
-    // 保留原行、打 mergedInto(跟手动 mergeDays 一致)—— 不能 del,否则
-    // generateMissingDays 的 existingKeys 丢了这些天的 dayKey,下次扫描会把它们
-    // 当"缺失天"重新生成,产生跟合并行重复的内容。
-    for (const t of toMerge) { t.mergedInto = newRow.id; await db.set('timeline', t); }
-    rows = (await db.query('timeline', 'sessionId', sessionId))
-      .filter(t => !t.mergedInto)
-      .sort((a, b) => (a.fromTs ?? a.createdAt ?? 0) - (b.fromTs ?? b.createdAt ?? 0));
+    for (const t of dayRows) { t.mergedInto = newRow.id; await db.set('timeline', t); }
   }
 }
 

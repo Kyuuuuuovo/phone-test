@@ -22,10 +22,7 @@ export async function mountMemorySettings(container, params, router) {
     ? settings.memoryThreshold : DEFAULT_THRESHOLD;
   const batchLimit = Number.isFinite(settings.memoryForceBatchLimit) && settings.memoryForceBatchLimit > 0
     ? settings.memoryForceBatchLimit : DEFAULT_BATCH_LIMIT;
-  // Timeline v3 — 自动合并阈值 + auto merge 开关。timelineInjectCount 删了
-  //   (现在全部注入,auto merge 控制总量)。
-  const tlMergeThreshold = Number.isFinite(settings.timelineAutoMergeThreshold) && settings.timelineAutoMergeThreshold > 0
-    ? settings.timelineAutoMergeThreshold : 30;
+  // Timeline 自动压缩开关(把同一天的多条时间线压成这天一条;阈值概念已去掉)。
   const tlAutoMerge = settings.timelineAutoMergeEnabled !== false;
   // 记忆专用 API — 让 memory 压缩 / timeline 合并 / L2 rollup 走另一个
   //   apiConfig(便宜模型省 token)。null = 跟聊天主 API。dropdown 列所有
@@ -53,31 +50,30 @@ export async function mountMemorySettings(container, params, router) {
       </header>
       <div class="page-body">
         <p class="hint">
-          聊天越聊越长,AI 一次能读的内容是有限的。开了记忆总结,较早的对话会被自动压成简短的<b>记忆</b> —— AI 记住大意、不必再读原文,省出空间继续聊。
+          开启后,较早的对话会自动压缩成简短记忆;AI 据此记住大意,不再逐条读原文,为后续对话腾出空间。
         </p>
         <p class="hint">
-          压缩是<b>一天一天来</b>的:最近的消息超过下面设的条数,就把最早的那一天压成一条记忆,慢慢消化,不会一次全压。聊久了,很老的几条记忆还会再合并成一条「远期记忆」,这样上下文不会无限变长。
+          压缩按天进行:活跃消息超过设定条数时,压缩最早的一天,逐步推进;积累较多后,更早的记忆会进一步合并为远期记忆,上下文不会无限增长。
         </p>
         <p class="hint">
-          被压的消息<b>不会消失</b> —— 聊天里会折叠成一条「点开看 N 条被总结的聊天」,随时能展开看原文,只是 AI 那边看到的是摘要。
+          被压缩的消息仍保留在聊天中,折叠为「点开看 N 条被总结的聊天」,可随时展开;AI 看到的是摘要。关闭后旧消息不再进入 AI 视野,聊天记录照常保留。
         </p>
-        <p class="hint">关掉的话:旧消息 AI 就读不到了(聊天记录照样保留,只是 AI 看不到)。</p>
         <form class="settings-form" autocomplete="off">
           <label class="checkbox-row">
             <input type="checkbox" name="enabled"${enabled ? ' checked' : ''}>
             <span>开启记忆总结</span>
           </label>
           <label>
-            <div class="label-text">保留最近多少条不压缩(默认 ${DEFAULT_THRESHOLD};越大 AI 记住的原文越多,也越占空间)</div>
+            <div class="label-text">保留最近多少条不压缩(默认 ${DEFAULT_THRESHOLD})</div>
             <input type="number" name="threshold" min="5" max="200" step="1" value="${threshold}">
           </label>
           <label>
             <div class="label-text">「立即提取记忆」一次最多整理几天(默认 ${DEFAULT_BATCH_LIMIT})</div>
             <input type="number" name="batchLimit" min="1" max="100" step="1" value="${batchLimit}">
-            <p class="hint" style="margin-top: 4px;">聊天里 ⋯ → 「立即提取记忆」会把还没整理的旧对话一天天压成记忆。一次最多整理这么多天,剩下的会提示你再点一次继续。整理一天调一次 AI,设太大会比较慢、也费 token。</p>
+            <p class="hint" style="margin-top: 4px;">在聊天的 ⋯ 菜单点「立即提取记忆」,会将尚未整理的旧对话按天压缩。一次最多整理设定天数,其余下次继续;每天调用一次 AI,设置过大会较慢且更耗 token。</p>
           </label>
           <h3 class="section-title" style="margin-top: 18px;">用单独的 AI 整理记忆(可选)</h3>
-          <p class="hint">整理记忆也要调 AI,默认用你聊天那个。整理记忆<b>不需要很聪明的模型</b>,想省钱可以单独挑个便宜的(GPT-4o-mini / Qwen-turbo 之类)。先去「设置 → API 设置」建好,这里再选。</p>
+          <p class="hint">整理记忆同样会调用 AI,默认使用聊天所用的 API。此项对模型要求不高,可单独指定更便宜的模型以节省开销;需先在「设置 → API 设置」中创建。</p>
           <label>
             <div class="label-text">整理记忆用哪个 API</div>
             <select name="memoryApiConfigId">
@@ -87,38 +83,33 @@ export async function mountMemorySettings(container, params, router) {
           </label>
 
           <h3 class="section-title" style="margin-top: 18px;">时间线</h3>
-          <p class="hint">时间线是一条条「几月几号发生了什么」的简短记录,跟着记忆总结自动生成,帮 AI 记住事情的<b>先后顺序</b>(记忆卡是内容,时间线是时间轴)。条数多了会自动合并,见下面。</p>
+          <p class="hint">时间线记录「几月几号发生了什么」,跟着记忆总结自动生成,帮 AI 记住事情的先后顺序。同一天若有多条,会自动压成这天一条;不同的天各自保留,不会合并。</p>
           <label class="checkbox-row">
             <input type="checkbox" name="timelineAutoMergeEnabled"${tlAutoMerge ? ' checked' : ''}>
-            <span>太多了就自动合并(每次把最早 5 条并成 1 条)</span>
-          </label>
-          <label>
-            <div class="label-text">攒到多少条就合并(默认 30)</div>
-            <input type="number" name="timelineAutoMergeThreshold" min="5" max="100" step="1" value="${tlMergeThreshold}">
-            <p class="hint" style="margin-top: 4px;">上面开关关掉时这个不生效。每次合并要调一次 AI,别设太低,免得老是费 token。</p>
+            <span>自动压缩</span>
           </label>
           <h3 class="section-title" style="margin-top: 18px;">记忆卡片显示</h3>
-          <p class="hint">这两个只影响记忆卡片<b>长什么样</b>,不影响 AI、也不影响生成。关掉只是让卡片更清爽,数据还在,想看再开回来。</p>
+          <p class="hint">以下两项仅影响记忆卡片的显示,不影响 AI 与生成。关闭后卡片更简洁,数据仍保留。</p>
           <label class="checkbox-row">
             <input type="checkbox" name="showQuotes"${showQuotes ? ' checked' : ''}>
-            <span>显示「节选」(几句关键原话)</span>
+            <span>显示「节选」(关键原话)</span>
           </label>
           <label class="checkbox-row">
             <input type="checkbox" name="showEvents"${showEvents ? ' checked' : ''}>
-            <span>显示「这次发生了」(红包 / 转账 / 语音 / 图片这些)</span>
+            <span>显示「这次发生了」(红包 / 转账 / 语音 / 图片等)</span>
           </label>
 
           <h3 class="section-title" style="margin-top: 18px;">让 AI 读到关键原话</h3>
-          <p class="hint">默认关 —— 关键原话主要是给你翻看的,给 AI 看会明显多费 token。开了之后,只有在<b>按相关度找记忆</b>时命中的强相关那几条,才会把原话一并给 AI。要先在「设置 → 向量记忆」里启用才有用。</p>
+          <p class="hint">默认关闭。关键原话主要供翻阅,提供给 AI 会明显增加 token 消耗。开启后仅对按相关度检索命中的强相关记忆附带原话;需先在「设置 → 向量记忆」中启用。</p>
           <label class="checkbox-row">
             <input type="checkbox" name="injectQuotes"${injectQuotes ? ' checked' : ''}>
-            <span>让 AI 读到关键原话(只在强相关时)</span>
+            <span>让 AI 读到关键原话(仅强相关时)</span>
           </label>
 
           <h3 class="section-title" style="margin-top: 18px;">用户画像</h3>
-          <p class="hint">整理记忆时,AI 会顺手记下关于你的新发现(喜欢什么、不喜欢什么、发现了什么),攒进「关于你」。时间久了越攒越多,这里设个上限,超了就丢掉最早的。</p>
+          <p class="hint">整理记忆时,AI 会记录关于你的新信息(喜欢、不喜欢、发现),归入「关于你」。为避免无限增长,可限制每类的条数,超出时淘汰最早的。</p>
           <label>
-            <div class="label-text">每类最多记多少条(喜欢 / 不喜欢 / 发现 各算各的,默认 20)</div>
+            <div class="label-text">每类上限(喜欢 / 不喜欢 / 发现 分别计算,默认 20)</div>
             <input type="number" name="profileCap" min="5" max="100" step="1" value="${profileCap}">
           </label>
 
@@ -153,12 +144,10 @@ export async function mountMemorySettings(container, params, router) {
       return;
     }
     const bl = parseInt(String(fd.get('batchLimit') || '0'), 10) || DEFAULT_BATCH_LIMIT;
-    const tlThr = parseInt(String(fd.get('timelineAutoMergeThreshold') || '0'), 10) || 30;
     const s = (await db.get('settings', 'default')) || { id: 'default' };
     s.memoryEnabled = en;
     s.memoryThreshold = t;
     s.memoryForceBatchLimit = Math.max(1, Math.min(100, bl));
-    s.timelineAutoMergeThreshold = Math.max(5, Math.min(100, tlThr));
     s.timelineAutoMergeEnabled = !!fd.get('timelineAutoMergeEnabled');
     // 记忆专用 API — 空字符串 = 跟随主 API(等同 null)
     const memApiId = String(fd.get('memoryApiConfigId') || '').trim();
