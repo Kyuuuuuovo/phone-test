@@ -778,7 +778,7 @@ export function applyWallpaper(url) {
   const frame = document.querySelector('.phone-frame');
   if (!frame) return;
   if (url) {
-    frame.style.backgroundImage    = `url("${url}")`;
+    frame.style.backgroundImage    = `url("${String(url).replace(/["\\\n\r]/g, '')}")`;  // 去掉能逃逸 url() 的字符(防 CSS 注入)
     frame.style.backgroundSize     = 'cover';
     frame.style.backgroundPosition = 'center';
   } else {

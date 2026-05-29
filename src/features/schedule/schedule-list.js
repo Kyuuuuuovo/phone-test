@@ -336,12 +336,15 @@ export async function mountScheduleList(container, params, router) {
   // ── 打卡 toggle:同 (dayKey, typeId) 存在则删,不存在则建 ────────────
   async function toggleCheckin(typeId, dayKey) {
     const sameDay = await db.query('checkins', 'dayKey', dayKey);
-    const existing = sameDay.find(c => c.typeId === typeId);
-    if (existing) {
-      await db.del('checkins', existing.id);
+    const matches = sameDay.filter(c => c.typeId === typeId);
+    if (matches.length > 0) {
+      // 删全部匹配 —— 顺手清掉历史上连点 / 并发产生的重复行。
+      for (const c of matches) await db.del('checkins', c.id);
     } else {
+      // 确定性 id:连点 / 并发两次都写同一行,不再插重复(原来 db.newId() 两次
+      // 创建会插两条 → 月历完成度计数虚高)。
       await db.set('checkins', {
-        id: db.newId(),
+        id: `ck_${dayKey}_${typeId}`,
         typeId,
         dayKey,
         checkedAt: Date.now(),

@@ -25,13 +25,13 @@ export async function mountMonitor(container, params, router) {
     const chars = await db.getAll('characters');
     const charMap = new Map(chars.map(c => [c.id, c]));
 
-    // For each camera, peek the latest snapshot caption to show inline.
+    // 每台机位最新一帧 caption。之前每台 camera 各 db.query 是 N+1;改成一次
+    // getAll 后按 cameraId 归并取最新。
+    const allLogs = await db.getAll('activityLog');
     const latestByCamera = new Map();
-    for (const cam of cameras) {
-      const logs = await db.query('activityLog', 'cameraId', cam.id);
-      if (logs.length === 0) continue;
-      logs.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-      latestByCamera.set(cam.id, logs[0]);
+    for (const log of allLogs) {
+      const cur = latestByCamera.get(log.cameraId);
+      if (!cur || (log.createdAt ?? 0) > (cur.createdAt ?? 0)) latestByCamera.set(log.cameraId, log);
     }
 
     container.innerHTML = `

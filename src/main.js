@@ -632,12 +632,18 @@ async function openMemoryHelperPanel(sessionId) {
     backdrop.querySelectorAll('.mh-add-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         const kind = btn.dataset.add;
-        const text = window.prompt(kind === 'phrase' ? '常用词 / 短语' : '常用指令');
-        if (!text || !text.trim()) return;
+        const label = kind === 'phrase' ? '常用词 / 短语' : '常用指令';
+        const r = await openModal(document.querySelector('.phone-frame'), {
+          title: label,
+          fields: [{ name: 'text', label, kind: 'text' }],
+          submitLabel: '添加',
+        });
+        const text = r && String(r.text || '').trim();
+        if (!text) return;
         const key = kind === 'phrase' ? 'frequentPhrases' : 'quickCommands';
         await db.updateSettings(s => {
           if (!Array.isArray(s[key])) s[key] = [];
-          s[key].push(text.trim());
+          s[key].push(text);
         });
         close();
         openMemoryHelperPanel(sessionId);

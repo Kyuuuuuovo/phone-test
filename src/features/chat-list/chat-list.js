@@ -44,12 +44,20 @@ export async function mountChatList(container, params, router) {
       body.innerHTML = `<div class="empty-state">还没有对话<br>点右上角 + 新建一个</div>`;
       return;
     }
+    // 批量取 —— 之前每个 session 各 db.get(character) + db.query(全部消息) 是
+    // N+1(消息多时明显卡)。改成一次 getAll 建索引:角色 Map + 每会话最新消息 Map。
+    const allChars = await db.getAll('characters');
+    const charMap = new Map(allChars.map(c => [c.id, c]));
+    const allMsgs = await db.getAll('chatMessages');
+    const lastBySession = new Map();
+    for (const m of allMsgs) {
+      const cur = lastBySession.get(m.sessionId);
+      if (!cur || (m.createdAt ?? 0) > (cur.createdAt ?? 0)) lastBySession.set(m.sessionId, m);
+    }
     const rows = [];
     for (const s of sessions) {
-      const char = await db.get('characters', s.characterId);
-      const msgs = await db.query('chatMessages', 'sessionId', s.id);
-      msgs.sort((a, b) => b.createdAt - a.createdAt);
-      const lastMsg = msgs[0];
+      const char = charMap.get(s.characterId);
+      const lastMsg = lastBySession.get(s.id);
       const preview = lastMsg ? previewOfMessage(lastMsg) : '(暂无消息)';
       const timeText = formatTime(s.lastMessageAt);
       const pinned = s.isPinned ? ' pinned' : '';

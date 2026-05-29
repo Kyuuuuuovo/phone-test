@@ -155,6 +155,10 @@ export function cosineSimilarity(a, b) {
   return dot / (Math.sqrt(na) * Math.sqrt(nb));
 }
 
+// 同一 context 内的 embed 并发去重(check-then-write 跨网络 await 会漏)。见
+// embedMemory 里的说明。
+const _embedInflight = new Set();
+
 // Embed a memory row and persist the vector. Idempotent — if an embedding
 // already exists for this memoryId, skips. Returns the embedding id or null
 // when disabled / failed.
@@ -163,28 +167,40 @@ export async function embedMemory(memory) {
   // Dedup: if there's already an embedding for this source, don't double up.
   const existing = await db.query('embeddings', 'sourceId', memory.id);
   if (existing.length > 0) return existing[0].id;
-  let vec;
+  // check-then-write 跨了 embedText 的网络 await,两个 fire-and-forget 调用
+  // (reply 时 embed + 「补齐」backfill)可能都过了上面的 existing 检查 → 写两条
+  // 向量。in-flight set 让第二个让路;网络 await 后再查一次兜底。(跨 tab 防不住,
+  // 已知取舍。)
+  if (_embedInflight.has(memory.id)) return null;
+  _embedInflight.add(memory.id);
   try {
-    vec = await embedText(memory.summary);
-  } catch (e) {
-    console.warn('[embedding] embedMemory failed (non-fatal):', e);
-    return null;
+    let vec;
+    try {
+      vec = await embedText(memory.summary);
+    } catch (e) {
+      console.warn('[embedding] embedMemory failed (non-fatal):', e);
+      return null;
+    }
+    if (!vec) return null;
+    const again = await db.query('embeddings', 'sourceId', memory.id);
+    if (again.length > 0) return again[0].id;
+    const settings = (await db.get('settings', 'default')) || {};
+    const cfg = settings.embedding;
+    const id = db.newId();
+    await db.set('embeddings', {
+      id,
+      sourceType: 'memory',
+      sourceId:   memory.id,
+      sessionId:  memory.sessionId,
+      vector:     vec,
+      dim:        vec.length,
+      modelName:  cfg?.modelName || '',
+      createdAt:  Date.now(),
+    });
+    return id;
+  } finally {
+    _embedInflight.delete(memory.id);
   }
-  if (!vec) return null;
-  const settings = (await db.get('settings', 'default')) || {};
-  const cfg = settings.embedding;
-  const id = db.newId();
-  await db.set('embeddings', {
-    id,
-    sourceType: 'memory',
-    sourceId:   memory.id,
-    sessionId:  memory.sessionId,
-    vector:     vec,
-    dim:        vec.length,
-    modelName:  cfg?.modelName || '',
-    createdAt:  Date.now(),
-  });
-  return id;
 }
 
 // Minimum similarity for a result to be considered "relevant" enough to
@@ -324,27 +340,35 @@ export async function embedWorldbookEntry(entry) {
   if (!entry?.id || !(entry?.content || '').trim()) return null;
   const existing = await db.query('embeddings', 'sourceId', entry.id);
   if (existing.length > 0) return existing[0].id;
-  let vec;
+  if (_embedInflight.has(entry.id)) return null;  // 并发去重,同 embedMemory
+  _embedInflight.add(entry.id);
   try {
-    vec = await embedText(entry.content);
-  } catch (e) {
-    console.warn('[embedding] embedWorldbookEntry failed (non-fatal):', e);
-    return null;
+    let vec;
+    try {
+      vec = await embedText(entry.content);
+    } catch (e) {
+      console.warn('[embedding] embedWorldbookEntry failed (non-fatal):', e);
+      return null;
+    }
+    if (!vec) return null;
+    const again = await db.query('embeddings', 'sourceId', entry.id);
+    if (again.length > 0) return again[0].id;
+    const settings = (await db.get('settings', 'default')) || {};
+    const id = db.newId();
+    await db.set('embeddings', {
+      id,
+      sourceType: 'worldbook-entry',
+      sourceId:   entry.id,
+      sessionId:  null,
+      vector:     vec,
+      dim:        vec.length,
+      modelName:  settings.embedding?.modelName || '',
+      createdAt:  Date.now(),
+    });
+    return id;
+  } finally {
+    _embedInflight.delete(entry.id);
   }
-  if (!vec) return null;
-  const settings = (await db.get('settings', 'default')) || {};
-  const id = db.newId();
-  await db.set('embeddings', {
-    id,
-    sourceType: 'worldbook-entry',
-    sourceId:   entry.id,
-    sessionId:  null,
-    vector:     vec,
-    dim:        vec.length,
-    modelName:  settings.embedding?.modelName || '',
-    createdAt:  Date.now(),
-  });
-  return id;
 }
 
 // Delete embedding for a worldbook entry — called when user changes the
