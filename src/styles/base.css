@@ -2668,6 +2668,15 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
   to   { transform: translateY(0); }
 }
 .attach-modal-form .label-text { margin-bottom: 4px; }
+/* 可选说明行(openModal 的 message)— 跟 confirm-message 一个风格 */
+.attach-modal-desc {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--fg);
+  margin: 4px 0 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
 /* Modal (scoped to phone-frame via absolute on #page-container) */
 .modal-backdrop {

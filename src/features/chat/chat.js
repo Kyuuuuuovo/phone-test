@@ -102,7 +102,7 @@ export async function mountChat(container, params, router) {
         <button data-action="quote">引用</button>
         <button data-action="copy">复制</button>
         <button data-action="favorite">收藏</button>
-        <button data-action="edit" class="only-user">编辑</button>
+        <button data-action="edit">编辑</button>
         <button data-action="regenerate">重新生成</button>
         <button data-action="resummarize" class="only-user">从这里重新总结</button>
         <button data-action="inner-voice" class="only-char">心声</button>
@@ -852,18 +852,32 @@ export async function mountChat(container, params, router) {
     const targetIdx = all.findIndex(m => m.id === msgId);
     const toDelete = [];
     if (target.role === 'character') toDelete.push(target);
+    const userBelow = [];  // 这条之后用户发的消息(可选一起删)
     for (let i = targetIdx + 1; i < all.length; i++) {
       if (all[i].role === 'character') toDelete.push(all[i]);
+      else if (all[i].role === 'user') userBelow.push(all[i]);
     }
-    const promptText = toDelete.length === 0
-      ? '让 AI 基于当前对话再生成一条新回复,确定吗?'
-      : `重新生成会删除这条之后的 ${toDelete.length} 条 AI 回复,然后让 AI 重新回复。确定吗?`;
-    if (!await openConfirm(container, {
-      title: hint ? '重新生成(带要求)' : '重新生成',
-      message: promptText,
-      confirmLabel: '重新生成',
-      danger: toDelete.length > 0,
-    })) return;
+    const aiNote = toDelete.length === 0
+      ? '让 AI 基于当前对话再生成一条新回复。'
+      : `会删除这条之后的 ${toDelete.length} 条 AI 回复,然后让 AI 重新回复。`;
+    if (userBelow.length > 0) {
+      // 这条之后还有你发的消息 → 给个勾选框,默认不勾(删消息不可逆,要主动选)。
+      const r = await openModal(container, {
+        title: hint ? '重新生成(带要求)' : '重新生成',
+        message: `${aiNote}下面还有你发的 ${userBelow.length} 条消息。`,
+        fields: [{ name: 'delUser', kind: 'checkbox', label: `连同下面我发的 ${userBelow.length} 条一起删`, defaultValue: false }],
+        submitLabel: '重新生成',
+      });
+      if (!r) return;
+      if (r.delUser) toDelete.push(...userBelow);
+    } else {
+      if (!await openConfirm(container, {
+        title: hint ? '重新生成(带要求)' : '重新生成',
+        message: `${aiNote} 确定吗?`,
+        confirmLabel: '重新生成',
+        danger: toDelete.length > 0,
+      })) return;
+    }
     for (const m of toDelete) await db.del('chatMessages', m.id);
     await refresh();
     aiBtn.disabled = true;

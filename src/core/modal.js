@@ -15,13 +15,14 @@
 //
 // Field options: { name, label, kind, defaultValue?, required?, min?, step?, placeholder?, options? }
 
-export function openModal(container, { title, fields, submitLabel = '确认', cancelLabel = '取消' }) {
+export function openModal(container, { title, message, fields, submitLabel = '确认', cancelLabel = '取消' }) {
   return new Promise((resolve) => {
     const modal = document.createElement('div');
     modal.className = 'modal-backdrop attach-modal-backdrop';
     modal.innerHTML = `
       <div class="modal attach-modal">
         <div class="modal-header">${escHtml(title)}</div>
+        ${message ? `<div class="attach-modal-desc">${escHtml(message)}</div>` : ''}
         <form class="attach-modal-form" autocomplete="off">
           ${fields.map(renderField).join('')}
           <div class="modal-actions">
