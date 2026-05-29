@@ -22,6 +22,7 @@
 // serialization round-trip needed.
 
 import * as db from './db.js';
+import { fetchWithTimeout } from './util.js';
 
 // Default request shape — OpenAI-compatible /v1/embeddings.
 // The user can paste either the full ".../v1/embeddings" path or just the
@@ -34,7 +35,7 @@ async function callEmbeddingAPI({ urlTemplate, apiKey, modelName, input }) {
   const url = apiUrlClean.endsWith('/embeddings')
     ? apiUrlClean
     : `${apiUrlClean}/embeddings`;
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

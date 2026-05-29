@@ -1432,6 +1432,19 @@ export function extractMemoryEvents(msgs) {
 // 为什么每次只压一天:连续多天的 overflow 一次性 N 次 API 调用太慢,user
 // 不愿意一直等。每次 AI 回复触发一次 maybeCompressMemory,渐进式消化 —
 // 第一次压最旧 A 天,active 收缩,下次压 B 天,以此类推。
+// 单次压缩的输入上限(估算 token)—— 防一天聊了几百条时 dump 撑爆模型上下文。
+// 超了就只压最旧的一批,剩下的留到下一轮接着压(渐进分批,user 无感)。
+const COMPRESS_TOKEN_BUDGET = 6000;
+// 粗估 token:中文≈1.5/字,ASCII≈0.3/char(跟 chat.js token badge 同启发式)。
+function estTokens(str) {
+  if (!str) return 0;
+  let ascii = 0, other = 0;
+  for (let i = 0; i < str.length; i++) {
+    if (str.charCodeAt(i) < 128) ascii++; else other++;
+  }
+  return Math.ceil(ascii * 0.3 + other * 1.5);
+}
+
 const _compressInFlight = new Map();
 // 公共入口 —— 把对同一 session 的并发压缩串行化:两个 caller(正常回复的自动
 // 压缩 撞上 chat-info「立即提取」或 桌宠记忆助手)不能各自读到同一段未归档
@@ -1490,7 +1503,7 @@ async function _maybeCompressMemoryImpl(sessionId, opts = {}) {
   }
   const sortedDays = [...byDay.keys()].sort();
   const oldestDay = sortedDays[0];
-  const overflow = byDay.get(oldestDay);
+  let overflow = byDay.get(oldestDay);
 
   const session = await db.get('chatSessions', sessionId);
   // 拿真名注入 dump + prompt context — 让模型用 personaName / charName 而非
@@ -1505,10 +1518,21 @@ async function _maybeCompressMemoryImpl(sessionId, opts = {}) {
   // Pass quote-resolver into renderActionsAsText so reply 引用原文 inlined
   // in the dump too (B#8). 用 allRows(含 archived)让跨窗口引用也能 resolve。
   const ctx = makeRenderContext(allRows);
-  const dump = overflow.map(m => {
+  // 单次压缩上限:按估算 token 截断 overflow,取最旧的一批(至少 1 条),剩下
+  // 的留到下一轮 —— 重的一天自动分批,不会一次 dump 撑爆上下文。
+  const lines = [];
+  let estSoFar = 0;
+  let cut = overflow.length;
+  for (let i = 0; i < overflow.length; i++) {
+    const m = overflow[i];
     const speaker = m.role === 'user' ? personaName : (m.role === 'character' ? charName : 'system');
-    return `${speaker}: ${renderActionsAsText(m.actions ?? [], ctx)}`;
-  }).join('\n');
+    const line = `${speaker}: ${renderActionsAsText(m.actions ?? [], ctx)}`;
+    if (i > 0 && estSoFar + estTokens(line) > COMPRESS_TOKEN_BUDGET) { cut = i; break; }
+    lines.push(line);
+    estSoFar += estTokens(line);
+  }
+  if (cut < overflow.length) overflow = overflow.slice(0, cut);
+  const dump = lines.join('\n');
 
   const override = (session?.memoryPromptOverride || '').trim();
   // 拼三段:压缩规则 + 输出格式(JSON + 6 类 tag) + 风格补充(session-level)
@@ -1668,7 +1692,10 @@ async function maybeAutoMergeTimeline(sessionId) {
       createdAt: Date.now(),
     };
     await db.set('timeline', newRow);
-    for (const t of toMerge) await db.del('timeline', t.id);
+    // 保留原行、打 mergedInto(跟手动 mergeDays 一致)—— 不能 del,否则
+    // generateMissingDays 的 existingKeys 丢了这些天的 dayKey,下次扫描会把它们
+    // 当"缺失天"重新生成,产生跟合并行重复的内容。
+    for (const t of toMerge) { t.mergedInto = newRow.id; await db.set('timeline', t); }
     rows = (await db.query('timeline', 'sessionId', sessionId))
       .filter(t => !t.mergedInto)
       .sort((a, b) => (a.fromTs ?? a.createdAt ?? 0) - (b.fromTs ?? b.createdAt ?? 0));

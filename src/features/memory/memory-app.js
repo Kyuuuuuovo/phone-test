@@ -21,6 +21,30 @@ import { openConfirm, openModal } from '../../core/modal.js';
 import { normalizeMemorySummary } from '../../core/context.js';
 import { esc, dayKeyOf } from '../../core/util.js';
 
+// 一条 timeline 行覆盖的所有自然日 —— 单天行就一天;合并行(手动 start~end /
+// 自动只有 fromTs/toTs)按时间范围展开。月历点 + 当天详情都用它,这样合并后
+// 月历不会丢点、点格子也能查到合并行。
+function tlCoveredDays(t) {
+  const startTs = t?.fromTs ?? null;
+  const endTs   = t?.toTs ?? t?.fromTs ?? null;
+  if (startTs != null) return daysBetweenKeys(dayKeyOf(startTs), dayKeyOf(endTs));
+  if (typeof t?.dayKey === 'string' && t.dayKey.includes('~')) {
+    const [s, e] = t.dayKey.split('~');
+    return daysBetweenKeys(s, e);
+  }
+  return t?.dayKey ? [t.dayKey] : [];
+}
+function daysBetweenKeys(s, e) {
+  if (!s) return [];
+  if (!e || e < s) e = s;
+  const out = [];
+  const ed = new Date(e + 'T00:00:00').getTime();
+  for (let d = new Date(s + 'T00:00:00'); d.getTime() <= ed && out.length < 400; d.setDate(d.getDate() + 1)) {
+    out.push(dayKeyOf(d.getTime()));
+  }
+  return out;
+}
+
 // 5 风格 + 默认。default = 不挂 body[data-mem-style](回退到 base.css 的 .ma-row),
 // 其余 5 个由 src/styles/memory-styles.css 的 scope 接管 .mem-card 样式。
 const MEMORY_STYLES = [
@@ -326,9 +350,13 @@ export async function mountMemoryApp(container, params, router) {
     const tlByDay  = new Map();
     const memByDay = new Map();
     const msByDay  = new Map();
-    for (const t of allTl)  tlByDay.set(t.dayKey, (tlByDay.get(t.dayKey) || 0) + 1);
+    for (const t of allTl) {
+      // 合并行 dayKey 是 start~end / 或没有,直接 set 对不上单天格子 → 按时间范围
+      // 展开成每一天(单天行就一天),月历点不会因合并而消失。
+      for (const dk of tlCoveredDays(t)) tlByDay.set(dk, (tlByDay.get(dk) || 0) + 1);
+    }
     for (const m of allMem) {
-      const k = dayKeyOf(m.createdAt);
+      const k = dayKeyOf(m.fromTs ?? m.createdAt);  // 用对话实际发生时间,不是这条记录生成时间
       memByDay.set(k, (memByDay.get(k) || 0) + 1);
     }
     for (const ms of allMs) {
@@ -842,6 +870,8 @@ export async function mountMemoryApp(container, params, router) {
     try {
       const qvec = await embedding.embedText(q);
       if (!qvec) { vectorHits = []; return; }
+      const settings = (await db.get('settings', 'default')) || {};
+      const k = Math.max(1, Math.min(50, Number(settings.embedding?.topK) || 8));  // 跟随用户在向量设置里配的 topK
       const memEmbs = await db.query('embeddings', 'sourceType', 'memory');  // 走 sourceType 索引,不全表扫
       const scored = [];
       for (const e of memEmbs) {
@@ -849,7 +879,7 @@ export async function mountMemoryApp(container, params, router) {
         scored.push({ embedding: e, score: embedding.cosineSimilarity(qvec, e.vector) });
       }
       scored.sort((a, b) => b.score - a.score);
-      const top = scored.filter(s => s.score >= 0.35).slice(0, 8);
+      const top = scored.filter(s => s.score >= 0.35).slice(0, k);
       const hits = [];
       for (const s of top) {
         const m = await db.get('memories', s.embedding.sourceId);
@@ -1071,9 +1101,9 @@ export async function mountMemoryApp(container, params, router) {
 
   // ── Per-day detail modal (calendar click) ───────────────────────────
   async function openDayModal(dayKey) {
-    const allTl   = (await db.getAll('timeline')).filter(t => t.dayKey === dayKey && !t.mergedInto);
+    const allTl   = (await db.getAll('timeline')).filter(t => !t.mergedInto && tlCoveredDays(t).includes(dayKey));
     const allMs   = (await db.getAll('milestones')).filter(m => m.dayKey === dayKey);
-    const allMems = (await db.getAll('memories')).filter(m => dayKeyOf(m.createdAt) === dayKey);
+    const allMems = (await db.getAll('memories')).filter(m => dayKeyOf(m.fromTs ?? m.createdAt) === dayKey);
     const sessions = await db.getAll('chatSessions');
     const chars    = await db.getAll('characters');
     const labelFor = (sid) => {

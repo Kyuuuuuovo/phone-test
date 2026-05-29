@@ -4,6 +4,8 @@
 // handed straight to the AI as the tool result. No field parsing — lets users
 // point at any endpoint without us shipping an adapter per provider.
 
+import { fetchWithTimeout } from './util.js';
+
 export const PRESET_TEMPLATES = [
   {
     id: 'openweather',
@@ -39,7 +41,7 @@ export async function fetchWeather({ lat, lon, urlTemplate, apiKey }) {
   if (!urlTemplate) throw new Error('天气未配置 URL 模板 — 去 设置 → 天气 API');
   if (lat == null || lon == null) throw new Error('缺少经纬度');
   const url = buildWeatherUrl(urlTemplate, { lat, lon, apiKey });
-  const r = await fetch(url);
+  const r = await fetchWithTimeout(url);  // 12s 超时,坏 / 慢 URL 不吊死调用方
   const text = await r.text();
   if (!r.ok) throw new Error(`天气 API HTTP ${r.status} — ${text.slice(0, 300)}`);
   return text.slice(0, RESPONSE_MAX);

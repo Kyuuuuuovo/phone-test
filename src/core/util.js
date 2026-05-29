@@ -83,3 +83,16 @@ function extractBalanced(str, open, close) {
   }
   return null;
 }
+
+// fetch + 超时 —— 用户填的 endpoint(天气 / embedding)可能挂起,默认 fetch
+// 永不超时会吊死调用方(embedding 在每轮回复路径上,卡住 = 整轮回复卡死)。
+// ms 后 abort,抛 AbortError,调用方按失败处理(降级 / 提示)。
+export async function fetchWithTimeout(url, options = {}, ms = 12000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...options, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
