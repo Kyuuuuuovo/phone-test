@@ -53,73 +53,72 @@ export async function mountMemorySettings(container, params, router) {
       </header>
       <div class="page-body">
         <p class="hint">
-          <b>缓冲条数</b>:聊天活跃消息超过这么多条时,就开始把多余的较老消息按天分组压缩成记忆。
-          总结后被压的消息会折叠到聊天里的「点开看 N 条被总结的聊天」横条里,AI 只看到摘要。
+          聊天越聊越长,AI 一次能读的内容是有限的。开了记忆总结,较早的对话会被自动压成简短的<b>记忆</b> —— AI 记住大意、不必再读原文,省出空间继续聊。
         </p>
         <p class="hint">
-          压缩规则:活跃消息 > 缓冲条数 时,把<b>溢出的最旧那一天</b>的消息压成一条记忆。每次只压一天,渐进式消化 — 第一次压完后下次新消息再触发时再压下一天。
+          压缩是<b>一天一天来</b>的:最近的消息超过下面设的条数,就把最早的那一天压成一条记忆,慢慢消化,不会一次全压。聊久了,很老的几条记忆还会再合并成一条「远期记忆」,这样上下文不会无限变长。
         </p>
         <p class="hint">
-          默认缓冲 ${DEFAULT_THRESHOLD} 条。L1 摘要累积到 8 条以上,最老的 4 条再压成一条「远期 / 章节」摘要,注入 prompt 的「# 远期记忆」段。长线对话上下文不会无限涨。
+          被压的消息<b>不会消失</b> —— 聊天里会折叠成一条「点开看 N 条被总结的聊天」,随时能展开看原文,只是 AI 那边看到的是摘要。
         </p>
-        <p class="hint">关闭总结后:超出缓冲的旧消息 AI 看不到原文,聊天界面照常保留。</p>
+        <p class="hint">关掉的话:旧消息 AI 就读不到了(聊天记录照样保留,只是 AI 看不到)。</p>
         <form class="settings-form" autocomplete="off">
           <label class="checkbox-row">
             <input type="checkbox" name="enabled"${enabled ? ' checked' : ''}>
             <span>开启记忆总结</span>
           </label>
           <label>
-            <div class="label-text">缓冲条数(留多少条活跃不压,默认 ${DEFAULT_THRESHOLD})</div>
+            <div class="label-text">保留最近多少条不压缩(默认 ${DEFAULT_THRESHOLD};越大 AI 记住的原文越多,也越占空间)</div>
             <input type="number" name="threshold" min="5" max="200" step="1" value="${threshold}">
           </label>
           <label>
-            <div class="label-text">「立即提取记忆」单次最多提取几天(默认 ${DEFAULT_BATCH_LIMIT})</div>
+            <div class="label-text">「立即提取记忆」一次最多整理几天(默认 ${DEFAULT_BATCH_LIMIT})</div>
             <input type="number" name="batchLimit" min="1" max="100" step="1" value="${batchLimit}">
-            <p class="hint" style="margin-top: 4px;">聊天框 ⋯ → 「立即提取记忆」按钮跑一次,自动循环压最旧的天,达到这个上限或全部压完才停。一次几天就要多少次 API 调用,值太大可能撞速率限制 / 烧 token,达到上限后会提示「还剩 N 天再点一次继续」。</p>
+            <p class="hint" style="margin-top: 4px;">聊天里 ⋯ → 「立即提取记忆」会把还没整理的旧对话一天天压成记忆。一次最多整理这么多天,剩下的会提示你再点一次继续。整理一天调一次 AI,设太大会比较慢、也费 token。</p>
           </label>
-          <h3 class="section-title" style="margin-top: 18px;">记忆专用 API(可选)</h3>
-          <p class="hint">记忆压缩(L1/L2)和时间线自动合并都会调 AI。默认跟聊天主 API 同一个。**记忆类调用不需要太聪明的模型**,可以选一个便宜的(GPT-4o-mini / Qwen-turbo 等)省 token。先去「设置 → API 设置」建好对应配置,这里再选。</p>
+          <h3 class="section-title" style="margin-top: 18px;">用单独的 AI 整理记忆(可选)</h3>
+          <p class="hint">整理记忆也要调 AI,默认用你聊天那个。整理记忆<b>不需要很聪明的模型</b>,想省钱可以单独挑个便宜的(GPT-4o-mini / Qwen-turbo 之类)。先去「设置 → API 设置」建好,这里再选。</p>
           <label>
-            <div class="label-text">记忆调用走哪个 API</div>
+            <div class="label-text">整理记忆用哪个 API</div>
             <select name="memoryApiConfigId">
               <option value=""${!memoryApiConfigId ? ' selected' : ''}>(跟随聊天主 API)</option>
               ${apiConfigs.map(c => `<option value="${esc(c.id)}"${c.id === memoryApiConfigId ? ' selected' : ''}>${esc(c.name || '(未命名)')} — ${esc(c.modelName || '')}</option>`).join('')}
             </select>
           </label>
 
-          <h3 class="section-title" style="margin-top: 18px;">时间索引(timeline)</h3>
-          <p class="hint">时间索引是一行简短的"什么时候发生了什么"记录,跟着每次记忆压缩自动生成。会**全部注入到 system prompt 的「# 时间索引」段**作为时间锚点(memory 卡是故事内容,时间索引是时间轴)。总条数靠下面的自动合并控制。</p>
+          <h3 class="section-title" style="margin-top: 18px;">时间线</h3>
+          <p class="hint">时间线是一条条「几月几号发生了什么」的简短记录,跟着记忆总结自动生成,帮 AI 记住事情的<b>先后顺序</b>(记忆卡是内容,时间线是时间轴)。条数多了会自动合并,见下面。</p>
           <label class="checkbox-row">
             <input type="checkbox" name="timelineAutoMergeEnabled"${tlAutoMerge ? ' checked' : ''}>
-            <span>超过阈值自动合并最老的几条(每次合并 5 条 → 1 条)</span>
+            <span>太多了就自动合并(每次把最早 5 条并成 1 条)</span>
           </label>
           <label>
-            <div class="label-text">自动合并阈值(超过这么多条触发合并,默认 30)</div>
+            <div class="label-text">攒到多少条就合并(默认 30)</div>
             <input type="number" name="timelineAutoMergeThreshold" min="5" max="100" step="1" value="${tlMergeThreshold}">
-            <p class="hint" style="margin-top: 4px;">关掉上面的开关时这值不生效。合并会调用 1 次 AI(把最老 5 条合成 1 条),所以阈值不要设太低(频繁烧 token)。</p>
+            <p class="hint" style="margin-top: 4px;">上面开关关掉时这个不生效。每次合并要调一次 AI,别设太低,免得老是费 token。</p>
           </label>
           <h3 class="section-title" style="margin-top: 18px;">记忆卡片显示</h3>
-          <p class="hint">控制记忆 app 和聊天内总结里,每张卡片是否显示这两个区段。关掉只让卡片更简洁,不影响生成 — 数据仍写入 memory,改回开就能看到。</p>
+          <p class="hint">这两个只影响记忆卡片<b>长什么样</b>,不影响 AI、也不影响生成。关掉只是让卡片更清爽,数据还在,想看再开回来。</p>
           <label class="checkbox-row">
             <input type="checkbox" name="showQuotes"${showQuotes ? ' checked' : ''}>
-            <span>显示「节选」(1-5 条关键原话)</span>
+            <span>显示「节选」(几句关键原话)</span>
           </label>
           <label class="checkbox-row">
             <input type="checkbox" name="showEvents"${showEvents ? ' checked' : ''}>
-            <span>显示「这次发生了」(红包/转账/语音/图片等手机原生事件链)</span>
+            <span>显示「这次发生了」(红包 / 转账 / 语音 / 图片这些)</span>
           </label>
 
-          <h3 class="section-title" style="margin-top: 18px;">注入 system prompt</h3>
-          <p class="hint">下面这条控制 AI 能不能在回复时"读到"关键原话。默认关 — quotes 主要是给你翻看用的,塞进 prompt 会显著增加 token 用量。开了之后只在<b>向量召回</b>命中的强相关卡(相关度 ≥70%)附原话,L1/L2 全量段不附(那样会爆 token)。需要先在「设置 → 向量记忆」启用 embedding,这个开关才有意义。</p>
+          <h3 class="section-title" style="margin-top: 18px;">让 AI 读到关键原话</h3>
+          <p class="hint">默认关 —— 关键原话主要是给你翻看的,给 AI 看会明显多费 token。开了之后,只有在<b>按相关度找记忆</b>时命中的强相关那几条,才会把原话一并给 AI。要先在「设置 → 向量记忆」里启用才有用。</p>
           <label class="checkbox-row">
             <input type="checkbox" name="injectQuotes"${injectQuotes ? ' checked' : ''}>
-            <span>把关键原话注入 prompt(仅向量召回强命中)</span>
+            <span>让 AI 读到关键原话(只在强相关时)</span>
           </label>
 
           <h3 class="section-title" style="margin-top: 18px;">用户画像</h3>
-          <p class="hint">每次记忆压缩时,AI 会顺带把对话里关于用户的新事实(喜好 / 不喜欢 / 发现)增量写到「关于你」画像里。长期下来每段会越积越多,这里 cap 一下 — 超过上限时最老的条目自然淘汰。</p>
+          <p class="hint">整理记忆时,AI 会顺手记下关于你的新发现(喜欢什么、不喜欢什么、发现了什么),攒进「关于你」。时间久了越攒越多,这里设个上限,超了就丢掉最早的。</p>
           <label>
-            <div class="label-text">每段上限(喜欢 / 不喜欢 / 你发现各自独立计算,默认 20)</div>
+            <div class="label-text">每类最多记多少条(喜欢 / 不喜欢 / 发现 各算各的,默认 20)</div>
             <input type="number" name="profileCap" min="5" max="100" step="1" value="${profileCap}">
           </label>
 
@@ -150,7 +149,7 @@ export async function mountMemorySettings(container, params, router) {
     const en = !!fd.get('enabled');
     const t = parseInt(String(fd.get('threshold') || '0'), 10) || DEFAULT_THRESHOLD;
     if (t < 5) {
-      setStatus('缓冲太小,建议 ≥ 5', 'error');
+      setStatus('保留条数太小,建议 ≥ 5', 'error');
       return;
     }
     const bl = parseInt(String(fd.get('batchLimit') || '0'), 10) || DEFAULT_BATCH_LIMIT;
