@@ -172,7 +172,10 @@ export function openConfirm(container, { title, message, confirmLabel = '确认'
     `;
     container.appendChild(modal);
 
-    const cleanup = () => modal.remove();
+    // cleanup 必须同时摘掉 keydown 监听 —— 否则点按钮/点背景关闭(最常见路径)
+    // 时只 remove 了 DOM,onKey 永久挂在 document 上,每开一次 confirm 漏一个
+    // 僵尸监听(openConfirm 用得极频繁)。照 openAlert 的写法收口。
+    const cleanup = () => { modal.remove(); document.removeEventListener('keydown', onKey); };
     const cancel  = () => { cleanup(); resolve(false); };
     const accept  = () => { cleanup(); resolve(true); };
 
@@ -183,8 +186,8 @@ export function openConfirm(container, { title, message, confirmLabel = '确认'
     const confirmBtn = modal.querySelector('.confirm-btn');
     setTimeout(() => confirmBtn.focus(), 0);
     const onKey = (e) => {
-      if (e.key === 'Escape')      { e.preventDefault(); cancel(); document.removeEventListener('keydown', onKey); }
-      else if (e.key === 'Enter')  { e.preventDefault(); accept(); document.removeEventListener('keydown', onKey); }
+      if (e.key === 'Escape')      { e.preventDefault(); cancel(); }
+      else if (e.key === 'Enter')  { e.preventDefault(); accept(); }
     };
     document.addEventListener('keydown', onKey);
   });

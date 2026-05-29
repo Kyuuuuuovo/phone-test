@@ -316,11 +316,12 @@ export async function mountChat(container, params, router) {
 
     const parts = [];
     let prevTs = null;
-    // Group consecutive archived msgs (by archivedIntoMemoryId) into a single
-    // collapsible banner. Default = collapsed; only render the inner msg-row
-    // HTML when the group's key is in expandedArchiveGroups. Saves a ton of
-    // DOM nodes on long conversations and lets the user see "this part was
-    // summarized" without the visual noise of dim grey rows.
+    // 把所有连续的已归档消息折成 ONE 个隐藏块,不管它们属于哪次压缩 / 哪张
+    // 故事卡(一次总结切成几张卡、或跨多次总结多天,都收进同一个折叠)。点开
+    // = 展开这一整段被总结掉的原始对话。折叠纯粹是"看原文"的入口,跟记忆卡
+    // 结构无关 —— 所以用常量 key,不再按 archivedIntoMemoryId 分组(那样每次
+    // 压缩各自一条 banner 堆成一排)。归档消息永远是最旧的连续一段,所以结果
+    // 就是顶部唯一一个折叠条。
     let archiveGroup = null;  // { key, msgs: [] }
     const flushGroup = () => {
       if (archiveGroup) {
@@ -330,7 +331,7 @@ export async function mountChat(container, params, router) {
     };
     for (const m of msgs) {
       if (m.archived) {
-        const groupKey = m.archivedIntoMemoryId || '_orphan';
+        const groupKey = '_archived';
         if (!archiveGroup || archiveGroup.key !== groupKey) {
           flushGroup();
           archiveGroup = { key: groupKey, msgs: [m] };
@@ -387,26 +388,35 @@ export async function mountChat(container, params, router) {
   // Wallet helpers — gate user-initiated transfers/red_packets on balance.
   // tryDeductWallet returns false if balance insufficient (user notified).
   async function tryDeductWallet(amount, kindLabel) {
-    const w = (await db.get('wallet', 'default')) || { id: 'default', balance: 0 };
-    const balance = Number(w.balance || 0);
-    if (balance < amount) {
+    // 在同一 IDB 事务里 读余额→判足→扣,避免 get/set 跨两事务时并发(领红包
+    // 退回、多 tab、连点)各读到同一 pre-balance 后写覆盖,扣错钱。
+    let res = { ok: true, balance: 0 };
+    await db.updateRow('wallet', 'default', (w) => {
+      const balance = Number(w.balance || 0);
+      if (balance < amount) { res = { ok: false, balance }; return w; }
+      w.balance = Number((balance - amount).toFixed(2));
+      res = { ok: true, balance: w.balance };
+      return w;
+    }, { id: 'default', balance: 0 });
+    if (!res.ok) {
       await openAlert(container, {
         title: '余额不足',
-        message: `当前 ¥${balance.toFixed(2)},${kindLabel}需 ¥${amount.toFixed(2)}。去「我 → 钱包」充值。`,
+        message: `当前 ¥${res.balance.toFixed(2)},${kindLabel}需 ¥${amount.toFixed(2)}。去「我 → 钱包」充值。`,
         danger: true,
       });
       return false;
     }
-    w.balance = Number((balance - amount).toFixed(2));
-    await db.set('wallet', w);
-    console.log(`[wallet] -${amount} (${kindLabel}); balance: ${w.balance}`);
+    console.log(`[wallet] -${amount} (${kindLabel}); balance: ${res.balance}`);
     return true;
   }
   async function creditWallet(amount, kindType) {
-    const w = (await db.get('wallet', 'default')) || { id: 'default', balance: 0 };
-    w.balance = Number((Number(w.balance || 0) + amount).toFixed(2));
-    await db.set('wallet', w);
-    console.log(`[wallet] +${amount} (${kindType}); balance: ${w.balance}`);
+    let newBalance = 0;
+    await db.updateRow('wallet', 'default', (w) => {
+      w.balance = Number((Number(w.balance || 0) + amount).toFixed(2));
+      newBalance = w.balance;
+      return w;
+    }, { id: 'default', balance: 0 });
+    console.log(`[wallet] +${amount} (${kindType}); balance: ${newBalance}`);
   }
 
   async function appendUserMessage(actions, innerVoice) {
@@ -1223,8 +1233,8 @@ function actionTextOf(a) {
     case 'voice':  return `[语音] ${a.content || ''}`;
     case 'recall': return '[消息已撤回]';
     case 'unblock_request': return `[请求解除拉黑] ${a.content || ''}`;
-    case 'red_packet': return `[红包 ¥${Number(a.amount).toFixed(2)}] ${a.message || ''}`;
-    case 'transfer':   return `[转账 ¥${Number(a.amount).toFixed(2)}] ${a.message || ''}`;
+    case 'red_packet': return `[红包 ¥${Number(a.amount || 0).toFixed(2)}] ${a.message || ''}`;
+    case 'transfer':   return `[转账 ¥${Number(a.amount || 0).toFixed(2)}] ${a.message || ''}`;
     case 'location':   return `[位置] ${a.name || ''}${a.desc ? ' · ' + a.desc : ''}`;
     default:       return `[${a.type}]`;
   }

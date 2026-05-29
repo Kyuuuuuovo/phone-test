@@ -213,12 +213,7 @@ export async function mountChatList(container, params, router) {
           closeRevealed();
           return;
         }
-        const msgs = await db.query('chatMessages', 'sessionId', id);
-        for (const m of msgs) await db.del('chatMessages', m.id);
-        const mems = await db.query('memories', 'sessionId', id);
-        for (const m of mems) await db.del('memories', m.id);
-        const tls = await db.query('timeline', 'sessionId', id);
-        for (const t of tls) await db.del('timeline', t.id);
+        await db.deleteSessionCascade(id);  // msgs+memories+timeline+favorites+embeddings
         await db.del('chatSessions', id);
         revealed = null;
         await renderList();
@@ -328,12 +323,7 @@ export async function mountChatList(container, params, router) {
         confirmLabel: '删除',
         danger: true,
       })) return;
-      const msgs = await db.query('chatMessages', 'sessionId', id);
-      for (const m of msgs) await db.del('chatMessages', m.id);
-      const mems = await db.query('memories', 'sessionId', id);
-      for (const m of mems) await db.del('memories', m.id);
-      const tls = await db.query('timeline', 'sessionId', id);
-      for (const t of tls) await db.del('timeline', t.id);
+      await db.deleteSessionCascade(id);
       await db.del('chatSessions', id);
       await renderList();
     }

@@ -171,13 +171,16 @@ export async function generateSnapshot(cameraId) {
   if (!character) throw new Error(`generateSnapshot: character ${camera.characterId} not found`);
 
   const persona  = (character.persona || '').trim();
+  // userName 必须在 buildScheduleLines 之前取 —— 它作为 names.userName 传进去。
+  // (之前 const 声明在后面,对象字面量里读它触发 TDZ ReferenceError,监控
+  //  刷新画面 100% 崩。)
+  const userName = await activePersonaNameFor(character.id);
   const schedule = await buildScheduleLines(character.id, null, {
     userName,
     charName: character.name,
   });
   const recent   = await recentChatContext(character.id);
   const modeFact = modeFactLine(camera, character);
-  const userName = await activePersonaNameFor(character.id);
   const discoveredHint = camera.discoveredAt
     ? `\n注意:${character.name || '角色'}早些时候已经发现过${userName}装了这台摄像头(在 ${new Date(camera.discoveredAt).toLocaleString('zh-CN')})。这台摄像头之后的画面应该反映这件事 — 怎么反映由人设决定,不要替 ta 决定情绪走向。`
     : '';

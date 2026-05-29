@@ -23,7 +23,7 @@ export async function mountScheduleList(container, params, router) {
   let selectedDayKey = dayKeyOf(Date.now());
 
   async function render() {
-    const [entries, allChars, types, checkins] = await Promise.all([
+    const [entries, allChars, allTypes, allCheckins] = await Promise.all([
       db.getAll('schedule'),
       db.getAll('characters'),
       db.getAll('checkinTypes'),
@@ -31,6 +31,11 @@ export async function mountScheduleList(container, params, router) {
     ]);
     const chars = allChars.filter(c => c.id !== '__bear__');
     const charMap = new Map(chars.map(c => [c.id, c]));
+    // 生理期(kind='period')走专门的「周期」app,不在这里当普通打卡显示 —— 把
+    // period type 和它的 checkin 一并滤掉(否则月历 dot / 完成度计数会被污染)。
+    const periodTypeIds = new Set(allTypes.filter(t => t.kind === 'period').map(t => t.id));
+    const types = allTypes.filter(t => t.kind !== 'period');
+    const checkins = allCheckins.filter(c => !periodTypeIds.has(c.typeId));
     // (dayKey, typeId) → checkin row。月历 dot + 当日 chip 共享同一索引。
     const checkinIdx = new Map();
     for (const c of checkins) checkinIdx.set(`${c.dayKey}|${c.typeId}`, c);
@@ -346,7 +351,7 @@ export async function mountScheduleList(container, params, router) {
 
   // ── 管理打卡类型 modal ─────────────────────────────────────────────
   async function openManageTypesModal() {
-    const types = await db.getAll('checkinTypes');
+    const types = (await db.getAll('checkinTypes')).filter(t => t.kind !== 'period');  // 生理期在「周期」app 管,不在打卡类型里
     const modal = document.createElement('div');
     modal.className = 'modal-backdrop';
     modal.innerHTML = `

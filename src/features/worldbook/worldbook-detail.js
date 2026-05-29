@@ -74,11 +74,9 @@ export async function mountWorldbookDetail(container, params, router) {
       return;
     }
     // 拿这些 entry 的 embedding 状态(向量模式时给 user 看是否已 embed)
-    const allEmbs = await db.getAll('embeddings');
+    const wbEmbs = await db.query('embeddings', 'sourceType', 'worldbook-entry');  // 走 sourceType 索引,不全表扫
     const embedByEntryId = new Map();
-    for (const emb of allEmbs) {
-      if (emb.sourceType === 'worldbook-entry') embedByEntryId.set(emb.sourceId, emb);
-    }
+    for (const emb of wbEmbs) embedByEntryId.set(emb.sourceId, emb);
     entriesList.innerHTML = entries.map(e => {
       const pos = (e.position === 'before' || e.position === 'after') ? e.position : 'inline';
       const keywordsCsv = Array.isArray(e.keywords) ? e.keywords.join(', ') : '';

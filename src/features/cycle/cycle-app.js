@@ -1,9 +1,10 @@
 // 生理期 周期 app — 3 tab(当前 / 日历 / 症状)。
 //
-// 数据形状(STORES.cycle / cycleSymptoms 见 db.js):
-//   cycle (singleton id='default'):enabled / averageLength / periodLength /
-//     fluctuation / lastStartDayKey / history[] / visibleToChat
-//   cycleSymptoms (per row):dayKey / kind / severity? / note?
+// 数据形状:
+//   周期配置 → checkinTypes 里 kind='period' 那条 type 的 cycleConfig:
+//     enabled / averageLength / periodLength / fluctuation / lastStartDayKey /
+//     history[] / visibleToChat(跟 context.buildCycleStatus / cycle-notify 同源)
+//   cycleSymptoms (独立 store, per row):dayKey / kind / severity? / note?
 //
 // 预测算法:nextStart = lastStartDayKey + averageLength
 //   浮动窗口 [nextStart - fluctuation, nextStart + fluctuation]
@@ -18,10 +19,12 @@
 import * as db from '../../core/db.js';
 import { openModal, openConfirm, openAlert } from '../../core/modal.js';
 import { esc, dayKeyOf } from '../../core/util.js';
-import { computeCycleStatus, addDays, daysBetween } from '../../core/cycle.js';
+import { computePeriodStatus, addDays, daysBetween, findPeriodType } from '../../core/period.js';
 
+// 周期配置不再存独立 cycle 单例,而是挂在 checkinTypes 里 kind='period' 的那条
+// type 的 cycleConfig 上(跟 context.buildCycleStatus / cycle-notify 同源)。没有
+// 这条 type 就在用户启用 / 记录时懒创建。症状仍用独立 cycleSymptoms store。
 const DEFAULTS = {
-  id: 'default',
   enabled: false,
   averageLength: 28,
   periodLength: 5,
@@ -39,16 +42,20 @@ const SYMPTOM_KINDS = [
   { id: 'note',     label: '其他'   },
 ];
 
-// Phase 计算 + 日期算术从 core/cycle.js 导入(共享给 context / notify)。
+// Phase 计算 + 日期算术从 core/period.js 导入(跟 context / notify 同一套)。
 
 export async function mountCycleApp(container, params, router) {
-  let cfg = (await db.get('cycle', 'default')) || { ...DEFAULTS };
-  // Migrate-on-read: 老数据可能缺新字段,补 defaults。
-  cfg = { ...DEFAULTS, ...cfg };
+  // 周期 type(checkinTypes 里 kind='period' 的一条);没有就在 persist 时懒建。
+  let periodType = findPeriodType(await db.getAll('checkinTypes'));
+  let cfg = { ...DEFAULTS, ...(periodType?.cycleConfig || {}) };
   let activeTab = 'current';
 
   async function persist() {
-    await db.set('cycle', cfg);
+    if (!periodType) {
+      periodType = { id: db.newId(), kind: 'period', name: '生理期', icon: '', color: '', createdAt: Date.now() };
+    }
+    periodType.cycleConfig = { ...cfg };
+    await db.set('checkinTypes', periodType);
   }
 
   function render() {
@@ -94,7 +101,7 @@ export async function mountCycleApp(container, params, router) {
   }
 
   function renderCurrentTab() {
-    const status = computeCycleStatus(cfg);
+    const status = computePeriodStatus(cfg);
     const card = renderStatusCard(status);
     const lastStartFmt = cfg.lastStartDayKey || '(还没记过)';
     return `
@@ -165,7 +172,7 @@ export async function mountCycleApp(container, params, router) {
     const month = today.getMonth();
     const firstDay = new Date(year, month, 1).getDay();  // 0=Sun, 1=Mon...
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const status = computeCycleStatus(cfg);
+    const status = computePeriodStatus(cfg);
     const cells = [];
     // Leading blanks
     for (let i = 0; i < firstDay; i++) cells.push(`<div class="cy-cell cy-cell-blank"></div>`);
@@ -303,7 +310,7 @@ export async function mountCycleApp(container, params, router) {
 
   async function markStartOrEnd() {
     const todayDk = dayKeyOf(Date.now());
-    const status = computeCycleStatus(cfg);
+    const status = computePeriodStatus(cfg);
     if (status.phase === 'in-period') {
       // 标结束 — 算出实际 periodLength,更新 history 最后一条 endDayKey
       const actualLen = (daysBetween(cfg.lastStartDayKey, todayDk) ?? 0) + 1;

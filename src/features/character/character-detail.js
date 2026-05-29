@@ -200,12 +200,7 @@ export async function mountCharacterDetail(container, params, router) {
     })) return;
     // Cascade: sessions → their messages + memories, then sessions themselves
     for (const s of sessions) {
-      const msgs = await db.query('chatMessages', 'sessionId', s.id);
-      for (const m of msgs) await db.del('chatMessages', m.id);
-      const mems = await db.query('memories', 'sessionId', s.id);
-      for (const m of mems) await db.del('memories', m.id);
-      const tls = await db.query('timeline', 'sessionId', s.id);
-      for (const t of tls) await db.del('timeline', t.id);
+      await db.deleteSessionCascade(s.id);  // 含 favorites + embeddings
       await db.del('chatSessions', s.id);
     }
     // Cascade: worldbook bindings owned by this character

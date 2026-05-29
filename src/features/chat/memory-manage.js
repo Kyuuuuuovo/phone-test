@@ -10,7 +10,7 @@
 // 今天不生成(那天还没结束)。
 
 import * as db from '../../core/db.js';
-import { DEFAULT_MEMORY_SYS } from '../../core/context.js';
+import { DEFAULT_MEMORY_SYS, normalizeMemorySummary } from '../../core/context.js';
 import * as timeline from '../../core/timeline.js';
 import { openConfirm } from '../../core/modal.js';
 import { esc } from '../../core/util.js';

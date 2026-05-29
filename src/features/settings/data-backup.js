@@ -49,7 +49,7 @@ export async function mountDataBackup(container, params, router) {
         data[name] = rows.map(r => serializeRow(name, r));
       }
       const payload = {
-        _meta: { app: 'phone-app', version: 1, exportedAt: Date.now() },
+        _meta: { app: 'phone-app', version: 1, dbVersion: db.DB_VERSION, exportedAt: Date.now() },
         ...data,
       };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -81,6 +81,31 @@ export async function mountDataBackup(container, params, router) {
       const file = input.files?.[0];
       document.body.removeChild(input);
       if (!file) return;
+      // 先解析,才能读 _meta.dbVersion 做版本门。
+      let data;
+      try {
+        data = JSON.parse(await file.text());
+      } catch (e) {
+        status.textContent = '导入失败:文件不是合法 JSON';
+        status.className = 'form-status error';
+        return;
+      }
+      if (typeof data !== 'object' || !data) {
+        status.textContent = '导入失败:文件格式不对';
+        status.className = 'form-status error';
+        return;
+      }
+      // 版本门:备份记录的 dbVersion 跟当前不一致 → 结构可能不兼容,先警告确认。
+      // 老备份没有 dbVersion 字段(null)→ 跳过检查走旧流程(向后兼容)。
+      const bkVer = data?._meta?.dbVersion;
+      if (bkVer != null && bkVer !== db.DB_VERSION) {
+        if (!await openConfirm(container, {
+          title: '版本不一致',
+          message: `这份备份的数据版本是 v${bkVer},当前是 v${db.DB_VERSION}。${bkVer > db.DB_VERSION ? '它比当前版本新,' : ''}导入后结构可能不完全兼容,可能出错。仍要继续吗?`,
+          confirmLabel: '仍然导入',
+          danger: true,
+        })) return;
+      }
       if (!await openConfirm(container, {
         title: '导入备份',
         message: '导入会覆盖当前所有数据,确定继续吗?',
@@ -90,9 +115,6 @@ export async function mountDataBackup(container, params, router) {
       try {
         status.className = 'form-status';
         status.textContent = '导入中…';
-        const text = await file.text();
-        const data = JSON.parse(text);
-        if (typeof data !== 'object' || !data) throw new Error('文件格式不对');
         const counts = {};
         for (const name of Object.keys(db.STORES)) {
           if (Array.isArray(data[name])) {

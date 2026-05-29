@@ -61,9 +61,10 @@ export async function mountWallet(container, params, router) {
       if (!v) return;
       const amount = parseFloat(v.amount);
       if (!Number.isFinite(amount) || amount <= 0) return;
-      const w = (await db.get('wallet', 'default')) || { id: 'default', balance: 0 };
-      w.balance = Number((Number(w.balance || 0) + amount).toFixed(2));
-      await db.set('wallet', w);
+      await db.updateRow('wallet', 'default', (w) => {
+        w.balance = Number((Number(w.balance || 0) + amount).toFixed(2));
+        return w;
+      }, { id: 'default', balance: 0 });
       await render();
     });
 
@@ -77,9 +78,16 @@ export async function mountWallet(container, params, router) {
       if (!v) return;
       const amount = parseFloat(v.amount);
       if (!Number.isFinite(amount) || amount <= 0) return;
-      if (amount > Number(w.balance || 0)) { await openAlert(container, { title: '余额不足', message: '当前余额不够这笔操作。', danger: true }); return; }
-      w.balance = Number((Number(w.balance || 0) - amount).toFixed(2));
-      await db.set('wallet', w);
+      // 在同一事务里重新读余额 + 校验 + 扣 —— 防止两笔提现各读到同一 pre-balance
+      // 后写覆盖(modal 标题里那次读只用于显示)。
+      let ok = true;
+      await db.updateRow('wallet', 'default', (row) => {
+        const bal = Number(row.balance || 0);
+        if (amount > bal) { ok = false; return row; }
+        row.balance = Number((bal - amount).toFixed(2));
+        return row;
+      }, { id: 'default', balance: 0 });
+      if (!ok) { await openAlert(container, { title: '余额不足', message: '当前余额不够这笔操作。', danger: true }); return; }
       await render();
     });
   }
@@ -111,8 +119,9 @@ async function collectTransactions() {
       const kindLabel = a.type === 'red_packet' ? '红包' : '转账';
       const peer = await charName(m.sessionId);
       const amount = Number(a.amount || 0);
-      if (m.role === 'user') {
-        // User sent → outgoing
+      if (m.role === 'user' && !a.returned) {
+        // User sent → outgoing。已退回(24h 未领自动退回)的不算支出 —— 否则
+        // 余额已经退回但流水还显示 -¥X,账对不上。
         out.push({
           ts: m.createdAt,
           direction: 'out',
@@ -120,7 +129,7 @@ async function collectTransactions() {
           title: `发出${kindLabel}`,
           sub: `给 ${peer} · ${a.message || '(无留言)'}`,
         });
-      } else if (m.role === 'character' && a.claimed) {
+      } else if (m.role === 'character' && (a.claimed || a.accepted)) {
         // Char sent + user claimed → incoming
         out.push({
           ts: a.claimedAt || m.createdAt,

@@ -151,6 +151,10 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     const enabled = entries.filter(e => e.enabled !== false);
     enabled.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
     for (const entry of enabled) {
+      // vector 模式条目只走「# 相关世界设定」语义召回段,不在这里注入 —— 否则它
+      // 没 keywords,下面 kw.length===0 会被当 always 每轮无条件塞,命中时
+      // buildWorldbookVectorLines 又塞第二遍(等于"向量触发"开关失效 + 双注入)。
+      if (entry.activationMode === 'vector') continue;
       // 关键词过滤
       const kw = Array.isArray(entry.keywords) ? entry.keywords.filter(Boolean) : [];
       if (kw.length > 0) {
@@ -909,6 +913,7 @@ export async function buildCheckinLines() {
   const todayKey = `${year}-${pad2(month + 1)}-${pad2(todayDay)}`;
   const lines = [];
   for (const t of types) {
+    if (t.kind === 'period') continue;  // 生理期走 buildCycleStatus(双门控),不混进通用打卡摘要泄漏经期天数
     const thisType = all.filter(c => c.typeId === t.id);
     const monthCount = thisType.filter(c => c.dayKey.startsWith(monthPrefix) && c.dayKey <= todayKey).length;
     lines.push(`- ${t.name}:本月已打 ${monthCount}/${todayDay} 天`);
@@ -1427,7 +1432,22 @@ export function extractMemoryEvents(msgs) {
 // 为什么每次只压一天:连续多天的 overflow 一次性 N 次 API 调用太慢,user
 // 不愿意一直等。每次 AI 回复触发一次 maybeCompressMemory,渐进式消化 —
 // 第一次压最旧 A 天,active 收缩,下次压 B 天,以此类推。
+const _compressInFlight = new Map();
+// 公共入口 —— 把对同一 session 的并发压缩串行化:两个 caller(正常回复的自动
+// 压缩 撞上 chat-info「立即提取」或 桌宠记忆助手)不能各自读到同一段未归档
+// overflow、各写一条重复 memory + 重复 archive。镜像 requestReply 的 in-flight
+// 锁,但下沉到函数本身,覆盖所有入口(之前只有 requestReply 有锁)。
 export async function maybeCompressMemory(sessionId, opts = {}) {
+  const existing = _compressInFlight.get(sessionId);
+  if (existing) return existing;
+  const p = (async () => {
+    try { return await _maybeCompressMemoryImpl(sessionId, opts); }
+    finally { _compressInFlight.delete(sessionId); }
+  })();
+  _compressInFlight.set(sessionId, p);
+  return p;
+}
+async function _maybeCompressMemoryImpl(sessionId, opts = {}) {
   const { force = false } = opts;
   const settings = (await db.get('settings', 'default')) || {};
   if (settings.memoryEnabled === false) return null;
@@ -1440,10 +1460,13 @@ export async function maybeCompressMemory(sessionId, opts = {}) {
   // content into a brand new memory (and re-archive-stamping rows that
   // were already archived). The whole "compress once, hide" intent only
   // works when the threshold comparison is against active-only count.
-  const all = (await db.query('chatMessages', 'sessionId', sessionId))
-    .filter(m => !m.archived);
+  // 取全量(含 archived)一次:overflow / threshold 用 active-only(filter 后的
+  // `all`),但 makeRenderContext 要用全量 —— 否则 reply 引用的消息若已在上一轮
+  // 被 archive,resolveQuote 查不到 → 引用原文丢失,压缩质量下降。
+  const allRows = await db.query('chatMessages', 'sessionId', sessionId);
+  allRows.sort((a, b) => a.createdAt - b.createdAt);
+  const all = allRows.filter(m => !m.archived);
   if (all.length === 0) return null;
-  all.sort((a, b) => a.createdAt - b.createdAt);
 
   // 确定 candidate 集合(候选可压消息)
   //   normal: 只看溢出 threshold 缓冲的那部分
@@ -1480,8 +1503,8 @@ export async function maybeCompressMemory(sessionId, opts = {}) {
   const charName    = (character?.name || '').trim() || '角色';
 
   // Pass quote-resolver into renderActionsAsText so reply 引用原文 inlined
-  // in the dump too (B#8).
-  const ctx = makeRenderContext(all);
+  // in the dump too (B#8). 用 allRows(含 archived)让跨窗口引用也能 resolve。
+  const ctx = makeRenderContext(allRows);
   const dump = overflow.map(m => {
     const speaker = m.role === 'user' ? personaName : (m.role === 'character' ? charName : 'system');
     return `${speaker}: ${renderActionsAsText(m.actions ?? [], ctx)}`;
@@ -1806,6 +1829,10 @@ export async function resummarizeFrom(sessionId, fromMsgId) {
     // If we can't resolve the to-msg (orphan), be conservative: drop the
     // memory, since we can't tell what it covered.
     if (toTs == null || toTs >= T) {
+      // 连同它的 embedding 一起删,否则反复「重新生成总结」会留孤儿向量,
+      // 每次召回都白算 cosine(L2 那条路径修过,这条之前漏了)。
+      const embs = await db.query('embeddings', 'sourceId', mem.id);
+      for (const emb of embs) await db.del('embeddings', emb.id);
       await db.del('memories', mem.id);
     }
   }

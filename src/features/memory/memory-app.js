@@ -842,8 +842,7 @@ export async function mountMemoryApp(container, params, router) {
     try {
       const qvec = await embedding.embedText(q);
       if (!qvec) { vectorHits = []; return; }
-      const allEmbs = await db.getAll('embeddings');
-      const memEmbs = allEmbs.filter(e => e.sourceType === 'memory');
+      const memEmbs = await db.query('embeddings', 'sourceType', 'memory');  // 走 sourceType 索引,不全表扫
       const scored = [];
       for (const e of memEmbs) {
         if (!e.vector || e.dim !== qvec.length) continue;

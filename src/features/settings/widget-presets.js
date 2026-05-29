@@ -224,7 +224,8 @@ export async function mountWidgetPresets(container, params, router) {
       const name = String(fd.get('name') || '').trim();
       if (!name) return;
       const { bgColor, radius } = parseBgColorAndRadius(fd);
-      const transparency = Number(fd.get('transparency')) || 100;
+      const _tn = Number(fd.get('transparency'));
+      const transparency = Number.isFinite(_tn) ? _tn : 100;  // 0 = 全透明,不能被 || 吞成 100
       const tilt = parseTilt(fd);
       const id = `user-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
       const sampleBg = bgColor || 'var(--surface)';

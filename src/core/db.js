@@ -234,6 +234,10 @@ export const STORES = {
 };
 
 let _db = null;
+// main.js 注册这个回调:另一个 tab 触发 DB 升级时,onversionchange 关掉本 tab 的
+// 连接(放升级过去),再通知 UI 弹「请刷新」—— 不再静默打死连接让后续操作无声抛错。
+let _onVersionChange = null;
+export function onVersionChange(cb) { _onVersionChange = cb; }
 
 function req(request) {
   return new Promise((resolve, reject) => {
@@ -279,8 +283,17 @@ export async function init() {
     open.onblocked = () => reject(new Error('db open blocked by another tab — close other tabs and retry'));
   });
 
-  // Drop connection if another tab triggers an upgrade — lets them through cleanly.
-  _db.onversionchange = () => { _db.close(); _db = null; };
+  // Drop connection if another tab triggers an upgrade — lets them through
+  // cleanly. 关连接后续操作会抛 'db not initialized',所以通知 UI 弹「请刷新」,
+  // 而不是静默把这个 tab 的所有操作打死(发版 bump DB_VERSION 后第二个 tab 升级
+  // 会触发这里)。
+  _db.onversionchange = () => {
+    _db.close();
+    _db = null;
+    if (typeof _onVersionChange === 'function') {
+      try { _onVersionChange(); } catch (_) { /* ignore */ }
+    }
+  };
 
   // Ask browser to keep IndexedDB durable under storage pressure. Non-fatal if denied.
   if (navigator.storage?.persist) {
@@ -389,6 +402,45 @@ export async function txnPut(plan) {
     tx.oncomplete = () => resolve();
     tx.onerror    = () => reject(tx.error);
   });
+}
+
+// Atomic single-row update — same single-tx get→fn→put as updateSettings, but
+// for any store + key. Concurrent updates serialize through the IDB tx queue
+// instead of racing on a get-modify-set split across two transactions. `fn`
+// must be SYNC (any await auto-commits the tx); it mutates the row in place or
+// returns a new one. Missing row → `fn` gets `seed` (default {id:key}).
+export async function updateRow(storeName, key, fn, seed = null) {
+  if (!_db) throw new Error('db not initialized — call db.init() first');
+  return new Promise((resolve, reject) => {
+    const tx = _db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    const getReq = store.get(key);
+    getReq.onsuccess = () => {
+      try {
+        const current = getReq.result || seed || { id: key };
+        const next = fn(current) || current;
+        store.put(next);
+      } catch (e) {
+        try { tx.abort(); } catch (_) {}
+        reject(e);
+      }
+    };
+    getReq.onerror = () => reject(getReq.error);
+    tx.oncomplete  = () => resolve();
+    tx.onerror     = () => reject(tx.error);
+  });
+}
+
+// Delete everything a chat session owns EXCEPT the chatSessions row itself
+// (callers decide: "清空" keeps the session, "删除" dels it after). Covers
+// messages, memories, timeline, favorites, and the memories' embedding
+// vectors — favorites + embeddings were previously missed on every delete
+// path, leaving 收藏 pointing at gone messages and orphan vectors piling up.
+export async function deleteSessionCascade(sessionId) {
+  for (const storeName of ['chatMessages', 'memories', 'timeline', 'favorites', 'embeddings']) {
+    const rows = await query(storeName, 'sessionId', sessionId);
+    for (const r of rows) await del(storeName, r.id);
+  }
 }
 
 // v1 → v2 data migration. Runs inside the versionchange transaction.

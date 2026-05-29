@@ -182,6 +182,13 @@ export function parseTilt(fd) {
   return Math.max(-30, Math.min(30, Math.round(t)));
 }
 
+// 透明度 0-100,0 = 全透明。不能用 `Number(x) || 100` —— 选 0 会被 falsy 吞成
+// 100(用户永远存不进"全透明")。只有空 / 非数字才回落 100。
+export function parseTransparency(raw) {
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 100;
+}
+
 // ── Widget rendering ─────────────────────────────────────────────────────
 // Each renderXxxWidget(w, gs) returns the widget's HTML with the inline
 // grid-placement style spliced into the root <div>. The `gs` string comes
@@ -1339,7 +1346,7 @@ function renderNoteEditor(modal, container, router, existing) {
     if (!text) return;
     const vertical = fd.get('vertical') === 'on';
     const span = parseSizeFromForm(fd, { colSpan: 4, rowSpan: 2 });
-    const transparency = Number(fd.get('transparency')) || 100;
+    const transparency = parseTransparency(fd.get('transparency'));
     const tilt = parseTilt(fd);
     const { bgColor, radius } = parseBgColorAndRadius(fd);
     modal.remove();
@@ -1442,7 +1449,7 @@ function renderPhotoEditor(modal, container, router) {
       }
       const fd = new FormData(modal.querySelector('form'));
       const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 2 });
-      const transparency = Number(fd.get('transparency')) || 100;
+      const transparency = parseTransparency(fd.get('transparency'));
       const tilt = parseTilt(fd);
       const { bgColor, radius } = parseBgColorAndRadius(fd);
       modal.remove();
@@ -1547,7 +1554,7 @@ async function renderImageEditor(modal, container, router, existing) {
       e.preventDefault();
       const fd = new FormData(modal.querySelector('form'));
       const span = parseSizeFromForm(fd, { colSpan: 4, rowSpan: 2 });
-      const transparency = Number(fd.get('transparency')) || 100;
+      const transparency = parseTransparency(fd.get('transparency'));
       const tilt = parseTilt(fd);
       const { bgColor, radius } = parseBgColorAndRadius(fd);
       modal.remove();
@@ -1631,7 +1638,7 @@ async function renderPolaroidEditor(modal, container, router, existing) {
       e.preventDefault();
       const fd = new FormData(modal.querySelector('form'));
       const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 2 });
-      const transparency = Number(fd.get('transparency')) || 100;
+      const transparency = parseTransparency(fd.get('transparency'));
       const tilt = parseTilt(fd);
       const { bgColor, radius } = parseBgColorAndRadius(fd);
       modal.remove();
@@ -1777,7 +1784,7 @@ async function renderAnniversaryEditor(modal, container, router, existing) {
       }
     }
     const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 1 });
-    const transparency = Number(fd.get('transparency')) || 100;
+    const transparency = parseTransparency(fd.get('transparency'));
     const tilt = parseTilt(fd);
     const { bgColor, radius } = parseBgColorAndRadius(fd);
     modal.remove();
@@ -1943,7 +1950,7 @@ async function renderMusicEditor(modal, container, router, existing) {
     const lyrics  = String(fd.get('lyrics')  || '');
     const playing = fd.get('playing') === 'on';
     const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 2 });
-    const transparency = Number(fd.get('transparency')) || 100;
+    const transparency = parseTransparency(fd.get('transparency'));
     const tilt = parseTilt(fd);
     const { bgColor, radius } = parseBgColorAndRadius(fd);
     const data = {
@@ -1996,7 +2003,7 @@ function askSizeAndTransparency(container, defaultPreset, existing) {
       e.preventDefault();
       const fd = new FormData(modal.querySelector('form'));
       const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 2 });
-      const transparency = Number(fd.get('transparency')) || 100;
+      const transparency = parseTransparency(fd.get('transparency'));
       const tilt = parseTilt(fd);
       const { bgColor, radius } = parseBgColorAndRadius(fd);
       close();

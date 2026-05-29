@@ -147,6 +147,9 @@ async function applyTheme() {
 
 async function boot() {
   await db.init();
+  // 另一个 tab 升级了 DB(发版 bump DB_VERSION)→ 本 tab 连接已被关闭,弹提示
+  // 让 user 刷新,而不是让后续操作静默抛 'db not initialized'。
+  db.onVersionChange(() => showUpdateBanner('数据已在其它标签页更新,请刷新本页'));
   console.log('[boot] db ready');
 
   // T23 周期 → 打卡 migration — DB_VERSION 14 后老 cycle / cycleSymptoms 数据
@@ -290,12 +293,12 @@ async function boot() {
 
 // 显示「有新版,点击重启」banner — T18 配合 SW updatefound 用。
 // 避免重复显示 + 提供「重启」「关闭」两个交互。
-function showUpdateBanner() {
+function showUpdateBanner(text = '有新版本,点击重启') {
   if (document.querySelector('.update-banner')) return;
   const banner = document.createElement('div');
   banner.className = 'update-banner';
   banner.innerHTML = `
-    <span class="ub-text">有新版本,点击重启</span>
+    <span class="ub-text">${text}</span>
     <button class="ub-btn" type="button">重启</button>
     <button class="ub-dismiss" type="button" aria-label="关闭">×</button>
   `;

@@ -303,7 +303,7 @@ export async function mountAppIcons(container, params, router) {
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const transN = parseInt(transInput.value, 10) || 100;
+      const transN = parseInt(transInput.value, 10);  // NaN(空)→ 下面 Number.isFinite 判否 = 不覆盖;0 = 全透明可存
       const radiusN = parseInt(radiusInput.value, 10);
       const tiltN = parseInt(tiltInput.value, 10) || 0;
       const newStyle = {};
