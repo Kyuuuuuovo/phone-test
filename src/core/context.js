@@ -189,7 +189,16 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
   //   和 user 都能写 {user} 占位而不必关心运行时拼接。fallback「用户」防 persona
   //   为空时拼出"你在用手机和 null 聊天"。
   const userNameForPrompt = (persona?.name || '').trim() || '用户';
-  const subUser = (s) => (s || '').replace(/\{user\}/g, userNameForPrompt);
+  const charNameForPrompt = (character?.name || '').trim() || '角色';
+  // {user}/{char} 占位符 → 真名。兼容酒馆双括号 {{user}}/{{char}} —— 先替双括号,
+  // 再替单括号(否则单括号规则会把 {{user}} 里层的 {user} 吃掉、剩一对外括号)。
+  // \s* 容忍 {{ user }},gi 容忍大小写。**只作用于对话规范 / 动作规约这两段作者
+  // 文案**,不碰人设 / 世界书(那是用户内容,按 user 要求不替换)。
+  const subUser = (s) => (s || '')
+    .replace(/\{\{\s*user\s*\}\}/gi, userNameForPrompt)
+    .replace(/\{\{\s*char\s*\}\}/gi, charNameForPrompt)
+    .replace(/\{\s*user\s*\}/gi, userNameForPrompt)
+    .replace(/\{\s*char\s*\}/gi, charNameForPrompt);
   const humanizer   = subUser((ov.humanizer   ?? HUMANIZER_PROMPT   ?? '').trim());
   const behavior    = subUser((ov.behavior    ?? BEHAVIOR_GUIDANCE  ?? '').trim());
   const countSpec   = (ovo.countSpec   ?? OUTPUT_COUNT_SPEC).trim();
