@@ -2777,7 +2777,12 @@ export async function mountHome(container, params, router) {
         valid = true;
       } else if (occupants.size === 1) {
         const o = [...occupants][0];
-        if (o.colSpan === dragSpan.colSpan && o.rowSpan === dragSpan.rowSpan) {
+        // Swap 只在「同一 surface 内」允许。跨页 / 跨 dock 落在已占格不能换位 ——
+        // persistMove 的 swap 分支会用 origin 页的 (row,col) 把被挤走的图标写到
+        // 目标页,落到目标页一个可能已占用的格子 → 重叠 / 丢位。所以跨 surface
+        // 撞到占用格 = invalid(红框,drop 弹回),只接受空格的纯移动。
+        const sameSurface = dragging.gridPage === dragging.originPage;
+        if (sameSurface && o.colSpan === dragSpan.colSpan && o.rowSpan === dragSpan.rowSpan) {
           // Swap only when sizes match exactly. Otherwise the move would
           // leave the displaced item in a weirdly-shaped slot.
           valid = true;
