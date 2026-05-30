@@ -521,6 +521,13 @@ async function openMemoryHelperPanel(sessionId) {
     const extraSession = sess.extraPrompt || '';
     const mems = (await db.query('memories', 'sessionId', sessionId))
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    // 当前会话未压缩(active)消息数 + 触发点(保留 + 缓冲)— 跟 maybeCompressMemory
+    // 同口径(filter !archived):每条发送 = 1 行,AI 一次回复 = 1 行(多气泡也算 1)。
+    const activeCount = (await db.query('chatMessages', 'sessionId', sessionId)).filter(m => !m.archived).length;
+    const memOn = settings.memoryEnabled !== false;
+    const _thr = Number.isFinite(settings.memoryThreshold) && settings.memoryThreshold > 0 ? settings.memoryThreshold : 20;
+    const _buf = Number.isFinite(settings.memoryBuffer) && settings.memoryBuffer >= 0 ? settings.memoryBuffer : 0;
+    const trigger = _thr + _buf;
 
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop memory-helper-backdrop';
@@ -529,6 +536,7 @@ async function openMemoryHelperPanel(sessionId) {
         <div class="modal-header">记忆助手</div>
         <div class="mh-section">
           <div class="mh-label">本会话记忆(${mems.length})</div>
+          <div class="mh-compress-info" style="font-size:11.5px;color:var(--muted);margin:-2px 0 8px;line-height:1.5">本会话未压缩 <b style="color:var(--ink)">${activeCount}</b> 条${memOn ? ` · 满 ${trigger} 条压最旧一天` : ' · 记忆总结已关'}</div>
           ${mems.length === 0 ? `
             <div class="mh-empty">还没有总结,聊得多了会自动生成。</div>
           ` : `
