@@ -366,6 +366,16 @@ export async function buildSystemPromptParts(sessionId, { regenHint, speakerChar
   // worldMode 现在是 per-session(session.worldMode);未显式 set 时 fallback
   // 到 character.worldMode(老数据兼容),最终 default 'real'。
   const isFictional = (session.worldMode ?? character.worldMode) === 'fictional';
+  // 7b. 「以当前状态为准」总纲 — 下面几段都是此刻的真实状态。模型常「看了没读」,
+  //   加一句锚定它别用过时 / 想象的信息。架空模式整块状态都跳过,这条也跟着跳。
+  if (!isFictional) {
+    parts.push({
+      key: 'state-intro',
+      title: '# 当前状态',
+      body: '下面几段是此刻的**真实当前状态**。说话、描写场景时一律**以这些为准** —— 不要使用过时或凭空想象的信息,也不要让你的话与当前状态相矛盾(例:行程显示此刻在公司,就别把场景写成在家)。',
+      kind: 'computed',
+    });
+  }
   parts.push({
     key: 'current-time',
     title: '# 当前时间',
@@ -563,6 +573,7 @@ const PART_GROUPS = {
   'timeline-index':'memory',
   'mem-l2':        'memory',
   'mem-l1':        'memory',
+  'state-intro':   'state',
   'current-time':  'state',
   'current-loc':   'state',
   'social':        'state',
