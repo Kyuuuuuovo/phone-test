@@ -274,8 +274,8 @@ export async function requestReply(sessionId, opts = {}) {
   return promise;
 }
 
-async function _requestReplyImpl(sessionId, { featureContext, regenHint, signal } = {}) {
-  const systemPrompt = await context.buildSystemPrompt(sessionId, { featureContext, regenHint });
+async function _requestReplyImpl(sessionId, { regenHint, signal } = {}) {
+  const systemPrompt = await context.buildSystemPrompt(sessionId, { regenHint });
   const baseMessages = await context.buildMessageHistory(sessionId);
   const session = await db.get('chatSessions', sessionId);
   const character = session ? await db.get('characters', session.characterId) : null;

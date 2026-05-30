@@ -11,8 +11,8 @@
 //      that is exactly what 铁律 3 forbids. Keep this file action-centric and
 //      neutral; per-character behavior belongs in character.persona.
 //
-// Wired in: context.buildSystemPrompt injects this as "# 动作使用规约" between
-// the conversation conventions (humanizer) and the per-turn featureContext.
+// Wired in: context.buildSystemPrompt injects this as "# 动作使用规约" after the
+// conversation conventions (humanizer), before the output / action-schema sections.
 
 export const BEHAVIOR_GUIDANCE = `## 通则
 

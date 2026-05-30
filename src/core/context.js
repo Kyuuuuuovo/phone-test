@@ -95,12 +95,10 @@ export const ACTION_SCHEMAS_TEXT = `# 动作定义表
 //   9. # 对话规范                  (humanizer constant, override-able)
 //   ④ 动作使用规约
 //  10. # 动作使用规约               (behavior constant, override-able)
-//  (per-turn hook)
-//  11. # 用户本轮使用的功能定义     (optional featureContext arg — set per-turn)
 //   ⑤ 输出格式数量约束
-//  12. OUTPUT_COUNT_SPEC          (always, override-able)
+//  11. OUTPUT_COUNT_SPEC          (always, override-able)
 //   ⑥ 动作定义表
-//  13. ACTION_SCHEMAS_TEXT        (always, override-able)
+//  12. ACTION_SCHEMAS_TEXT        (always, override-able)
 //
 // `kind` values:
 //   'computed' — built from app state (framing line) — not editable here
@@ -108,7 +106,7 @@ export const ACTION_SCHEMAS_TEXT = `# 动作定义表
 //                editable via editRoute, not via the inspector itself
 //   'override' — author-locked source constants with optional settings override
 //                (humanizer, behavior, OUTPUT_COUNT_SPEC, ACTION_SCHEMAS_TEXT)
-export async function buildSystemPromptParts(sessionId, { featureContext, regenHint } = {}) {
+export async function buildSystemPromptParts(sessionId, { regenHint } = {}) {
   const session = await db.get('chatSessions', sessionId);
   if (!session) throw new Error(`buildSystemPromptParts: session ${sessionId} not found`);
 
@@ -354,7 +352,7 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
   parts.push({
     key: 'current-time',
     title: '# 当前时间',
-    body: isFictional ? '' : currentTimeLine(),
+    body: isFictional ? '' : currentTimeLine(persona?.name || '对方'),
     kind: 'computed',
   });
   // 7d. 当前地点 — 跟时间同性质的稳定事实(几个 token,不随对话变),改成
@@ -502,15 +500,7 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     body: translateBody,
     kind: 'computed',
   });
-  // 11. 用户本轮使用的功能定义 (per-turn featureContext)
-  const fc = (featureContext ?? '').trim();
-  parts.push({
-    key: 'feature',
-    title: '# 用户本轮使用的功能定义',
-    body: fc,
-    kind: 'computed',
-  });
-  // 11b. 本次重新生成的要求(per-call regenHint — 长按 regenerate 弹的 modal)
+  // 11. 本次重新生成的要求(per-call regenHint — 长按 regenerate 弹的 modal)
   //      只此一次,不进 chat history、不存 memory。用户的"这次给我换个角度"
   //      "这次短一点"之类的临时指示。空字符串就不注入。
   const rh = (regenHint ?? '').trim();
@@ -615,15 +605,15 @@ function formatMemoryWithDate(m, timeOn) {
   return `${range} ${body}`;
 }
 
-// Anchor line for the "# 当前时间" segment. Mirrors surveillance.js's
-// nowLine format so cross-feature debugging shows consistent strings;
-// kept here as a private helper to avoid a cross-module dependency for
-// a 4-line function.
-function currentTimeLine() {
+// Anchor line for the "# 当前时间" segment. 标注成「{用户名}所处地点的当前时间」,
+// 让模型分清这是对方(用户设备所在地)的时间,不是角色自己所在地的时间(角色那边
+// 看 # 当前地点 + get_current_time 工具)。时间戳格式仍与 surveillance.js nowLine 一致。
+function currentTimeLine(userName) {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
   const weekday = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())} 星期${weekday}`;
+  const stamp = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())} 星期${weekday}`;
+  return `${userName}所处地点的当前时间:${stamp}`;
 }
 
 // Join the structured parts into one string suitable for the chat API's
