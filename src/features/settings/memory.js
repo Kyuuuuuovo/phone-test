@@ -10,10 +10,6 @@ import { esc } from '../../core/util.js';
 // 默认缓冲 20 — 超过这么多条活跃消息就压最旧一天。20 接近"半天对话"
 //   的体量,适合积极压缩节省 context。user 想保留更多活跃就调大。
 const DEFAULT_THRESHOLD = 20;
-// "立即提取记忆"按钮一次最多跑几轮(每轮压一天)。聊天历史很长时一次想
-//   清空积压。默认 30 ≈ 一个月,够覆盖大多数场景。值太大可能撞速率限制 /
-//   烧 token,达上限会提示「还剩 N 天再点继续」。
-const DEFAULT_BATCH_LIMIT = 30;
 
 export async function mountMemorySettings(container, params, router) {
   const settings = (await db.get('settings', 'default')) || { id: 'default' };
@@ -23,8 +19,6 @@ export async function mountMemorySettings(container, params, router) {
   // 缓冲条数 — 超过「保留数」后再多攒这么多条才真正触发压缩。默认 0(老行为)。
   const buffer = Number.isFinite(settings.memoryBuffer) && settings.memoryBuffer >= 0
     ? settings.memoryBuffer : 0;
-  const batchLimit = Number.isFinite(settings.memoryForceBatchLimit) && settings.memoryForceBatchLimit > 0
-    ? settings.memoryForceBatchLimit : DEFAULT_BATCH_LIMIT;
   // Timeline 自动压缩开关(把同一天的多条时间线压成这天一条;阈值概念已去掉)。
   const tlAutoMerge = settings.timelineAutoMergeEnabled !== false;
   // 记忆专用 API — 让 memory 压缩 / timeline 合并 / L2 rollup 走另一个
@@ -74,11 +68,6 @@ export async function mountMemorySettings(container, params, router) {
             <div class="label-text">缓冲:超过保留数后,再多攒多少条才开始压(默认 0)</div>
             <input type="number" name="buffer" min="0" max="200" step="1" value="${buffer}">
             <p class="hint" style="margin-top: 4px;">例:保留 100 + 缓冲 30 → 攒到 130 条才压一次、压回 100;设 0 就是一超过保留数立刻压。给「别刚过线就压」留点余量。</p>
-          </label>
-          <label>
-            <div class="label-text">「立即提取记忆」一次最多整理几天(默认 ${DEFAULT_BATCH_LIMIT})</div>
-            <input type="number" name="batchLimit" min="1" max="100" step="1" value="${batchLimit}">
-            <p class="hint" style="margin-top: 4px;">在聊天的 ⋯ 菜单点「立即提取记忆」,会将尚未整理的旧对话按天压缩。一次最多整理设定天数,其余下次继续;每天调用一次 AI,设置过大会较慢且更耗 token。</p>
           </label>
           <h3 class="section-title" style="margin-top: 18px;">用单独的 AI 整理记忆(可选)</h3>
           <p class="hint">整理记忆同样会调用 AI,默认使用聊天所用的 API。此项对模型要求不高,可单独指定更便宜的模型以节省开销;需先在「设置 → API 设置」中创建。</p>
@@ -152,12 +141,10 @@ export async function mountMemorySettings(container, params, router) {
       return;
     }
     const buf = Math.max(0, Math.min(200, parseInt(String(fd.get('buffer') || '0'), 10) || 0));
-    const bl = parseInt(String(fd.get('batchLimit') || '0'), 10) || DEFAULT_BATCH_LIMIT;
     const s = (await db.get('settings', 'default')) || { id: 'default' };
     s.memoryEnabled = en;
     s.memoryThreshold = t;
     s.memoryBuffer = buf;
-    s.memoryForceBatchLimit = Math.max(1, Math.min(100, bl));
     s.timelineAutoMergeEnabled = !!fd.get('timelineAutoMergeEnabled');
     // 记忆专用 API — 空字符串 = 跟随主 API(等同 null)
     const memApiId = String(fd.get('memoryApiConfigId') || '').trim();

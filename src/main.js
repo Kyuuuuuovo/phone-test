@@ -516,6 +516,9 @@ async function openMemoryHelperPanel(sessionId) {
     const settings = (await db.get('settings', 'default')) || {};
     const phrases = Array.isArray(settings.frequentPhrases) ? settings.frequentPhrases : [];
     const commands = Array.isArray(settings.quickCommands) ? settings.quickCommands : [];
+    const sess = (await db.get('chatSessions', sessionId)) || {};
+    const extraGlobal = settings.extraPromptGlobal || '';
+    const extraSession = sess.extraPrompt || '';
     const mems = (await db.query('memories', 'sessionId', sessionId))
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
@@ -541,7 +544,7 @@ async function openMemoryHelperPanel(sessionId) {
           `}
           <div class="mh-mem-actions">
             <button type="button" class="btn secondary mh-reset-btn">重置记忆</button>
-            <button type="button" class="btn mh-resummarize-btn">重新提取</button>
+            <button type="button" class="btn mh-extract-btn">立即提取全部</button>
           </div>
           <div class="mh-mem-status"></div>
         </div>
@@ -574,6 +577,11 @@ async function openMemoryHelperPanel(sessionId) {
               `).join('')}
             </div>
           `}
+        </div>
+        <div class="mh-section">
+          <div class="mh-label">额外要求(写完离开输入框即生效,每次生成都发给 AI)</div>
+          <textarea class="mh-extra" data-scope="global" rows="2" placeholder="全局 · 对所有角色生效(例:回复短一点)">${esc(extraGlobal)}</textarea>
+          <textarea class="mh-extra" data-scope="session" rows="2" placeholder="本角色 · 只对 ta 生效,接在全局后面">${esc(extraSession)}</textarea>
         </div>
         <div class="modal-actions">
           <button type="button" class="btn close-btn">关闭</button>
@@ -666,20 +674,46 @@ async function openMemoryHelperPanel(sessionId) {
       }
     });
 
-    // 重新提取 — reset + 立即 maybeCompressMemory。一锤定音,基于当前所有
-    //   消息从头压缩。会调 AI(可能慢)。重置选项同样让 user 选。
-    backdrop.querySelector('.mh-resummarize-btn')?.addEventListener('click', async () => {
-      const opts = await pickResetOptions(frame, '重新提取记忆(先重置)');
-      if (!opts) return;
-      statusEl.textContent = '重置 + AI 生成中…';
+    // 额外要求(两层)— 离开输入框即存:全局 → settings.extraPromptGlobal,
+    //   本会话 → session.extraPrompt。context.buildSystemPromptParts 每次生成
+    //   把两段拼成「# 额外要求」注入。
+    backdrop.querySelectorAll('.mh-extra').forEach(ta => ta.addEventListener('change', async () => {
+      const v = ta.value.trim();
+      if (ta.dataset.scope === 'global') {
+        await db.updateSettings(s => { s.extraPromptGlobal = v; });
+      } else {
+        const s2 = await db.get('chatSessions', sessionId);
+        if (s2) { s2.extraPrompt = v; await db.set('chatSessions', s2); }
+      }
+    }));
+
+    // 立即提取全部 — 不重置,把"保留最近 N 条"以外的消息一次全压(force:忽略
+    //   缓冲、无天数上限,context 内部按字符自动分批防 API 超长)。循环调到没东
+    //   西可压;提取中再点一次 = 取消(等当前一段压完停)。
+    let extracting = false;
+    const extractBtn = backdrop.querySelector('.mh-extract-btn');
+    extractBtn?.addEventListener('click', async () => {
+      if (extracting) { extracting = false; extractBtn.textContent = '正在停…'; return; }
+      if (!await openConfirm(frame, {
+        title: '立即提取全部',
+        message: '把"保留最近若干条"以外的消息全部压成记忆(忽略缓冲阈值)。会连续调用 AI,可能慢。继续?',
+        confirmLabel: '提取',
+      })) return;
+      extracting = true; extractBtn.textContent = '取消';
+      let n = 0;
       try {
-        await resetMemoriesForSession(sessionId, opts);
-        await context.maybeCompressMemory(sessionId);
-        statusEl.textContent = '已重新提取';
-        setTimeout(() => { close(); openMemoryHelperPanel(sessionId); }, 800);
+        for (let i = 0; i < 300 && extracting; i++) {
+          statusEl.textContent = `AI 提取中… 已压 ${n} 段`;
+          const memId = await context.maybeCompressMemory(sessionId, { force: true });
+          if (!memId) break;
+          n++;
+        }
+        statusEl.textContent = n ? `已提取 ${n} 段` : '没有可提取的(都在保留范围内)';
       } catch (e) {
         statusEl.textContent = '失败:' + String(e).slice(0, 100);
       }
+      extracting = false;
+      setTimeout(() => { close(); openMemoryHelperPanel(sessionId); }, 900);
     });
   }
 

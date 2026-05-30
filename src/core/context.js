@@ -480,6 +480,16 @@ export async function buildSystemPromptParts(sessionId, { featureContext, regenH
     overrideKey: 'behavior',
     defaultValue: BEHAVIOR_GUIDANCE,
   });
+  // 10a. 额外要求 — 用户在桌宠助手面板写的额外提示词。两层:全局
+  //      (settings.extraPromptGlobal)+ 本会话(session.extraPrompt),全局在前。
+  //      用户主动写的需求,每次生成都注入(等同 system 补充;铁律 3 禁的是 app
+  //      硬塞角色行为引导,这是用户自己的指令,允许)。空则整段不注入。
+  const extraGlobal  = subUser((settings.extraPromptGlobal || '').trim());
+  const extraSession = subUser((session.extraPrompt || '').trim());
+  const extraBody = [extraGlobal, extraSession].filter(Boolean).join('\n\n');
+  if (extraBody) {
+    parts.push({ key: 'extra-requirements', title: '# 额外要求', body: extraBody, kind: 'data' });
+  }
   // 10b. 翻译模式 — per-session toggle。开启时让模型可以用任意语言对话,
   //      非中文输出时在 text / reply 动作里加 translation 字段提供中文翻译。
   //      action schema 本身没改(避免影响关闭模式),这里以规约形式注入。
@@ -1494,11 +1504,12 @@ async function _maybeCompressMemoryImpl(sessionId, opts = {}) {
 
   // 确定 candidate 集合(候选可压消息)
   //   normal: 只看溢出 threshold 缓冲的那部分
-  //   force:  跳过 buffer 检查,把今天以外的全压
+  //   force:  保留最近 threshold 条,其余一次全压(忽略缓冲、无天数上限)
   let candidates;
   if (force) {
-    const tk = dayKeyOf(Date.now());
-    candidates = all.filter(m => dayKeyOf(m.createdAt) !== tk);
+    // 立即提取:留最近 threshold 条不压,其余全压。每次调用仍按 COMPRESS_TOKEN_BUDGET
+    // 截断 dump → 自动分批;helper 面板的「立即提取」循环调到压完,防一次喂太多字 API 失败。
+    candidates = all.length > threshold ? all.slice(0, all.length - threshold) : [];
   } else {
     // 「缓冲区」: 攒到 threshold + buffer 才触发(buffer 默认 0 → 一超过
     // threshold 就压,旧行为不变)。例:留存 100 + 缓冲 30 → 130 条才压一次、

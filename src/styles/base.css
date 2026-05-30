@@ -5472,6 +5472,22 @@ body[data-fx-glass="metal"]  .bubble-menu { position: absolute; }
   font-style: italic;
   padding: 4px 0;
 }
+/* 额外要求(两层 · 写完即注入)输入框 */
+.mh-extra {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+.mh-extra:focus { outline: none; border-color: var(--accent); }
 .mh-mem-list {
   display: flex;
   flex-direction: column;
