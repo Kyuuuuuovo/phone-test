@@ -139,24 +139,20 @@ export async function mountSettings(container, params, router) {
     const cb = e.target.closest('[data-toggle]');
     if (!cb) return;
     const which = cb.dataset.toggle;
-    const s = (await db.get('settings', 'default')) || { id: 'default' };
     if (which === 'petEnabled') {
-      s.petEnabled = !!cb.checked;
-      await db.set('settings', s);
+      await db.updateSettings(s => { s.petEnabled = !!cb.checked; });
       // Toggle the orb in-place. Reload not needed but the simplest path.
       const orb = document.querySelector('.pet-orb');
       const bubble = document.querySelector('.pet-bubble');
       if (orb)    orb.hidden    = !cb.checked;
       if (bubble) bubble.hidden = true;
     } else if (which === 'devMode') {
-      s.devMode = !!cb.checked;
-      await db.set('settings', s);
+      await db.updateSettings(s => { s.devMode = !!cb.checked; });
       // The chat page reads devMode at mount time, so the gear icon won't
       // appear until next chat navigation. Acceptable — toggling devMode
       // is rare and the visual change is one back-and-back away.
     } else if (which === 'syncScheduleToChat' || which === 'syncMonitorToChat') {
-      s[which] = !!cb.checked;
-      await db.set('settings', s);
+      await db.updateSettings(s => { s[which] = !!cb.checked; });
     } else if (which === 'notifyOnReply') {
       // Toggle-on: request permission first (browsers require a user
       // gesture, which the checkbox click counts as). Only persist
@@ -167,8 +163,7 @@ export async function mountSettings(container, params, router) {
         const result = await notify.requestPermission();
         if (result !== 'granted') {
           cb.checked = false;
-          s.notifyOnReply = false;
-          await db.set('settings', s);
+          await db.updateSettings(s => { s.notifyOnReply = false; });
           await openAlert(container, {
             title: '没拿到通知权限',
             message: result === 'denied'
@@ -177,11 +172,9 @@ export async function mountSettings(container, params, router) {
           });
           return;
         }
-        s.notifyOnReply = true;
-        await db.set('settings', s);
+        await db.updateSettings(s => { s.notifyOnReply = true; });
       } else {
-        s.notifyOnReply = false;
-        await db.set('settings', s);
+        await db.updateSettings(s => { s.notifyOnReply = false; });
       }
     }
   };

@@ -102,9 +102,8 @@ export async function mountEmbeddingSettings(container, params, router) {
   container.querySelector('.back').addEventListener('click', () => router.back());
 
   container.querySelector('[data-toggle="enabled"]').addEventListener('change', async (e) => {
-    const fresh = (await db.get('settings', 'default')) || { id: 'default' };
-    fresh.embedding = { ...(fresh.embedding || {}), enabled: !!e.target.checked };
-    await db.set('settings', fresh);
+    const enabled = !!e.target.checked;
+    await db.updateSettings(s => { s.embedding = { ...(s.embedding || {}), enabled }; });
   });
 
   container.querySelectorAll('.preset-chip').forEach(btn => {
@@ -119,17 +118,15 @@ export async function mountEmbeddingSettings(container, params, router) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(form);
-    const fresh = (await db.get('settings', 'default')) || { id: 'default' };
     const thRaw = Number(fd.get('worldbookThreshold'));
-    fresh.embedding = {
-      ...(fresh.embedding || {}),
+    const patch = {
       urlTemplate: String(fd.get('urlTemplate') || '').trim(),
       apiKey:      String(fd.get('apiKey')      || '').trim(),
       modelName:   String(fd.get('modelName')   || '').trim(),
       topK:        Math.max(1, Math.min(20, Number(fd.get('topK')) || 5)),
       worldbookThreshold: Number.isFinite(thRaw) ? Math.max(0, Math.min(1, thRaw)) : 0.35,
     };
-    await db.set('settings', fresh);
+    await db.updateSettings(s => { s.embedding = { ...(s.embedding || {}), ...patch }; });
     status.textContent = '已保存';
     status.className = 'form-status success';
     dirty.markSaved();
@@ -152,10 +149,11 @@ export async function mountEmbeddingSettings(container, params, router) {
     status.textContent = '调用中…';
     status.className = 'form-status';
     // Temporarily flip enabled + write to settings just for the test, then restore.
-    const orig = (await db.get('settings', 'default')) || { id: 'default' };
-    const origEmb = orig.embedding;
-    orig.embedding = { ...cfgNow, enabled: true, topK: orig.embedding?.topK ?? 5 };
-    await db.set('settings', orig);
+    let origEmb;
+    await db.updateSettings(s => {
+      origEmb = s.embedding;
+      s.embedding = { ...cfgNow, enabled: true, topK: s.embedding?.topK ?? 5 };
+    });
     try {
       const vec = await embedding.embedText('test embedding');
       if (vec) {
@@ -170,9 +168,7 @@ export async function mountEmbeddingSettings(container, params, router) {
       status.className = 'form-status error';
     }
     // Restore original embedding settings (only the temp test config gets reverted)
-    const after = (await db.get('settings', 'default')) || { id: 'default' };
-    after.embedding = origEmb;
-    await db.set('settings', after);
+    await db.updateSettings(s => { s.embedding = origEmb; });
   });
 
   backfillBtn.addEventListener('click', async () => {

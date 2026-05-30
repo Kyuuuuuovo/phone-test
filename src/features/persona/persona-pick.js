@@ -59,9 +59,7 @@ export async function mountPersonaPick(container, params, router) {
     container.querySelectorAll('[data-persona-id]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const id = btn.dataset.personaId || null;
-        const s = (await db.get('settings', 'default')) || { id: 'default' };
-        s.activePersonaId = id;
-        await db.set('settings', s);
+        await db.updateSettings(s => { s.activePersonaId = id; });
         await render();
       });
     });

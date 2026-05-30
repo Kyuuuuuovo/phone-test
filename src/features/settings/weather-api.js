@@ -67,13 +67,12 @@ export async function mountWeatherApi(container, params, router) {
 
   async function saveFromForm() {
     const fd = new FormData(form);
-    const s = (await db.get('settings', 'default')) || { id: 'default' };
-    s.weatherApi = {
+    const weatherApi = {
       urlTemplate: String(fd.get('urlTemplate') || '').trim(),
       apiKey:      String(fd.get('apiKey')      || '').trim(),
     };
-    await db.set('settings', s);
-    return s.weatherApi;
+    await db.updateSettings(s => { s.weatherApi = weatherApi; });
+    return weatherApi;
   }
 
   function setStatus(text, kind) {

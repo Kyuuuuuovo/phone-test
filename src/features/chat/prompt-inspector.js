@@ -130,9 +130,7 @@ export async function mountPromptInspector(container, params, router) {
   apiList.addEventListener('change', async (e) => {
     const r = e.target.closest('input[type="radio"][name="api"]');
     if (!r) return;
-    const s = (await db.get('settings', 'default')) || { id: 'default' };
-    s.activeApiConfigId = r.value;
-    await db.set('settings', s);
+    await db.updateSettings(s => { s.activeApiConfigId = r.value; });
     await renderApis();
   });
 
@@ -163,9 +161,7 @@ export async function mountPromptInspector(container, params, router) {
       const scope = card.dataset.scope;
       const key = card.dataset.key;
       const ta = card.querySelector('textarea');
-      const s = (await db.get('settings', 'default')) || { id: 'default' };
-      s[scope] = { ...(s[scope] || {}), [key]: ta.value };
-      await db.set('settings', s);
+      await db.updateSettings(s => { s[scope] = { ...(s[scope] || {}), [key]: ta.value }; });
       await renderParts();
       await renderDump();
       return;
@@ -175,11 +171,9 @@ export async function mountPromptInspector(container, params, router) {
       const card = restore.closest('.pi-part');
       const scope = card.dataset.scope;
       const key = card.dataset.key;
-      const s = (await db.get('settings', 'default')) || { id: 'default' };
-      if (s[scope] && key in s[scope]) {
-        delete s[scope][key];
-        await db.set('settings', s);
-      }
+      await db.updateSettings(s => {
+        if (s[scope] && key in s[scope]) delete s[scope][key];
+      });
       await renderParts();
       await renderDump();
       return;

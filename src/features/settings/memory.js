@@ -141,22 +141,22 @@ export async function mountMemorySettings(container, params, router) {
       return;
     }
     const buf = Math.max(0, Math.min(200, parseInt(String(fd.get('buffer') || '0'), 10) || 0));
-    const s = (await db.get('settings', 'default')) || { id: 'default' };
-    s.memoryEnabled = en;
-    s.memoryThreshold = t;
-    s.memoryBuffer = buf;
-    s.timelineAutoMergeEnabled = !!fd.get('timelineAutoMergeEnabled');
     // 记忆专用 API — 空字符串 = 跟随主 API(等同 null)
     const memApiId = String(fd.get('memoryApiConfigId') || '').trim();
-    s.memoryApiConfigId = memApiId || null;
-    s.memoryShowQuotes = !!fd.get('showQuotes');
-    s.memoryShowEvents = !!fd.get('showEvents');
-    s.memoryInjectQuotes = !!fd.get('injectQuotes');
     const pc = parseInt(String(fd.get('profileCap') || '0'), 10) || 20;
-    s.memoryProfileCap = Math.max(5, Math.min(100, pc));
     // T17: memoryBatchSize 字段废弃 — 新规则按 dayKey 分组,每天一条 memory,
     //   不再需要"一次总结 N 条"概念。老 settings 里的值留着不动也不读。
-    await db.set('settings', s);
+    await db.updateSettings(s => {
+      s.memoryEnabled = en;
+      s.memoryThreshold = t;
+      s.memoryBuffer = buf;
+      s.timelineAutoMergeEnabled = !!fd.get('timelineAutoMergeEnabled');
+      s.memoryApiConfigId = memApiId || null;
+      s.memoryShowQuotes = !!fd.get('showQuotes');
+      s.memoryShowEvents = !!fd.get('showEvents');
+      s.memoryInjectQuotes = !!fd.get('injectQuotes');
+      s.memoryProfileCap = Math.max(5, Math.min(100, pc));
+    });
     setStatus('已保存', 'success');
     dirty.markSaved();
   };

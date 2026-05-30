@@ -122,9 +122,7 @@ export async function mountApiDetail(container, params, router) {
       const cfg = await saveFromForm();
       // Temporarily switch active to this config so callAI uses it
       const before = settings.activeApiConfigId;
-      const sNow = (await db.get('settings', 'default')) || { id: 'default' };
-      sNow.activeApiConfigId = cfg.id;
-      await db.set('settings', sNow);
+      await db.updateSettings(s => { s.activeApiConfigId = cfg.id; });
       setStatus('调用中...');
       try {
         const reply = await ai.callAI({
@@ -136,8 +134,7 @@ export async function mountApiDetail(container, params, router) {
       } finally {
         // Restore previous active if user hadn't explicitly set this one
         if (before && before !== cfg.id) {
-          sNow.activeApiConfigId = before;
-          await db.set('settings', sNow);
+          await db.updateSettings(s => { s.activeApiConfigId = before; });
         }
       }
     } catch (e) {
@@ -191,9 +188,7 @@ export async function mountApiDetail(container, params, router) {
 
   const onSetActive = async () => {
     const cfg = await saveFromForm();
-    const s = (await db.get('settings', 'default')) || { id: 'default' };
-    s.activeApiConfigId = cfg.id;
-    await db.set('settings', s);
+    await db.updateSettings(s => { s.activeApiConfigId = cfg.id; });
     setActive.disabled = true;
     setActive.textContent = '当前使用中';
     setStatus('已设为当前使用的配置', 'success');
@@ -208,12 +203,12 @@ export async function mountApiDetail(container, params, router) {
       danger: true,
     })) return;
     await db.del('apiConfig', id);
-    const s = (await db.get('settings', 'default')) || { id: 'default' };
-    if (s.activeApiConfigId === id) {
-      const remaining = all.filter(c => c.id !== id);
-      s.activeApiConfigId = remaining[0]?.id || null;
-      await db.set('settings', s);
-    }
+    await db.updateSettings(s => {
+      if (s.activeApiConfigId === id) {
+        const remaining = all.filter(c => c.id !== id);
+        s.activeApiConfigId = remaining[0]?.id || null;
+      }
+    });
     router.back();
   };
 
