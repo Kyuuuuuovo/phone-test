@@ -140,7 +140,7 @@
 11. **AI 主动动作三处对齐**:加一个 AI 能主动触发的新动作(如 `transfer` / `red_packet` / 未来的 `sticker` / `call` 等)必须**三处对齐**——
     1. **介绍** —— `OUTPUT_FORMAT_SPEC` / `ACTION_SCHEMAS_TEXT` 加 JSON schema 描述;若该动作有"什么时机用"的语境说明,`behavior.js` 的 `BEHAVIOR_GUIDANCE` 里加(中性,不是行为引导)
     2. **实现** —— `chat.js` 的 attach panel handler 或 `ai.js` 的 dispatch 处理副作用;若是受控动作还要加状态字段(如 `claimed/accepted`);`context.js` 的 `renderActionsAsText` 把它转成模型能看懂的文本(给 history);`chat-list.js` 的 `previewOfMessage` 给一行预览
-    3. **渲染** —— `chat.js` 的 `renderAction` switch 加 case 画气泡 UI,含交互态(按钮 / 已领标记 / 等)
+    3. **渲染** —— `chat-render.js`(渲染层 2026-05 从 chat.js 拆出,SVG 图标集在 chat-icons.js)的 `renderAction` switch 加 case 画气泡 UI,含交互态(按钮 / 已领标记 / 等)
     
     **Why**:三处不对齐会产生死动作 —— prompt 教 AI 输出但前端不画,或前端画了但 AI 不知道何时用。这个项目里所有 9 个动作都遵循这个模式。**用户说"加一个新动作"或"加一个 AI 也能用的功能"时,先列出三处分别要改什么,再动手。漏掉任何一处都是不完整实现。**
 
