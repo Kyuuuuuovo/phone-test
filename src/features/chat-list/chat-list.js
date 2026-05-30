@@ -56,12 +56,17 @@ export async function mountChatList(container, params, router) {
     }
     const rows = [];
     for (const s of sessions) {
+      const isGroupRow = Array.isArray(s.participantIds) && s.participantIds.length >= 2;
       const char = charMap.get(s.characterId);
       const lastMsg = lastBySession.get(s.id);
       const preview = lastMsg ? previewOfMessage(lastMsg) : '(暂无消息)';
       const timeText = formatTime(s.lastMessageAt);
       const pinned = s.isPinned ? ' pinned' : '';
-      const blocked = char?.blocked ? ' blocked' : '';
+      const blocked = (!isGroupRow && char?.blocked) ? ' blocked' : '';
+      // 群聊行显示群名 + 「群 N」标;单聊显示角色名。
+      const nameHtml = isGroupRow
+        ? `${esc(s.title || '群聊')} <span class="group-badge" style="font-size:10px;color:var(--muted,#999);border:1px solid var(--line,#ddd);border-radius:4px;padding:0 4px;margin-left:4px">群 ${s.participantIds.length}</span>`
+        : `${esc(char?.name ?? '(未知角色)')}${char?.blocked ? ' <span class="blocked-badge">已拉黑</span>' : ''}`;
       rows.push(`
         <div class="session-row${pinned}${blocked}" data-session-id="${esc(s.id)}">
           <div class="session-actions">
@@ -71,7 +76,7 @@ export async function mountChatList(container, params, router) {
           <button class="session-item" data-session-id="${esc(s.id)}">
             ${renderAvatar(char)}
             <div class="session-info">
-              <div class="session-name">${esc(char?.name ?? '(未知角色)')}${char?.blocked ? ' <span class="blocked-badge">已拉黑</span>' : ''}</div>
+              <div class="session-name">${nameHtml}</div>
               <div class="session-preview">${esc(preview)}</div>
             </div>
             <div class="session-time">${esc(timeText)}</div>
@@ -461,10 +466,22 @@ export async function openNewChatModal(container, router) {
       const members = fd.getAll('member').map(String);
       if (!title) return;
       if (members.length < 2) { await openAlert(container, { title: '成员不够', message: '群聊至少需要 2 个角色。' }); return; }
-      // P3: this is where we'd db.set('chatSessions', { participantIds: members, ... })
-      // and navigate to a group-chat view. Currently no group-chat AI flow.
-      await openAlert(container, { title: '群聊还在开发中', message: `已记录:${title}(${members.length} 人)。等多角色调度做好后会自动开通。` });
+      const now = Date.now();
+      const sessId = db.newId();
+      const settings = await db.get('settings', 'default');
+      await db.set('chatSessions', {
+        id: sessId,
+        characterId: members[0],            // 兜底字段(群聊靠 participantIds 判定)
+        participantIds: members,
+        isGroup: true,
+        personaId: settings?.activePersonaId || null,
+        title,
+        createdAt: now,
+        lastMessageAt: now,
+        isPinned: false,
+      });
       modal.remove();
+      await router.navigate('chat', { sessionId: sessId });
     });
   }
 

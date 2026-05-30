@@ -274,11 +274,12 @@ export async function requestReply(sessionId, opts = {}) {
   return promise;
 }
 
-async function _requestReplyImpl(sessionId, { regenHint, signal } = {}) {
-  const systemPrompt = await context.buildSystemPrompt(sessionId, { regenHint });
-  const baseMessages = await context.buildMessageHistory(sessionId);
+async function _requestReplyImpl(sessionId, { regenHint, signal, speakerCharacterId } = {}) {
+  const systemPrompt = await context.buildSystemPrompt(sessionId, { regenHint, speakerCharacterId });
+  const baseMessages = await context.buildMessageHistory(sessionId, undefined, { speakerCharacterId });
   const session = await db.get('chatSessions', sessionId);
-  const character = session ? await db.get('characters', session.characterId) : null;
+  // 群聊:工具/角色按这一轮发言的成员算;单聊 speakerCharacterId 为空时退回会话角色。
+  const character = session ? await db.get('characters', speakerCharacterId || session.characterId) : null;
 
   const tools = buildToolsForSession(session || {}, character);
   const convo = [...baseMessages];
@@ -340,6 +341,7 @@ async function _requestReplyImpl(sessionId, { regenHint, signal } = {}) {
     id: messageId,
     sessionId,
     role: 'character',
+    fromCharacterId: speakerCharacterId || undefined,   // 群聊:标明这条谁说的
     actions,
     createdAt: now,
   });

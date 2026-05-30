@@ -104,12 +104,16 @@ export const ACTION_SCHEMAS_TEXT = `# 动作定义表
 //                editable via editRoute, not via the inspector itself
 //   'override' — author-locked source constants with optional settings override
 //                (humanizer, behavior, OUTPUT_COUNT_SPEC, ACTION_SCHEMAS_TEXT)
-export async function buildSystemPromptParts(sessionId, { regenHint } = {}) {
+export async function buildSystemPromptParts(sessionId, { regenHint, speakerCharacterId } = {}) {
   const session = await db.get('chatSessions', sessionId);
   if (!session) throw new Error(`buildSystemPromptParts: session ${sessionId} not found`);
 
-  const character = await db.get('characters', session.characterId);
-  if (!character) throw new Error(`buildSystemPromptParts: character ${session.characterId} not found`);
+  // 群聊(participantIds≥2):speakerCharacterId 指明这一轮以哪个成员的身份生成 ——
+  //   # 角色设定 / 世界书挂载 / 行程 全部走该成员,另加一段「# 群聊」交代场景。
+  const isGroup = Array.isArray(session.participantIds) && session.participantIds.length >= 2;
+  const actingCharId = (isGroup && speakerCharacterId) ? speakerCharacterId : session.characterId;
+  const character = await db.get('characters', actingCharId);
+  if (!character) throw new Error(`buildSystemPromptParts: character ${actingCharId} not found`);
 
   const persona = session.personaId ? await db.get('personas', session.personaId) : null;
 
@@ -215,6 +219,19 @@ export async function buildSystemPromptParts(sessionId, { regenHint } = {}) {
     overrideKey: 'humanizer',
     defaultValue: HUMANIZER_PROMPT,
   });
+  // 1b. 群聊场景(仅 participantIds≥2)— 交代这是群、有哪些成员、你是其中的谁。
+  if (isGroup) {
+    const members = (await Promise.all(session.participantIds.map(pid => db.get('characters', pid)))).filter(Boolean);
+    const others = members.filter(m => m.id !== character.id);
+    const roster = others.map(m => {
+      const brief = (m.persona || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+      return `- ${m.name || '(未命名)'}${brief ? ':' + brief : ''}`;
+    }).join('\n');
+    const groupBody = `你正在一个**群聊**${session.title ? `「${session.title}」` : ''}里,在场成员:${members.map(m => m.name || '(未命名)').join('、')}。
+你是其中的【${character.name || '(未命名)'}】。其他成员的发言会以「[名字]: …」的形式出现在对话里。
+**你只以【${character.name || '(未命名)'}】的身份说话 —— 绝不替别的成员发言、写他们的旁白或台词。** 自然参与:该接话就接,没你的事就少说甚至不说。${roster ? `\n\n群里其他成员:\n${roster}` : ''}`;
+    parts.push({ key: 'group', title: '# 群聊', body: groupBody, kind: 'computed' });
+  }
   // 2. 世界观(前置)
   parts.push({
     key: 'wb-before',
@@ -956,19 +973,23 @@ export async function buildUserProfileLine(characterId, sessionPersonaId, person
 // strictly enforce user/assistant alternation (oneapi, new-api etc.) don't
 // 400 us when the user batches several user-turn messages before letting
 // the AI reply.
-export async function buildMessageHistory(sessionId, maxRecent = 40) {
+export async function buildMessageHistory(sessionId, maxRecent = 40, { speakerCharacterId } = {}) {
   const all = await db.query('chatMessages', 'sessionId', sessionId);
   const active = all.filter(m => !m.archived);
   active.sort((a, b) => a.createdAt - b.createdAt);
   const recent = active.slice(-maxRecent);
-  // B#8: reply 动作渲染时要把引用原文塞进去 — 之前只写 content,模型完全不知
-  // 道用户引用的是哪条。pre-build msgId→原文 lookup,reply case 拼成
-  // 「[引用「原文」]\n回复内容」。注意:不截断,user 明确说不要前 N 字
-  // (如果引用太长以后再加 truncate)。
-  const ctx = makeRenderContext(all);
-  // 1a: 稀疏时间标记 — session.timeAwareness === 'off' 时不插任何 gap 标记
-  // (架空场景用,真实间隔在 in-world 无意义)。默认 on。
   const session = await db.get('chatSessions', sessionId);
+  // 群聊:把「别的成员」的发言以 [名字]: … 的 user 角色喂给当前 speaker,让 ta 知道
+  //   群里谁说了什么;speaker 自己的历史仍按 assistant 原样回显(强化输出格式)。
+  //   单聊 speakerCharacterId / participantsById 为空,toApiMessage 一切照旧。
+  let groupExtra = {};
+  if (Array.isArray(session?.participantIds) && session.participantIds.length >= 2) {
+    const members = (await Promise.all(session.participantIds.map(pid => db.get('characters', pid)))).filter(Boolean);
+    groupExtra = { isGroup: true, speakerCharacterId, participantsById: new Map(members.map(c => [c.id, c])) };
+  }
+  // B#8: reply 动作渲染时把引用原文塞进去(makeRenderContext.resolveQuote)。
+  const ctx = makeRenderContext(all, groupExtra);
+  // 1a: 稀疏时间标记 — session.timeAwareness === 'off' 时不插 gap 标记。默认 on。
   const enableGaps = session?.timeAwareness !== 'off';
   return collapseAdjacentSameRole(recent.map(m => toApiMessage(m, ctx)), { enableGaps });
 }
@@ -977,7 +998,7 @@ export async function buildMessageHistory(sessionId, maxRecent = 40) {
 // the original message text for `reply` actions. `all` should include archived
 // rows too — a reply to an old message that's already been compressed into
 // memory still needs its quote resolved when rendered before compression.
-function makeRenderContext(allMessages) {
+function makeRenderContext(allMessages, extra = {}) {
   const byId = new Map(allMessages.map(m => [m.id, m]));
   return {
     // T3: actionIdx 来源 reply action 上新加的 quoteActionIdx 字段。老数据
@@ -989,6 +1010,7 @@ function makeRenderContext(allMessages) {
       if (!a) return '';
       return String(a.content || a.description || a.name || `[${a.type}]`);
     },
+    ...extra,   // 群聊:isGroup / speakerCharacterId / participantsById
   };
 }
 
@@ -1055,6 +1077,13 @@ function toApiMessage(msg, ctx) {
   // _ts is internal — collapseAdjacentSameRole uses it for gap-detection,
   // then strips before sending to the API.
   if (msg.role === 'character') {
+    // 群聊:别的成员的发言以 [名字]: … 当 user-role 上下文喂给当前 speaker,让 ta
+    //   知道群里谁说了什么;speaker 自己的历史仍按 assistant 回显(强化输出格式)。
+    if (ctx?.isGroup && msg.fromCharacterId && msg.fromCharacterId !== ctx.speakerCharacterId) {
+      const senderName = ctx.participantsById?.get(msg.fromCharacterId)?.name || '某成员';
+      const text = renderActionsAsText(msg.actions ?? [], ctx);
+      return { role: 'user', content: `[${senderName}]: ${text}`, _ts: msg.createdAt };
+    }
     // Echo the model's own past JSON-array output verbatim — reinforces format.
     return { role: 'assistant', content: JSON.stringify(msg.actions ?? []), _ts: msg.createdAt };
   }

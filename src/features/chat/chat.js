@@ -34,6 +34,13 @@ export async function mountChat(container, params, router) {
     container.innerHTML = `<div class="page"><div class="page-body">会话不存在</div></div>`;
     return () => {};
   }
+  // 群聊:participantIds≥2。load 所有成员供渲染(每条消息按 fromCharacterId 显示对应头像/名)。
+  const isGroup = Array.isArray(session.participantIds) && session.participantIds.length >= 2;
+  let participantsById = new Map();
+  if (isGroup) {
+    const cs = (await Promise.all(session.participantIds.map(id => db.get('characters', id)))).filter(Boolean);
+    participantsById = new Map(cs.map(c => [c.id, c]));
+  }
   const character = await db.get('characters', session.characterId);
 
   const isBlocked = !!character?.blocked;
@@ -46,7 +53,7 @@ export async function mountChat(container, params, router) {
     <div class="page chat-page">
       <header class="page-header">
         <button class="back">‹</button>
-        <div class="title">${esc(character?.name ?? '聊天')}${isBlocked ? ' <span class="blocked-badge">已拉黑</span>' : ''}</div>
+        <div class="title">${isGroup ? esc(session.title || '群聊') : `${esc(character?.name ?? '聊天')}${isBlocked ? ' <span class="blocked-badge">已拉黑</span>' : ''}`}</div>
         <div class="header-actions">
           ${devMode ? `<span class="token-badge" title="下次发送的 tokens 预估(系统提示 + 历史)">…</span>` : ''}
           ${devMode ? `<button class="icon-btn inspector-btn" title="提示词调试">${SVG.gear}</button>` : ''}
@@ -312,7 +319,7 @@ export async function mountChat(container, params, router) {
     const showAvatars  = freshS.showAvatars       !== false;  // default on
     const readUpTo     = Number(freshS.readReceiptUpToTs || 0);
 
-    const ctx = { previewMap, character: cur, persona, showReceipts, showAvatars, readUpTo };
+    const ctx = { previewMap, character: cur, persona, showReceipts, showAvatars, readUpTo, isGroup, participantsById };
 
     const parts = [];
     let prevTs = null;
@@ -526,8 +533,8 @@ export async function mountChat(container, params, router) {
   // 生成中再按一下「让 AI 回复」= 停止(见 ai.abortReply)。生成期间 aiBtn
   // 不 disable(它变成「停止」键),只 disable sendBtn。
   let generating = false;
-  const onAI = async () => {
-    if (generating) { ai.abortReply(sessionId); return; }   // 第二次按 = 停止
+  // runReply: 实际跑一次回复。群聊传 speakerCharacterId 指明这一轮谁说话。
+  const runReply = async (speakerCharacterId) => {
     closePanel();
     closeBubbleMenu();
     generating = true;
@@ -535,7 +542,7 @@ export async function mountChat(container, params, router) {
     aiBtn.classList.add('loading', 'generating');
     aiBtn.title = '停止生成';
     try {
-      const result = await ai.requestReply(sessionId);
+      const result = await ai.requestReply(sessionId, speakerCharacterId ? { speakerCharacterId } : undefined);
       // After AI replies, all preceding user messages count as 已读.
       await markReadUpToLatestUserMsg();
       await refresh();
@@ -563,6 +570,21 @@ export async function mountChat(container, params, router) {
       aiBtn.classList.remove('loading', 'generating');
       aiBtn.title = '让 AI 回复';
     }
+  };
+  // 点「让 AI 回复」:生成中再按 = 停止;群聊先选这一轮谁说话(手动调度 Step 1);单聊直接回。
+  const onAI = async () => {
+    if (generating) { ai.abortReply(sessionId); return; }
+    if (isGroup) {
+      const picked = await openModal(container, {
+        title: '让谁回复?',
+        fields: [{ name: 'who', kind: 'select', label: '成员',
+          options: [...participantsById.values()].map(c => ({ value: c.id, label: c.name || '(未命名)' })) }],
+        submitLabel: '回复',
+      });
+      if (picked && picked.who) await runReply(picked.who);
+      return;
+    }
+    await runReply();
   };
 
   async function streamingReveal(msgId) {
@@ -1308,8 +1330,13 @@ function renderMessageRow(msg, ctx) {
   const bubbles = (msg.actions ?? [])
     .map((a, i) => renderAction(a, side, msg.id, i, ctx.previewMap, ctx.character))
     .join('');
-  const who = side === 'user' ? ctx.persona : ctx.character;
+  const who = side === 'user'
+    ? ctx.persona
+    : (ctx.isGroup ? (ctx.participantsById?.get(msg.fromCharacterId) || ctx.character) : ctx.character);
   const avatar = ctx.showAvatars ? renderRowAvatar(who, side) : '';
+  // 群聊:角色气泡上方标发言人名字(单聊只有一个角色,不需要)。
+  const senderName = (ctx.isGroup && side === 'char' && who?.name)
+    ? `<div class="msg-sender-name" style="font-size:11px;color:var(--muted,#999);margin:0 0 2px 2px">${esc(who.name)}</div>` : '';
   const showRead = ctx.showReceipts && side === 'user' && msg.createdAt <= ctx.readUpTo;
   // 已读 标 — 用户气泡的左侧(挂在 msg-row 上,跟 msg-actions 同级 flex 兄弟,
   // user row 是 row-reverse 所以 DOM 末尾的 readMark 视觉上在 actions 左边)。
@@ -1330,7 +1357,7 @@ function renderMessageRow(msg, ctx) {
   } else if (side === 'char' && msg.aiInnerVoice) {
     voiceDiv = `<div class="ai-inner-voice-display">心声:${esc(msg.aiInnerVoice)}</div>`;
   }
-  return `<div class="${clsList.join(' ')}">${avatar}<div class="msg-actions">${bubbles}${voiceDiv}</div>${readMark}</div>`;
+  return `<div class="${clsList.join(' ')}">${avatar}<div class="msg-actions">${senderName}${bubbles}${voiceDiv}</div>${readMark}</div>`;
 }
 
 function renderRowAvatar(who, side) {
