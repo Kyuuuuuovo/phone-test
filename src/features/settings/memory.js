@@ -20,6 +20,9 @@ export async function mountMemorySettings(container, params, router) {
   const enabled = settings.memoryEnabled !== false;  // default on
   const threshold = Number.isFinite(settings.memoryThreshold) && settings.memoryThreshold > 0
     ? settings.memoryThreshold : DEFAULT_THRESHOLD;
+  // 缓冲条数 — 超过「保留数」后再多攒这么多条才真正触发压缩。默认 0(老行为)。
+  const buffer = Number.isFinite(settings.memoryBuffer) && settings.memoryBuffer >= 0
+    ? settings.memoryBuffer : 0;
   const batchLimit = Number.isFinite(settings.memoryForceBatchLimit) && settings.memoryForceBatchLimit > 0
     ? settings.memoryForceBatchLimit : DEFAULT_BATCH_LIMIT;
   // Timeline 自动压缩开关(把同一天的多条时间线压成这天一条;阈值概念已去掉)。
@@ -66,6 +69,11 @@ export async function mountMemorySettings(container, params, router) {
           <label>
             <div class="label-text">保留最近多少条不压缩(默认 ${DEFAULT_THRESHOLD})</div>
             <input type="number" name="threshold" min="5" max="200" step="1" value="${threshold}">
+          </label>
+          <label>
+            <div class="label-text">缓冲:超过保留数后,再多攒多少条才开始压(默认 0)</div>
+            <input type="number" name="buffer" min="0" max="200" step="1" value="${buffer}">
+            <p class="hint" style="margin-top: 4px;">例:保留 100 + 缓冲 30 → 攒到 130 条才压一次、压回 100;设 0 就是一超过保留数立刻压。给「别刚过线就压」留点余量。</p>
           </label>
           <label>
             <div class="label-text">「立即提取记忆」一次最多整理几天(默认 ${DEFAULT_BATCH_LIMIT})</div>
@@ -143,10 +151,12 @@ export async function mountMemorySettings(container, params, router) {
       setStatus('保留条数太小,建议 ≥ 5', 'error');
       return;
     }
+    const buf = Math.max(0, Math.min(200, parseInt(String(fd.get('buffer') || '0'), 10) || 0));
     const bl = parseInt(String(fd.get('batchLimit') || '0'), 10) || DEFAULT_BATCH_LIMIT;
     const s = (await db.get('settings', 'default')) || { id: 'default' };
     s.memoryEnabled = en;
     s.memoryThreshold = t;
+    s.memoryBuffer = buf;
     s.memoryForceBatchLimit = Math.max(1, Math.min(100, bl));
     s.timelineAutoMergeEnabled = !!fd.get('timelineAutoMergeEnabled');
     // 记忆专用 API — 空字符串 = 跟随主 API(等同 null)

@@ -523,12 +523,17 @@ export async function mountChat(container, params, router) {
     if (wasHidden && ivInput) ivInput.focus();
   };
 
+  // 生成中再按一下「让 AI 回复」= 停止(见 ai.abortReply)。生成期间 aiBtn
+  // 不 disable(它变成「停止」键),只 disable sendBtn。
+  let generating = false;
   const onAI = async () => {
+    if (generating) { ai.abortReply(sessionId); return; }   // 第二次按 = 停止
     closePanel();
     closeBubbleMenu();
-    aiBtn.disabled = true;
+    generating = true;
     sendBtn.disabled = true;
-    aiBtn.classList.add('loading');
+    aiBtn.classList.add('loading', 'generating');
+    aiBtn.title = '停止生成';
     try {
       const result = await ai.requestReply(sessionId);
       // After AI replies, all preceding user messages count as 已读.
@@ -547,11 +552,16 @@ export async function mountChat(container, params, router) {
       // side is typing rather than flooding.
       await streamingReveal(result?.messageId);
     } catch (e) {
-      await openAlert(container, { title: 'AI 回复失败', message: String(e).slice(0, 300), danger: true });
+      // 用户主动停止 → 不是错误,静默收尾(中断点在 fetch,之前没落库,无残留)。
+      const aborted = e?.name === 'AbortError' || /abort/i.test(String(e?.message || e));
+      if (!aborted) {
+        await openAlert(container, { title: 'AI 回复失败', message: String(e).slice(0, 300), danger: true });
+      }
     } finally {
-      aiBtn.disabled = false;
+      generating = false;
       sendBtn.disabled = false;
-      aiBtn.classList.remove('loading');
+      aiBtn.classList.remove('loading', 'generating');
+      aiBtn.title = '让 AI 回复';
     }
   };
 

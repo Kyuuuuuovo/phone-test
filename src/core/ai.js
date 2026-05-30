@@ -18,6 +18,19 @@ const handlers = new Map();   // action type -> async (action, ctx) => void
 // overflow window into two separate memory rows. Second caller awaits the
 // in-flight promise instead of starting another HTTP round-trip.
 const inFlight = new Map();
+// 「停止生成」: per-session AbortController,跟 inFlight 平行。生成中再按一下
+// 「让 AI 回复」→ chat.js 调 abortReply(sessionId) → controller.abort() → 底层
+// fetch 抛 AbortError → requestReply reject → chat.js 当「已停止」处理(不弹错误)。
+// 中断点在 callAIOnce 的 fetch,此前没落库,所以不留半条消息。
+const abortControllers = new Map();
+
+// 中断某 session 正在进行的回复。返回是否真的中断了一个进行中的请求。
+export function abortReply(sessionId) {
+  const c = abortControllers.get(sessionId);
+  if (!c) return false;
+  c.abort();
+  return true;
+}
 
 export function registerHandler(type, fn) {
   handlers.set(type, fn);
@@ -43,7 +56,7 @@ async function resolveApiConfig(apiConfigId) {
 // Single round-trip. Returns the choice's message object verbatim so callers can
 // inspect tool_calls. Optional `tools` enables OpenAI function calling.
 // 新加 apiConfigId override — 给记忆相关调用走专用配置(便宜模型省 token)。
-export async function callAIOnce({ systemPrompt, messages, temperature, tools, apiConfigId }) {
+export async function callAIOnce({ systemPrompt, messages, temperature, tools, apiConfigId, signal }) {
   const config = await resolveApiConfig(apiConfigId);
   if (!config || !config.apiUrl || !config.apiKey || !config.modelName) {
     throw new Error('ai.callAIOnce: 没有可用的 API 配置 — 去 设置 → API 设置 创建一组并选中');
@@ -80,6 +93,7 @@ export async function callAIOnce({ systemPrompt, messages, temperature, tools, a
       'Authorization': `Bearer ${config.apiKey}`,
     },
     body: JSON.stringify(body),
+    signal,   // 「停止生成」: requestReply 传入的 AbortController.signal
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
@@ -246,18 +260,21 @@ const MAX_TOOL_ROUNDS = 5;
 export async function requestReply(sessionId, opts = {}) {
   const existing = inFlight.get(sessionId);
   if (existing) return existing;
+  const controller = new AbortController();
+  abortControllers.set(sessionId, controller);
   const promise = (async () => {
     try {
-      return await _requestReplyImpl(sessionId, opts);
+      return await _requestReplyImpl(sessionId, { ...opts, signal: controller.signal });
     } finally {
       inFlight.delete(sessionId);
+      abortControllers.delete(sessionId);
     }
   })();
   inFlight.set(sessionId, promise);
   return promise;
 }
 
-async function _requestReplyImpl(sessionId, { featureContext, regenHint } = {}) {
+async function _requestReplyImpl(sessionId, { featureContext, regenHint, signal } = {}) {
   const systemPrompt = await context.buildSystemPrompt(sessionId, { featureContext, regenHint });
   const baseMessages = await context.buildMessageHistory(sessionId);
   const session = await db.get('chatSessions', sessionId);
@@ -272,6 +289,7 @@ async function _requestReplyImpl(sessionId, { featureContext, regenHint } = {}) 
       systemPrompt,
       messages: convo,
       tools: tools.length > 0 ? tools : undefined,
+      signal,
     });
     if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
       convo.push({

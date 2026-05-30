@@ -4090,6 +4090,8 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
 .icon-btn.send-btn { background: var(--bubble-char); color: var(--fg); border-color: transparent; }
 .icon-btn.ai-btn   { background: var(--accent); color: #fff; border-color: var(--accent); }
 .icon-btn.ai-btn.loading svg { animation: pulse 0.9s ease-in-out infinite; }
+/* 生成中再按一下 = 停止:键变红(仍可点),SVG 继续脉动表示进行中,title 改「停止生成」。 */
+.icon-btn.ai-btn.generating { background: var(--danger, #e2574c); border-color: var(--danger, #e2574c); }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 /* Push-up attach panel (sibling of .chat-input). Pushes message stream up when shown. */

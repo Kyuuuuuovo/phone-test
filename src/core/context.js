@@ -1433,8 +1433,9 @@ export function extractMemoryEvents(msgs) {
 //
 // 行为:
 //   - active = chatMessages 里没 archived 的,sort by createdAt
-//   - normal 模式:active > threshold(默认 30)时,把最早的 N 条溢出来,
-//     按 dayKey 分组,**只压最旧的一天**(剩下的天等下次再触发)
+//   - normal 模式:active > threshold + buffer 时触发(memoryBuffer 默认 0 →
+//     一超过 threshold 就压;设了缓冲就攒到 threshold+buffer 才压、压回
+//     threshold)。把最早的溢出按 dayKey 分组,**只压最旧的一天**。
 //   - force 模式:跳过 threshold buffer,把"今天以外"的活跃消息按 dayKey
 //     分组压最旧一天。给 chat-info「立即提取记忆」按钮用。
 //   - settings.memoryBatchSize 字段保留兼容(老用户读到不报错),但不再用
@@ -1499,7 +1500,12 @@ async function _maybeCompressMemoryImpl(sessionId, opts = {}) {
     const tk = dayKeyOf(Date.now());
     candidates = all.filter(m => dayKeyOf(m.createdAt) !== tk);
   } else {
-    if (all.length <= threshold) return null;
+    // 「缓冲区」: 攒到 threshold + buffer 才触发(buffer 默认 0 → 一超过
+    // threshold 就压,旧行为不变)。例:留存 100 + 缓冲 30 → 130 条才压一次、
+    // 压回 100;给 user「别刚过线就压」的余量。仍保留最近 threshold 条不动。
+    const buffer = Number.isFinite(settings.memoryBuffer) && settings.memoryBuffer >= 0
+      ? settings.memoryBuffer : 0;
+    if (all.length <= threshold + buffer) return null;
     candidates = all.slice(0, all.length - threshold);
   }
   if (candidates.length === 0) return null;
