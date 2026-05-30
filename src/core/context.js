@@ -80,9 +80,9 @@ export const ACTION_SCHEMAS_TEXT = `# 动作定义表
 // each segment, mark which ones are user-overridable, and dump the full
 // joined string when needed. buildSystemPrompt below joins these parts.
 //
-// Section order (maps to the user-facing 6-block abstraction in CLAUDE.md):
-//   ① Framing
-//   1. "你是【char】,正在与【user】聊天。" (always)
+// Section order (对话规范 元提示在最前,再上下文,最后 动作规约/输出/动作表):
+//   ① 对话规范(元提示,放最前)
+//   1. # 对话规范                  (humanizer constant, override-able)
 //   ② 上下文(static setting + memory + state)
 //   2. # 世界观 / 背景设定(前置)    (worldbook entries with position='before')
 //   3. # 角色设定                  (always)
@@ -91,14 +91,12 @@ export const ACTION_SCHEMAS_TEXT = `# 动作定义表
 //   6. # 世界观 / 背景设定(用户人设后) (entries with position='after')
 //   7. # 过往记忆                  (if any memory summaries)
 //   8. # 当前社交状态              (if character.blocked)
-//   ③ 对话规范
-//   9. # 对话规范                  (humanizer constant, override-able)
-//   ④ 动作使用规约
-//  10. # 动作使用规约               (behavior constant, override-able)
-//   ⑤ 输出格式数量约束
-//  11. OUTPUT_COUNT_SPEC          (always, override-able)
-//   ⑥ 动作定义表
-//  12. ACTION_SCHEMAS_TEXT        (always, override-able)
+//   ③ 动作使用规约
+//   9. # 动作使用规约               (behavior constant, override-able)
+//   ④ 输出格式数量约束
+//  10. OUTPUT_COUNT_SPEC          (always, override-able)
+//   ⑤ 动作定义表
+//  11. ACTION_SCHEMAS_TEXT        (always, override-able)
 //
 // `kind` values:
 //   'computed' — built from app state (framing line) — not editable here
@@ -204,16 +202,17 @@ export async function buildSystemPromptParts(sessionId, { regenHint } = {}) {
   const schemasText = (ovo.schemasText ?? ACTION_SCHEMAS_TEXT).trim();
 
   const parts = [];
-  // 1. Framing — who you are, who you're talking to.
-  const charName = character.name || '(未命名角色)';
-  const userName = persona?.name || null;
+  // 1. 对话规范(humanizer)— 元提示放最前,先定调「像真人在手机上聊天」,再进
+  //    世界观 / 角色设定。原来开头那句「你是X,正在与Y聊天」已删:角色名在 # 角色设定
+  //    里,用户名在 humanizer 的「你在用手机和 {user} 聊天」里,不必再单列一句。
   parts.push({
-    key: 'framing',
-    title: null,
-    body: userName
-      ? `你是【${charName}】,正在与【${userName}】聊天。`
-      : `你是【${charName}】,正在跟用户聊天。`,
-    kind: 'computed',
+    key: 'humanizer',
+    title: '# 对话规范',
+    body: humanizer,
+    kind: 'override',
+    overrideScope: 'promptOverrides',
+    overrideKey: 'humanizer',
+    defaultValue: HUMANIZER_PROMPT,
   });
   // 2. 世界观(前置)
   parts.push({
@@ -457,17 +456,7 @@ export async function buildSystemPromptParts(sessionId, { regenHint } = {}) {
     kind: 'data',
     editRoute: 'monitor',
   });
-  // 9. 对话规范
-  parts.push({
-    key: 'humanizer',
-    title: '# 对话规范',
-    body: humanizer,
-    kind: 'override',
-    overrideScope: 'promptOverrides',
-    overrideKey: 'humanizer',
-    defaultValue: HUMANIZER_PROMPT,
-  });
-  // 10. 动作使用规约 — WHEN / in what context to use each action.
+  // 9. 动作使用规约 — WHEN / in what context to use each action.
   //     Boundary: action-context spec, NOT character-behavior steering.
   parts.push({
     key: 'behavior',
