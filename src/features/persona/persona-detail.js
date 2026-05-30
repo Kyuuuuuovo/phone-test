@@ -4,7 +4,7 @@
 
 import * as db from '../../core/db.js';
 import { openConfirm } from '../../core/modal.js';
-import { bindFormDirty } from '../../core/form-helpers.js';
+import { bindFormDirty, newDraftGuard } from '../../core/form-helpers.js';
 import { esc } from '../../core/util.js';
 
 export async function mountPersonaDetail(container, params, router) {
@@ -76,6 +76,9 @@ export async function mountPersonaDetail(container, params, router) {
   const deleteBtn   = container.querySelector('.delete-btn');
   const saveBtn     = form.querySelector('button[type="submit"]');
   const dirty       = bindFormDirty(form, saveBtn);
+  // 草稿回收:新建未编辑就返回 → 丢弃这条空白人设。form input/change 自动 touch,保存另 touch。
+  const draft       = newDraftGuard({ isNew: params.isNew === true, store: 'personas', id });
+  const unbindTouch = draft.bindTouch(form);
 
   function setStatus(text, kind) {
     status.textContent = text;
@@ -90,10 +93,11 @@ export async function mountPersonaDetail(container, params, router) {
     clearBtn.disabled = !avatarData;
   }
 
-  const onBack = () => router.back();
+  const onBack = async () => { await draft.discardIfUntouched(); router.back(); };
 
   const onSubmit = async (e) => {
     e.preventDefault();
+    draft.touch();
     const fd = new FormData(form);
     // T7: statusText 跟微信「我」tab 共享同一字段。statusSetAt 只在实际改了
     // 的时候 bump,否则每次保存 persona 都重置时间会误导角色的相对感知。
@@ -181,6 +185,8 @@ export async function mountPersonaDetail(container, params, router) {
     fileInput.removeEventListener('change', onFile);
     clearBtn.removeEventListener('click', onClearAvatar);
     deleteBtn.removeEventListener('click', onDelete);
+    unbindTouch();
+    draft.discardIfUntouched();
   };
 }
 

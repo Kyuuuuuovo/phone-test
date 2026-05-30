@@ -54,7 +54,7 @@ export async function mountPersonaPick(container, params, router) {
       const id = db.newId();
       const now = Date.now();
       db.set('personas', { id, name: '新人设', persona: '', createdAt: now, updatedAt: now })
-        .then(() => router.navigate('persona-detail', { id }));
+        .then(() => router.navigate('persona-detail', { id, isNew: true }));
     });
     container.querySelectorAll('[data-persona-id]').forEach(btn => {
       btn.addEventListener('click', async () => {

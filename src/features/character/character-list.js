@@ -72,7 +72,7 @@ export async function mountCharacterList(container, params, router) {
         id, name: '新角色', persona: '', notes: '', avatar: null,
         blocked: false, createdAt: now, updatedAt: now,
       });
-      return router.navigate('character-detail', { id });
+      return router.navigate('character-detail', { id, isNew: true });
     }
     const row = e.target.closest('[data-id]');
     if (row) router.navigate('character-detail', { id: row.dataset.id });

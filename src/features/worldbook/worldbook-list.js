@@ -3,7 +3,7 @@
 // (lorebook) exports; see importTavernWorldbook() below for the schema map.
 
 import * as db from '../../core/db.js';
-import { openAlert } from '../../core/modal.js';
+import { openAlert, openConfirm } from '../../core/modal.js';
 import { esc } from '../../core/util.js';
 
 export async function mountWorldbookList(container, params, router) {
@@ -69,7 +69,7 @@ export async function mountWorldbookList(container, params, router) {
       await db.set('worldbooks', {
         id, name: '新世界书', description: '', createdAt: now, updatedAt: now,
       });
-      return router.navigate('worldbook-detail', { id });
+      return router.navigate('worldbook-detail', { id, isNew: true });
     }
     const row = e.target.closest('[data-id]');
     if (row) router.navigate('worldbook-detail', { id: row.dataset.id });
@@ -152,6 +152,11 @@ async function importTavernWorldbook(router, refresh) {
     const wbId = db.newId();
     const now = Date.now();
     const wbName = String(book.name || data?.name || file.name.replace(/\.json$/i, '') || '导入的世界书').slice(0, 60);
+    if (!await openConfirm(document.body, {
+      title: '导入世界书',
+      message: `导入「${wbName}」,共 ${rawEntries.length} 条条目?`,
+      confirmLabel: '导入',
+    })) return;
     await db.set('worldbooks', {
       id: wbId, name: wbName,
       description: `从酒馆 JSON 导入(${rawEntries.length} 条)`,

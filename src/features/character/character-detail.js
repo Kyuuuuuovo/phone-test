@@ -3,7 +3,7 @@
 
 import * as db from '../../core/db.js';
 import { openConfirm } from '../../core/modal.js';
-import { bindFormDirty } from '../../core/form-helpers.js';
+import { bindFormDirty, newDraftGuard } from '../../core/form-helpers.js';
 
 export async function mountCharacterDetail(container, params, router) {
   const id = params.id;
@@ -95,6 +95,10 @@ export async function mountCharacterDetail(container, params, router) {
   const wbList       = container.querySelector('.wb-mount-list');
   const saveBtn      = form.querySelector('button[type="submit"]');
   const dirty        = bindFormDirty(form, saveBtn);
+  // 草稿回收:新建未编辑就返回 → 丢弃这条空白角色。form 上挂 input/change 自动 touch
+  // (含名称/人设/备注/挂载世界书勾选/头像文件选择);拉黑、保存另行 touch。
+  const draft        = newDraftGuard({ isNew: params.isNew === true, store: 'characters', id });
+  const unbindTouch  = draft.bindTouch(form);
 
   function setStatus(text, kind) {
     status.textContent = text;
@@ -127,10 +131,11 @@ export async function mountCharacterDetail(container, params, router) {
     return c;
   }
 
-  const onBack = () => router.back();
+  const onBack = async () => { await draft.discardIfUntouched(); router.back(); };
 
   const onSubmit = async (e) => {
     e.preventDefault();
+    draft.touch();
     await saveFromForm();
     setStatus('已保存', 'success');
     dirty.markSaved();
@@ -165,6 +170,7 @@ export async function mountCharacterDetail(container, params, router) {
   };
 
   const onToggleBlock = async () => {
+    draft.touch();
     character.blocked = !character.blocked;
     character.updatedAt = Date.now();
     await db.set('characters', character);
@@ -228,6 +234,8 @@ export async function mountCharacterDetail(container, params, router) {
     toggleBlock.removeEventListener('click', onToggleBlock);
     wbList.removeEventListener('change', onWbChange);
     deleteBtn.removeEventListener('click', onDelete);
+    unbindTouch();
+    draft.discardIfUntouched();
   };
 }
 

@@ -5,6 +5,7 @@ import * as db from '../../core/db.js';
 import * as embedding from '../../core/embedding.js';
 import { openConfirm } from '../../core/modal.js';
 import { esc } from '../../core/util.js';
+import { newDraftGuard } from '../../core/form-helpers.js';
 
 export async function mountWorldbookDetail(container, params, router) {
   const id = params.id;
@@ -60,6 +61,9 @@ export async function mountWorldbookDetail(container, params, router) {
   const deleteBtn  = container.querySelector('.delete-wb');
   const addEntryBtn = container.querySelector('.add-entry');
   const entriesList = container.querySelector('.entries-list');
+  // 草稿回收:新建未编辑就返回 → 丢弃这本空白世界书。meta 表单挂自动 touch,加/改条目另 touch。
+  const draft       = newDraftGuard({ isNew: params.isNew === true, store: 'worldbooks', id });
+  const unbindTouch = draft.bindTouch(metaForm);
 
   function setStatus(text, kind) {
     status.textContent = text;
@@ -166,10 +170,11 @@ export async function mountWorldbookDetail(container, params, router) {
     }
   }
 
-  const onBack = () => router.back();
+  const onBack = async () => { await draft.discardIfUntouched(); router.back(); };
 
   const onSubmitMeta = async (e) => {
     e.preventDefault();
+    draft.touch();
     await saveMeta();
     setStatus('已保存', 'success');
   };
@@ -194,6 +199,7 @@ export async function mountWorldbookDetail(container, params, router) {
   };
 
   const onAddEntry = async () => {
+    draft.touch();
     await db.set('worldbookEntries', {
       id: db.newId(),
       worldbookId: id,
@@ -212,6 +218,7 @@ export async function mountWorldbookDetail(container, params, router) {
     if (!card) return;
     if (e.target.matches('.entry-title, .entry-content, .entry-position, .entry-keywords, .entry-activation-mode') ||
         e.target.matches('.entry-enabled input')) {
+      draft.touch();
       try {
         await saveEntryFromCard(card);
         // mode 改了 → re-render 让 keyword input show/hide + embed status 更新
@@ -257,5 +264,7 @@ export async function mountWorldbookDetail(container, params, router) {
     entriesList.removeEventListener('change', onEntriesChange);
     entriesList.removeEventListener('blur',   onEntriesChange, true);
     entriesList.removeEventListener('click',  onEntriesClick);
+    unbindTouch();
+    draft.discardIfUntouched();
   };
 }

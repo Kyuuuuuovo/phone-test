@@ -65,7 +65,7 @@ export async function mountPersonaList(container, params, router) {
       await db.set('personas', {
         id, name: '新人设', persona: '', createdAt: now, updatedAt: now,
       });
-      return router.navigate('persona-detail', { id });
+      return router.navigate('persona-detail', { id, isNew: true });
     }
     const row = e.target.closest('[data-id]');
     if (row) router.navigate('persona-detail', { id: row.dataset.id });
