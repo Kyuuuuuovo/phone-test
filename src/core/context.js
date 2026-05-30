@@ -203,8 +203,9 @@ export async function buildSystemPromptParts(sessionId, { regenHint } = {}) {
 
   const parts = [];
   // 1. 对话规范(humanizer)— 元提示放最前,先定调「像真人在手机上聊天」,再进
-  //    世界观 / 角色设定。原来开头那句「你是X,正在与Y聊天」已删:角色名在 # 角色设定
-  //    里,用户名在 humanizer 的「你在用手机和 {user} 聊天」里,不必再单列一句。
+  //    世界观 / 角色设定。原来开头那句「你是X,正在与Y聊天」已删 —— 角色名不再自动注入
+  //    (要让模型知道名字就写进 persona 或用 {{char}});用户名在 humanizer 的「你在用
+  //    手机和 {user} 聊天」里。
   parts.push({
     key: 'humanizer',
     title: '# 对话规范',
@@ -226,7 +227,7 @@ export async function buildSystemPromptParts(sessionId, { regenHint } = {}) {
   parts.push({
     key: 'character',
     title: '# 角色设定',
-    body: subUser(character.persona || character.name || '(无设定)'),
+    body: subUser(character.persona || '(无设定)'),
     kind: 'data',
     editRoute: 'character-detail',
     editParams: { id: character.id },
