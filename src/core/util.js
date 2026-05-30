@@ -35,6 +35,12 @@ export function dayKeyOf(ts) {
 export function parseTolerantJSON(raw, { expect = 'array' } = {}) {
   if (typeof raw !== 'string') return null;
   const stripped = raw.trim()
+    // 推理模型(DeepSeek-R1 / QwQ 等)把思考过程放在 content 开头的
+    // <think>…</think>(或 <thinking>…</thinking>)块里。先剥掉「开头」这一段再找
+    // JSON —— 否则下面的 balanced 扫描会咬住思考文字里的第一个 [ 然后 parse 炸。
+    // 锚 ^ 保证只剥开头的思考块,不动 JSON 字符串里可能出现的 <think>。
+    // (reasoning_content 走单独字段的模型不受影响 —— 那种 content 本来就干净。)
+    .replace(/^\s*<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>\s*/i, '')
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```\s*$/i, '')
     .trim();
