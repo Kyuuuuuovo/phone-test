@@ -3,11 +3,11 @@
 // 两个 tab:
 // 1. 总结(memories) — 已生成的 L1/L2 summary 列表,可删;会话级风格补充
 //    (memoryPromptOverride)的编辑入口。这一段进 system prompt(给模型用)。
-// 2. 时间线(timeline) — 每天一句话总结,可多选合并 / 撤销合并 / 删除。
+// 2. 时间线(timeline) — 每天拆成几条带时刻(HH:MM)的事件,可多选合并 / 撤销合并 / 删除。
 //    这一段 NOT 进 system prompt(只给用户翻看)。
 //
-// 时间线懒生成:打开时间线 tab 才扫描缺失天数,每个 dayKey 只生成一次。
-// 今天不生成(那天还没结束)。
+// 时间线懒生成:打开时间线 tab 才扫描缺失天数,每个 dayKey 只生成一次(含当天 — T16
+// 起当天也总结;之后继续聊不会自动刷新,要刷新得手动删那行 timeline 再扫)。
 
 import * as db from '../../core/db.js';
 import { DEFAULT_MEMORY_SYS, normalizeMemorySummary } from '../../core/context.js';
@@ -138,7 +138,7 @@ export async function mountMemoryManage(container, params, router) {
     const selectedCount = visible.filter(t => selected.has(t.id) && !t.mergedFrom).length;
 
     return `
-      <p class="hint">每天一句话总结(≤40 字),只给你翻看,不进聊天的 system prompt。今天不生成。每天只生成一次,删了才会重新生成。</p>
+      <p class="hint">每天拆成几条带时刻(HH:MM)的事件,每条 ≤25 字,只给你翻看,不进聊天的 system prompt。每个日期只生成一次(含当天),删了才会重新生成。</p>
       <div class="form-actions tl-actions">
         <button type="button" class="btn secondary tl-gen-btn">${lazyGenBusy ? '生成中…' : '扫描缺失天数 → 生成'}</button>
         <button type="button" class="btn tl-merge-btn" ${selectedCount < 2 ? 'disabled' : ''}>合并选中(${selectedCount})</button>

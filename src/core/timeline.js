@@ -1,9 +1,9 @@
-// Per-session timeline — one-line-per-day summaries for the USER to skim.
+// Per-session timeline — per-day, several HH:MM-stamped events for the USER to skim.
 //
 // Distinct from `memories` (which feed the AI as L1/L2 summaries):
 //   - timeline is NOT injected into system prompt
 //   - timeline is keyed by calendar day, not by message-count window
-//   - timeline summaries are deliberately tight (≤50 chars / 一句话)
+//   - each event is deliberately tight (≤25 chars, HH:MM-prefixed); a day holds several
 //   - users can merge multiple days into a single combined entry, and
 //     undo the merge later
 //
@@ -54,8 +54,6 @@ export const DEFAULT_TIMELINE_MERGE_SYS = `把下面这几天的事件压缩到�
 只输出事件本身,**每行一个事件**,不要编号、不要解释。`;
 
 export const MAX_SUMMARY_LEN = 25;
-
-const todayKey = () => dayKeyOf(Date.now());
 
 // Find days that have messages but no timeline row yet, then generate one
 // summary per missing day. Returns { generated, skipped, errors, remaining }
@@ -241,7 +239,7 @@ export async function unmerge(sessionId, mergedId) {
 }
 
 // Strip surrounding quotes / whitespace and clamp to MAX_SUMMARY_LEN.
-// Truncation backstop only — the prompt already asks for ≤40 chars; this
+// Truncation backstop only — the prompt already asks for ≤25 chars; this
 // catches the case where the model overshoots, without burning a retry.
 function trimSummary(raw) {
   if (typeof raw !== 'string') return '';

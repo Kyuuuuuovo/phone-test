@@ -455,7 +455,7 @@ async function setupPet(router) {
     // get→modify→put runs in a single IDB tx. Without this, the pickAmbientLine
     // await between read+write was the worst race-prone spot in the app —
     // a concurrent settings write (toggle, theme, dismissal) could clobber
-    // petDismissed / petLastBubbleAt back to stale.
+    // petDismissed back to stale.
     let restoreDismissed = null;
     if (forceFresh) {
       await db.updateSettings(s => {
@@ -478,7 +478,6 @@ async function setupPet(router) {
     bubble.textContent = picked.line;
     positionBubble();
     bubble.hidden = false;
-    await db.updateSettings(s => { s.petLastBubbleAt = Date.now(); });
   }
   function positionBubble() {
     const orbRect = orb.getBoundingClientRect();
