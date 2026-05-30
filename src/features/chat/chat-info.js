@@ -46,7 +46,7 @@ export async function mountChatInfo(container, params, router) {
             <input type="checkbox" data-toggle="showAvatars"${session.showAvatars !== false ? ' checked' : ''}>
           </label>
           <label class="settings-item toggle-row">
-            <span class="settings-label">时间感知</span>
+            <span class="settings-label">本地时间感知</span>
             <input type="checkbox" data-toggle="timeAwareness"${session.timeAwareness !== 'off' ? ' checked' : ''}>
           </label>
           <label class="settings-item toggle-row">
@@ -74,7 +74,7 @@ export async function mountChatInfo(container, params, router) {
             <span class="settings-chevron">›</span>
           </button>
           <button class="settings-item" data-action="settings">
-            <span class="settings-label">会话设置</span>
+            <span class="settings-label">天气与时间感知</span>
             <span class="settings-chevron">›</span>
           </button>
           <button class="settings-item" data-action="memory">

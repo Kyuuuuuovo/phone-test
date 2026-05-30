@@ -102,7 +102,7 @@ export async function mountChatSettings(container, params, router) {
     <div class="page">
       <header class="page-header">
         <button class="back">‹ 返回</button>
-        <div class="title">会话设置</div>
+        <div class="title">天气与时间感知</div>
       </header>
       <div class="page-body">
         <p class="hint">开启某项后,AI 在生成回复时可以通过工具调用读取对应数据。**需要你用的模型支持 tools / function calling**——不支持的会直接报错。</p>

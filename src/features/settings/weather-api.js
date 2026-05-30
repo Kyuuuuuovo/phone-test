@@ -21,7 +21,7 @@ export async function mountWeatherApi(container, params, router) {
         <div class="title">天气 API</div>
       </header>
       <div class="page-body">
-        <p class="hint">天气数据由你自己注册的服务提供,URL 和 key 只存在你浏览器里,不会经过任何服务器。会话设置里开启天气工具后,AI 调用工具时才会用这里的配置去拉数据。</p>
+        <p class="hint">天气数据由你自己注册的服务提供,URL 和 key 只存在你浏览器里,不会经过任何服务器。「天气与时间感知」里开启天气工具后,AI 调用工具时才会用这里的配置去拉数据。</p>
         <form class="settings-form" autocomplete="off">
           <div class="label-text">快速填充(点一下自动写入 URL 模板)</div>
           <div class="model-picker preset-picker">
