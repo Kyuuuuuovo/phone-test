@@ -266,19 +266,6 @@ export async function buildSystemPromptParts(sessionId, { regenHint, speakerChar
     editRoute: persona ? 'persona-detail' : 'persona-list',
     editParams: persona ? { id: persona.id } : undefined,
   });
-  // 5b. 用户当前状态 — per-persona,跟 session.personaId 走(切到不同的"我"
-  //     看到不同状态)。空就不注入。setAt 转成相对时间提示「几小时前」让角色
-  //     能感知"这条状态是当下的还是几天前留的"。
-  const statusBody = persona?.statusText
-    ? `${persona.statusText}${Number.isFinite(persona.statusSetAt) ? `\n(设于 ${humanGap(Date.now() - persona.statusSetAt)}前)` : ''}`
-    : '';
-  parts.push({
-    key: 'user-status',
-    title: '# 用户当前状态',
-    body: subUser(statusBody),
-    kind: 'data',
-    editRoute: 'messaging',  // 「我」tab,但 messaging 是 tab 容器
-  });
   // 6. 世界观(后置)
   parts.push({
     key: 'wb-after',
@@ -376,6 +363,22 @@ export async function buildSystemPromptParts(sessionId, { regenHint, speakerChar
       kind: 'computed',
     });
   }
+  // 5b→挪这里: 用户当前状态 — per-persona(跟 session.personaId 走,不同的
+  //   "我"看到不同状态)。原本注入在 # 用户人设 旁,远在「以当前状态为准」总纲
+  //   之前,总纲罩不到它;挪进状态块(总纲之后、# 当前时间 之前)让它被总纲覆盖,
+  //   也跟其它当前状态段连成一块。架空模式照样注入 —— statusText 是玩家现实里
+  //   "我现在怎样",跟虚构世界无关。空就不注入。setAt 转相对时间「几小时前」让
+  //   角色感知这条是当下还是几天前留的。
+  const statusBody = persona?.statusText
+    ? `${persona.statusText}${Number.isFinite(persona.statusSetAt) ? `\n(设于 ${humanGap(Date.now() - persona.statusSetAt)}前)` : ''}`
+    : '';
+  parts.push({
+    key: 'user-status',
+    title: '# 用户当前状态',
+    body: subUser(statusBody),
+    kind: 'data',
+    editRoute: 'messaging',  // 「我」tab,但 messaging 是 tab 容器
+  });
   parts.push({
     key: 'current-time',
     title: '# 当前时间',
