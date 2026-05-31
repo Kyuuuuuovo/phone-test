@@ -2,7 +2,7 @@
 // Data model frozen in STORES below — bump DB_VERSION when changing schema.
 
 export const DB_NAME = 'phone-app';
-export const DB_VERSION = 16;
+export const DB_VERSION = 17;
 
 // Object store definitions. Applied during onupgradeneeded.
 // keyPath = primary key field; indexes = secondary lookup paths.
@@ -114,6 +114,19 @@ export const STORES = {
     indexes: [
       { name: 'status',  keyPath: 'status'  },
       { name: 'castAt',  keyPath: 'castAt'  },
+    ],
+  },
+  // 朋友圈动态(熟人圈,仅好友可见 — 不混陌生人,那是推特要做的)。字段:
+  //   id / authorType('user'|'character') / authorId(personaId 或 characterId) /
+  //   authorName + authorAvatar(发布时快照,渲染稳定) / text / images:string[](base64) /
+  //   likes:[{by:'user'|charId, name}] / comments:[{id, by, name, text, at}] /
+  //   visibility('all-friends',先只此一档) / reactDueAt(好友反应到期时间,懒生成;
+  //   你发动态/评论后 arm,生成完清空) / reactedAt / createdAt。
+  //   AI 生成不进 chatMessages,单独存这里(同 bottles/keepsakes)。
+  moments: {
+    keyPath: 'id',
+    indexes: [
+      { name: 'createdAt', keyPath: 'createdAt' },
     ],
   },
   // Timeline — per-session per-event timeline rows for the USER to skim.
