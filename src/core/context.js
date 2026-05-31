@@ -487,6 +487,17 @@ export async function buildSystemPromptParts(sessionId, { regenHint, speakerChar
     kind: 'data',
     editRoute: 'monitor',
   });
+  // 8f. 朋友圈动态 — opt-in(settings.syncMomentsToChat,默认关),架空模式跳过。
+  //     铁律 12:朋友圈是环境上下文,角色作为好友本就能刷到,所以注入成事实
+  //     陈述(用户最近发的几条 + 角色自己发的几条),不写"你应该怎么回应"(铁律 3)。
+  const momentsLine = isFictional ? '' : await buildMomentsLines(character.id, persona?.name);
+  parts.push({
+    key: 'moments',
+    title: '# 朋友圈动态',
+    body: momentsLine,
+    kind: 'data',
+    editRoute: 'messaging',
+  });
   // 9. 动作使用规约 — WHEN / in what context to use each action.
   //     Boundary: action-context spec, NOT character-behavior steering.
   parts.push({
@@ -586,6 +597,7 @@ const PART_GROUPS = {
   'user-profile':  'state',
   'cameras':       'state',
   'activity':      'state',
+  'moments':       'state',
   'humanizer':     'spec',
   'behavior':      'spec',
   'translate-mode':'spec',
@@ -780,6 +792,46 @@ async function buildActivityLine(characterId) {
   // Express in first person from the character's POV — they know where
   // they are and what they're doing; they don't know we know.
   return `你目前的状态:${body}。`;
+}
+
+// 朋友圈动态注入 — opt-in(settings.syncMomentsToChat,默认关)。角色作为好友
+// 本就能刷到朋友圈,所以注入成事实:用户最近发的几条 + 角色自己最近发的几条。
+// 铁律 12 + 铁律 3:只陈述"发了什么",不写"你应该怎么回应"。窗口近 3 天。
+async function buildMomentsLines(characterId, userName) {
+  const settings = (await db.get('settings', 'default')) || {};
+  if (settings.syncMomentsToChat !== true) return '';
+  const all = await db.getAll('moments');
+  if (!all.length) return '';
+  const now = Date.now();
+  const WINDOW = 3 * 24 * 60 * 60 * 1000;
+  const recent = all.filter(m => (now - (m.createdAt ?? 0)) <= WINDOW);
+  if (!recent.length) return '';
+  const rel = (ts) => {
+    const d = now - (ts ?? 0);
+    if (d < 3600000)  return `${Math.max(1, Math.floor(d / 60000))} 分钟前`;
+    if (d < 86400000) return `${Math.floor(d / 3600000)} 小时前`;
+    return `${Math.floor(d / 86400000)} 天前`;
+  };
+  const fmt = (m) => {
+    const t = (m.text || '').trim() || '(只有图片)';
+    const img = (m.images?.length) ? `(配了 ${m.images.length} 张图)` : '';
+    return `- 「${t}」${img}(${rel(m.createdAt)})`;
+  };
+  const u = userName || '用户';
+  const userMoments = recent.filter(m => m.authorType === 'user')
+    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)).slice(0, 3);
+  const ownMoments = recent.filter(m => m.authorType === 'character' && m.authorId === characterId)
+    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)).slice(0, 2);
+  const lines = [];
+  if (userMoments.length) {
+    lines.push(`${u} 最近发的朋友圈(你作为好友能看到):`);
+    lines.push(...userMoments.map(fmt));
+  }
+  if (ownMoments.length) {
+    lines.push('你自己最近发的朋友圈:');
+    lines.push(...ownMoments.map(fmt));
+  }
+  return lines.join('\n');
 }
 
 // Camera knowledge for the character — only includes cameras the character

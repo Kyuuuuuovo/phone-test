@@ -110,6 +110,12 @@ export async function mountSettings(container, params, router) {
             </span>
             <input type="checkbox" data-toggle="syncMonitorToChat"${settings.syncMonitorToChat === true ? ' checked' : ''}>
           </label>
+          <label class="settings-item toggle-row">
+            <span class="settings-label">同步朋友圈到聊天
+              <div class="settings-sub">开了之后,你和角色最近 3 天发的朋友圈会注入聊天的「# 朋友圈动态」段(角色作为好友本就能看到)。默认关 — opt-in。</div>
+            </span>
+            <input type="checkbox" data-toggle="syncMomentsToChat"${settings.syncMomentsToChat === true ? ' checked' : ''}>
+          </label>
         </div>
 
         <h3 class="settings-section-title">通知</h3>
@@ -151,7 +157,7 @@ export async function mountSettings(container, params, router) {
       // The chat page reads devMode at mount time, so the gear icon won't
       // appear until next chat navigation. Acceptable — toggling devMode
       // is rare and the visual change is one back-and-back away.
-    } else if (which === 'syncScheduleToChat' || which === 'syncMonitorToChat') {
+    } else if (which === 'syncScheduleToChat' || which === 'syncMonitorToChat' || which === 'syncMomentsToChat') {
       await db.updateSettings(s => { s[which] = !!cb.checked; });
     } else if (which === 'notifyOnReply') {
       // Toggle-on: request permission first (browsers require a user
