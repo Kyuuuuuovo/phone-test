@@ -123,10 +123,11 @@ export async function openAddWidgetModal(container, router) {
   });
 }
 
-// ── Size + transparency form helpers ─────────────────────────────────────
-// Used by every "add widget" / "edit widget" modal so the user can pick a
-// (colSpan × rowSpan) preset + dial the widget's opacity without each
-// editor implementing the same controls.
+// ── 编辑器本地 form helper ─────────────────────────────────────────────────
+// sizeSelectHtml(宽 × 高 dropdown)+ parseSizeFromForm(解析回 colSpan/rowSpan)
+// + parseHslString(把存的 hsl() 串还原成 HSV 给编辑器预填)。这几个只有编辑器
+// 用,所以留在本文件;「外观」字段 helper(倾斜 / 不透明度 / HSV 背景色)是三方
+// 共享的,在 home-shared.js,这里 import 进来用。
 
 function sizeSelectHtml(currentColSpan, currentRowSpan, defaultPreset) {
   // D: 改成"宽 × 高"两个独立 dropdown(宽 1-4 / 高 1-5),不再 fixed preset。
@@ -155,7 +156,7 @@ function sizeSelectHtml(currentColSpan, currentRowSpan, defaultPreset) {
 
 // Extract { h, s, v } from a CSS hsl() string, for re-opening editor. Returns
 // null if string doesn't parse — editor then shows "未自定义" defaults.
-// Note: we do the *reverse* of hsvToHsl, recovering V from L and S.
+// Note: we do the *reverse* of hsvToHsl (in home-shared.js), recovering V from L and S.
 function parseHslString(str) {
   const m = /^hsl\(\s*(-?[\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)$/.exec(String(str || '').trim());
   if (!m) return null;
