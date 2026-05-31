@@ -27,7 +27,7 @@ import {
   tiltFieldHtml,
   wireTiltReadout,
   parseTilt,
-} from '../home/home.js';
+} from '../home/home-shared.js';
 
 const BUILT_IN_PRESETS = [
   {
