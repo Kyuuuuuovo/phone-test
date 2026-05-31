@@ -45,80 +45,32 @@ export async function openAddWidgetModal(container, router) {
   modal.addEventListener('click', (e) => {
     if (e.target === modal) modal.remove();
   });
+  // 两类 widget:有专属内容编辑器的(开对应 editor)vs 纯装饰的(只问外观再存)。
+  // 原来是一长串 if/else,后 5 个分支几乎一模一样,收成两张表 + 一段通用逻辑。
+  const CONTENT_EDITORS = {
+    photo: renderPhotoEditor,            // 图片 / 拍立得合并入口(按张数决定 image/polaroid)
+    note: renderNoteEditor,
+    anniversary: renderAnniversaryEditor,
+    music: renderMusicEditor,
+  };
+  const APPEARANCE_ONLY = {              // type → 默认尺寸串(无内容字段,只调外观)
+    favorites: '4x1',
+    gameboy: '2x2',
+    mp3: '2x2',
+    schedule: '4x2',
+    'recent-chat': '4x3',
+  };
   modal.querySelectorAll('[data-type]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const type = btn.dataset.type;
-      if (type === 'favorites') {
-        modal.remove();
-        const opts = await askSizeAndTransparency(container, '4x1');
-        if (!opts) return;
-        await saveNewWidget({
-          type: 'favorites',
-          ...opts.span,
-          transparency: opts.transparency,
-          tilt: opts.tilt,
-          bgColor: opts.bgColor,
-          radius: opts.radius,
-        }, router);
-      } else if (type === 'photo') {
-        // A5: 图片 + 拍立得合并入口。renderPhotoEditor 让用户选 1-3 张,
-        // 提交时按张数决定存 image type(1 张)还是 polaroid type(2-3 张)。
-        renderPhotoEditor(modal, container, router);
-      } else if (type === 'note') {
-        renderNoteEditor(modal, container, router);
-      } else if (type === 'anniversary') {
-        renderAnniversaryEditor(modal, container, router);
-      } else if (type === 'music') {
-        renderMusicEditor(modal, container, router);
-      } else if (type === 'gameboy') {
-        modal.remove();
-        const opts = await askSizeAndTransparency(container, '2x2');
-        if (!opts) return;
-        await saveNewWidget({
-          type: 'gameboy',
-          ...opts.span,
-          transparency: opts.transparency,
-          tilt: opts.tilt,
-          bgColor: opts.bgColor,
-          radius: opts.radius,
-        }, router);
-      } else if (type === 'mp3') {
-        modal.remove();
-        const opts = await askSizeAndTransparency(container, '2x2');
-        if (!opts) return;
-        await saveNewWidget({
-          type: 'mp3',
-          ...opts.span,
-          transparency: opts.transparency,
-          tilt: opts.tilt,
-          bgColor: opts.bgColor,
-          radius: opts.radius,
-        }, router);
-      } else if (type === 'schedule') {
-        modal.remove();
-        const opts = await askSizeAndTransparency(container, '4x2');
-        if (!opts) return;
-        await saveNewWidget({
-          type: 'schedule',
-          ...opts.span,
-          transparency: opts.transparency,
-          tilt: opts.tilt,
-          bgColor: opts.bgColor,
-          radius: opts.radius,
-        }, router);
-      } else if (type === 'recent-chat') {
-        modal.remove();
-        const opts = await askSizeAndTransparency(container, '4x3');
-        if (!opts) return;
-        await saveNewWidget({
-          type: 'recent-chat',
-          ...opts.span,
-          transparency: opts.transparency,
-          tilt: opts.tilt,
-          bgColor: opts.bgColor,
-          radius: opts.radius,
-        }, router);
-      }
+      const editor = CONTENT_EDITORS[type];
+      if (editor) { editor(modal, container, router); return; }
+      const preset = APPEARANCE_ONLY[type];
+      if (!preset) return;
+      modal.remove();
+      const opts = await askSizeAndTransparency(container, preset);
+      if (!opts) return;
+      await saveNewWidget({ type, ...opts }, router);
     });
   });
 }
@@ -176,6 +128,20 @@ function parseSizeFromForm(fd, fallback = { colSpan: 2, rowSpan: 2 }) {
   return {
     colSpan: (Number.isFinite(w) && w >= 1 && w <= 4) ? w : fallback.colSpan,
     rowSpan: (Number.isFinite(h) && h >= 1 && h <= 5) ? h : fallback.rowSpan,
+  };
+}
+
+// 把「外观」表单字段一次性读成可直接 spread 进 widget 的扁平对象:
+// { colSpan, rowSpan, transparency, tilt, bgColor, radius }。每个编辑器 submit
+// 都要这一坨,抽出来免得六处重复。fallback 是 sizeW/sizeH 非法时的兜底尺寸。
+function readAppearanceFields(fd, fallback = { colSpan: 2, rowSpan: 2 }) {
+  const { bgColor, radius } = parseBgColorAndRadius(fd);
+  return {
+    ...parseSizeFromForm(fd, fallback),
+    transparency: parseTransparency(fd.get('transparency')),
+    tilt: parseTilt(fd),
+    bgColor,
+    radius,
   };
 }
 
@@ -372,12 +338,9 @@ function renderNoteEditor(modal, container, router, existing) {
     const text = String(fd.get('text') || '').trim();
     if (!text) return;
     const vertical = fd.get('vertical') === 'on';
-    const span = parseSizeFromForm(fd, { colSpan: 4, rowSpan: 2 });
-    const transparency = parseTransparency(fd.get('transparency'));
-    const tilt = parseTilt(fd);
-    const { bgColor, radius } = parseBgColorAndRadius(fd);
+    const appearance = readAppearanceFields(fd, { colSpan: 4, rowSpan: 2 });
     modal.remove();
-    const patch = { data: text, vertical, ...span, transparency, tilt, bgColor, radius };
+    const patch = { data: text, vertical, ...appearance };
     if (existing) await updateWidget(existing.id, patch, router);
     else await saveNewWidget({ type: 'note', ...patch }, router);
   });
@@ -475,21 +438,15 @@ function renderPhotoEditor(modal, container, router) {
         return;
       }
       const fd = new FormData(modal.querySelector('form'));
-      const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 2 });
-      const transparency = parseTransparency(fd.get('transparency'));
-      const tilt = parseTilt(fd);
-      const { bgColor, radius } = parseBgColorAndRadius(fd);
+      const appearance = readAppearanceFields(fd, { colSpan: 2, rowSpan: 2 });
       modal.remove();
       if (displayMode === 'image') {
-        await saveNewWidget({
-          type: 'image', data: photos[0],
-          ...span, transparency, tilt, bgColor, radius,
-        }, router);
+        await saveNewWidget({ type: 'image', data: photos[0], ...appearance }, router);
       } else {
         await saveNewWidget({
           type: 'polaroid',
           data: { photos, stackOrder: photos.map((_, i) => i) },
-          ...span, transparency, tilt, bgColor, radius,
+          ...appearance,
         }, router);
       }
     });
@@ -544,12 +501,9 @@ async function renderImageEditor(modal, container, router, existing) {
     modal.querySelector('form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(modal.querySelector('form'));
-      const span = parseSizeFromForm(fd, { colSpan: 4, rowSpan: 2 });
-      const transparency = parseTransparency(fd.get('transparency'));
-      const tilt = parseTilt(fd);
-      const { bgColor, radius } = parseBgColorAndRadius(fd);
+      const appearance = readAppearanceFields(fd, { colSpan: 4, rowSpan: 2 });
       modal.remove();
-      await updateWidget(existing.id, { data: imageData, ...span, transparency, tilt, bgColor, radius }, router);
+      await updateWidget(existing.id, { data: imageData, ...appearance }, router);
     });
   }
   render();
@@ -628,18 +582,14 @@ async function renderPolaroidEditor(modal, container, router, existing) {
     modal.querySelector('form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(modal.querySelector('form'));
-      const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 2 });
-      const transparency = parseTransparency(fd.get('transparency'));
-      const tilt = parseTilt(fd);
-      const { bgColor, radius } = parseBgColorAndRadius(fd);
+      const appearance = readAppearanceFields(fd, { colSpan: 2, rowSpan: 2 });
       modal.remove();
       // stackOrder 重置成 [0..n-1] —— 改照片后老的 stackOrder 索引可能指向
       // 不存在的位置。点击交互重新累积 stackOrder。
       const photos = pendingPhotos.filter(Boolean);
       await updateWidget(existing.id, {
         data: { photos, stackOrder: photos.map((_, i) => i) },
-        ...span,
-        transparency, tilt, bgColor, radius,
+        ...appearance,
       }, router);
     });
   }
@@ -774,12 +724,9 @@ async function renderAnniversaryEditor(modal, container, router, existing) {
         data.name = name;
       }
     }
-    const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 1 });
-    const transparency = parseTransparency(fd.get('transparency'));
-    const tilt = parseTilt(fd);
-    const { bgColor, radius } = parseBgColorAndRadius(fd);
+    const appearance = readAppearanceFields(fd, { colSpan: 2, rowSpan: 1 });
     modal.remove();
-    const patch = { data, ...span, transparency, tilt, bgColor, radius };
+    const patch = { data, ...appearance };
     if (existing) await updateWidget(existing.id, patch, router);
     else await saveNewWidget({ type: 'anniversary', ...patch }, router);
   });
@@ -940,25 +887,22 @@ async function renderMusicEditor(modal, container, router, existing) {
     const artist  = String(fd.get('artist')  || '').trim();
     const lyrics  = String(fd.get('lyrics')  || '');
     const playing = fd.get('playing') === 'on';
-    const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 2 });
-    const transparency = parseTransparency(fd.get('transparency'));
-    const tilt = parseTilt(fd);
-    const { bgColor, radius } = parseBgColorAndRadius(fd);
+    const appearance = readAppearanceFields(fd, { colSpan: 2, rowSpan: 2 });
     const data = {
       song, artist, lyrics, playing,
       leftSubject, rightSubject,
       coverImage: coverImageData || undefined,
     };
     modal.remove();
-    const patch = { data, ...span, transparency, tilt, bgColor, radius };
+    const patch = { data, ...appearance };
     if (existing) await updateWidget(existing.id, patch, router);
     else await saveNewWidget({ type: 'music', ...patch }, router);
   });
 }
 
-// Size + transparency modal — used by widget types that have no other
-// content fields (image after file picked, polaroid after photos picked,
-// favorites). Resolves to { span, transparency, bgColor, radius } or null.
+// 外观 modal — 给没有内容字段的纯装饰 widget(favorites / gameboy / mp3 /
+// schedule / recent-chat)用,只问尺寸 + 外观。resolve 出一个可直接 spread 进
+// widget 的扁平对象 { colSpan, rowSpan, transparency, tilt, bgColor, radius };取消则 null。
 function askSizeAndTransparency(container, defaultPreset, existing) {
   // existing 可以是 widget 对象(edit flow)或 null/undefined (add flow)
   const existingSpan = existing ? widgetSpan(existing) : null;
@@ -993,12 +937,8 @@ function askSizeAndTransparency(container, defaultPreset, existing) {
     modal.querySelector('form').addEventListener('submit', (e) => {
       e.preventDefault();
       const fd = new FormData(modal.querySelector('form'));
-      const span = parseSizeFromForm(fd, { colSpan: 2, rowSpan: 2 });
-      const transparency = parseTransparency(fd.get('transparency'));
-      const tilt = parseTilt(fd);
-      const { bgColor, radius } = parseBgColorAndRadius(fd);
       close();
-      resolve({ span, transparency, tilt, bgColor, radius });
+      resolve(readAppearanceFields(fd, { colSpan: 2, rowSpan: 2 }));
     });
   });
 }
@@ -1015,13 +955,7 @@ export async function openEditWidgetModal(container, router, widget) {
   if (widget.type === 'favorites' || widget.type === 'gameboy' || widget.type === 'mp3' || widget.type === 'schedule' || widget.type === 'recent-chat') {
     const opts = await askSizeAndTransparency(container, null, widget);
     if (!opts) return;
-    await updateWidget(widget.id, {
-      ...opts.span,
-      transparency: opts.transparency,
-      tilt: opts.tilt,
-      bgColor: opts.bgColor,
-      radius: opts.radius,
-    }, router);
+    await updateWidget(widget.id, opts, router);
     return;
   }
   // For widgets with content editors, open the existing editor pre-filled.
