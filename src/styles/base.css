@@ -3576,7 +3576,7 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
 }
 .moments-avatar {
   width: 44px; height: 44px;
-  border-radius: var(--radius-md);
+  border-radius: 8px;   /* 跟聊天 .msg-avatar 一致(同款裁切 + 圆角) */
   overflow: hidden; flex: 0 0 auto;
   display: inline-grid; place-items: center;
   background: var(--surface);
@@ -3590,6 +3590,15 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
   font-weight: 600; font-size: 1.1rem;
 }
 .moments-empty { padding: 48px 24px; text-align: center; color: var(--muted); line-height: 1.8; }
+
+/* 「让好友发条动态」操作栏 */
+.moments-actions { display: flex; justify-content: flex-end; padding: 4px 14px 0; }
+.moments-gen-char {
+  border: 1px solid var(--border); background: var(--surface); color: var(--accent);
+  font-size: 0.82rem; padding: 5px 12px; border-radius: var(--radius-sm); cursor: pointer;
+}
+.moments-gen-char:active { transform: scale(0.96); }
+.moments-gen-char:disabled { opacity: 0.55; cursor: default; }
 
 .moments-list { padding: 8px 0 24px; }
 .moment {
@@ -3614,6 +3623,8 @@ body[data-fx-gradient="on"]:not([data-fx-wallpaper="on"]) .theme-editor-page .mi
   font-size: 0.8rem; padding: 3px 9px; border-radius: var(--radius-sm); cursor: pointer;
 }
 .moment-acts button:active { transform: scale(0.95); }
+.moment-acts button:disabled { opacity: 0.55; cursor: default; }
+.moment-react { color: var(--accent) !important; }
 .moment-like.liked { color: var(--accent); }
 .moment-del { color: var(--danger) !important; }
 .moment-heart { width: 13px; height: 13px; fill: currentColor; }

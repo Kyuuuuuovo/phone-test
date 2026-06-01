@@ -1,9 +1,10 @@
 // 朋友圈 (Moments) —— 熟人圈 feed。仅好友可见(不混陌生人)。
 //
 // 你能发动态(文字 + 图)、给任何动态点赞 / 评论 / 删自己的。AI 联动是
-// 懒生成:打开本 tab 时 scanDueMoments 跑一次 —— 你发的动态到期后好友会来
-// 点赞 / 评论,你在动态下评论后好友 / 作者下次打开能回你;另外节流地让好友
-// 自己发动态。生成逻辑全在 core/moments.js,不进 chatMessages。
+// **纯按钮驱动**(铁律 2「积攒后触发」,不自动调 API):
+//   - feed 顶部「让好友发条动态」→ 现造一条角色朋友圈;
+//   - 每条动态上「让好友回应」→ 生成好友点赞/评论(你评论后按它,作者/好友就回你)。
+// 生成逻辑全在 core/moments.js,不进 chatMessages。
 
 import * as db from '../../core/db.js';
 import * as ai from '../../core/ai.js';
@@ -14,9 +15,6 @@ import { esc } from '../../core/util.js';
 const HEART = `<svg class="moment-heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.7-4.3-9.3-8.2C1 10.1 1.8 6.5 5 5.4c2-0.7 4 0.2 5 1.9 1-1.7 3-2.6 5-1.9 3.2 1.1 4 4.7 2.3 7.4C18.7 16.7 12 21 12 21z"/></svg>`;
 
 export async function mountMoments(container, params, router) {
-  // 打开朋友圈:懒生成到期的好友反应 + 节流的好友自发动态。best-effort。
-  try { await momentsCore.scanDueMoments(db, ai); } catch (_) {}
-
   let persona = null;
   async function loadPersona() {
     const s = await db.get('settings', 'default');
@@ -62,6 +60,7 @@ export async function mountMoments(container, params, router) {
             <span class="moment-time">${esc(formatTime(m.createdAt))}</span>
             <span class="moment-acts">
               ${canDelete ? `<button class="moment-del" data-id="${esc(m.id)}">删除</button>` : ''}
+              <button class="moment-react" data-id="${esc(m.id)}" title="让好友点赞 / 评论 / 回你">让好友回应</button>
               <button class="moment-like${liked ? ' liked' : ''}" data-id="${esc(m.id)}">${HEART}<span>${liked ? '已赞' : '赞'}</span></button>
               <button class="moment-comment" data-id="${esc(m.id)}">评论</button>
             </span>
@@ -86,8 +85,11 @@ export async function mountMoments(container, params, router) {
             <span class="moments-avatar moments-me-avatar">${avatarHtml(persona?.name || '我', persona?.avatar)}</span>
           </div>
         </div>
+        <div class="moments-actions">
+          <button class="moments-gen-char">让好友发条动态</button>
+        </div>
         ${all.length === 0
-          ? `<div class="empty-state moments-empty">还没有动态。<br>点右上角发一条,仅好友可见。<br>发完过几分钟回来看,好友可能来点赞或评论。</div>`
+          ? `<div class="empty-state moments-empty">还没有动态。<br>点右上角发一条;或点「让好友发条动态」让某个好友冒个泡。<br>发完 / 评论后,点动态上的「让好友回应」让好友来点赞、评论、回你。</div>`
           : `<div class="moments-list">${all.map(renderMoment).join('')}</div>`}
       </div>`;
   }
@@ -95,9 +97,51 @@ export async function mountMoments(container, params, router) {
   await loadPersona();
   await render();
 
+  // 临时禁用按钮 + 改文字,跑 fn,完事 render;失败弹 alert。
+  async function withBtnBusy(btn, busyText, fn) {
+    const old = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = busyText;
+    try {
+      await fn();
+    } catch (e) {
+      await openAlert(container, { title: '生成失败', message: `${String(e).slice(0, 160)}\n(检查设置里的 API 配置)`, danger: true });
+    } finally {
+      // render() 会重建 DOM,这里的 btn 可能已不在;兜底恢复一下。
+      if (btn.isConnected) { btn.disabled = false; btn.textContent = old; }
+    }
+  }
+
   const onClick = async (e) => {
     if (e.target.closest('.moments-compose')) {
       await openComposeModal(container, persona, render);
+      return;
+    }
+    const genCharBtn = e.target.closest('.moments-gen-char');
+    if (genCharBtn) {
+      await withBtnBusy(genCharBtn, '生成中…', async () => {
+        const r = await momentsCore.generateCharacterMoment(db, ai);
+        if (!r.ok && r.reason === 'no-friends') {
+          await openAlert(container, { title: '还没有好友', message: '先去通讯录里加一个角色,好友才能发朋友圈。' });
+        } else if (!r.ok) {
+          await openAlert(container, { title: '没生成出来', message: '这次没写出内容,再按一次试试。' });
+        }
+        await render();
+      });
+      return;
+    }
+    const reactBtn = e.target.closest('.moment-react');
+    if (reactBtn) {
+      const id = reactBtn.dataset.id;
+      await withBtnBusy(reactBtn, '生成中…', async () => {
+        const r = await momentsCore.generateReactionsFor(db, ai, id);
+        if (!r.ok && r.reason === 'no-friends') {
+          await openAlert(container, { title: '还没有好友', message: '先去通讯录里加一个角色。' });
+        } else if (r.ok && (r.likesAdded + r.commentsAdded) === 0) {
+          await openAlert(container, { title: '好友没反应', message: '这次好友没点赞也没评论,可以再按一次。' });
+        }
+        await render();
+      });
       return;
     }
     const delBtn = e.target.closest('.moment-del');
@@ -127,7 +171,7 @@ export async function mountMoments(container, params, router) {
     const i = m.likes.findIndex(l => l.by === 'user');
     if (i >= 0) m.likes.splice(i, 1);
     else m.likes.push({ by: 'user', name: persona?.name || '我' });
-    await db.set('moments', m);   // 点赞不 arm 反应(赞不需要被回应)
+    await db.set('moments', m);
   }
 
   async function addComment(host, id, onDone) {
@@ -143,10 +187,9 @@ export async function mountMoments(container, params, router) {
     if (!m) return;
     if (!Array.isArray(m.comments)) m.comments = [];
     m.comments.push({ id: db.newId(), by: 'user', name: persona?.name || '我', text, at: Date.now() });
-    // 你评论后,重新 arm 这条的反应 —— 好友 / 作者下次打开朋友圈能回你。
-    m.reactDueAt = Date.now() + momentsCore.randomReactDelay();
     await db.set('moments', m);
     await onDone();
+    // 评论完提示:想让对方回你,点这条上的「让好友回应」。
   }
 
   return () => container.removeEventListener('click', onClick);
@@ -171,7 +214,7 @@ async function openComposeModal(host, persona, onDone) {
             ${images.map((src, i) => `<div class="mc-thumb"><img src="${esc(src)}" alt=""><button type="button" class="mc-thumb-del" data-i="${i}" aria-label="删除">×</button></div>`).join('')}
             ${images.length < 9 ? `<button type="button" class="mc-add">+ 图片</button>` : ''}
           </div>
-          <p class="hint">仅好友可见。发出后几分钟内,好友可能来点赞或评论。</p>
+          <p class="hint">仅好友可见。发出后点动态上的「让好友回应」,好友会来点赞 / 评论。</p>
           <div class="modal-actions">
             <button type="button" class="btn secondary cancel-btn">取消</button>
             <button type="submit" class="btn">发表</button>
@@ -208,7 +251,6 @@ async function openComposeModal(host, persona, onDone) {
         likes: [],
         comments: [],
         visibility: 'all-friends',
-        reactDueAt: now + momentsCore.randomReactDelay(),
         reactedAt: null,
         createdAt: now,
       });

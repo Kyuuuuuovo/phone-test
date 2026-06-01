@@ -1,35 +1,24 @@
-// 朋友圈 (Moments) core —— AI 生成逻辑,懒生成(仿 bottle.js)。
+// 朋友圈 (Moments) core —— AI 生成逻辑,**纯按钮驱动**(用户按键才调 API,
+// 跟聊天「让 AI 回复」一致 — 铁律 2「积攒后触发」)。没有任何自动/定时生成:
 //
-// 朋友圈是「熟人圈」:只有你和你的非拉黑角色(好友)参与,没有陌生人
-// (陌生人是推特要做的)。两类 AI 生成,都 LAZY,只在打开朋友圈 app 时跑
-// (scanDueMoments),不调聊天管线、不进 chatMessages —— 数据单独存在
-// `moments` store,跟 bottles / keepsakes 一样自成一块:
+//   - generateCharacterMoment(db, ai):随机挑一个好友,按 ta 的完整 persona
+//     现写一条朋友圈。页面顶部「让好友发条动态」按钮触发。
+//   - generateReactionsFor(db, ai, momentId):给某条动态生成好友反应 —— 你发的
+//     动态由随机 1-3 个好友点赞/评论;角色发的动态由作者(+1 个其他好友)反应,
+//     这样你在 ta 的动态下评论后,按一下就能让 ta 回你。每条动态上的「让好友回应」
+//     按钮触发。
 //
-//   1. 反应:你发的动态到期后(reactDueAt <= now)→ 随机挑 1-3 个好友,各自
-//      按完整 persona 决定点赞 / 评论。你在某条动态下评论后,页面会把这条的
-//      reactDueAt 重新 arm,好友 / 作者下次打开时能回你。
-//   2. 好友自己发动态:节流地(距上次 ≥3h)让某个好友按 persona 发一条,
-//      让 feed 不只有你自己。
-//
-// prompt 是中性骨架(怎么点赞评论 / 怎么发一条),语气交给 character.persona
+// 都不进 chatMessages、不调聊天管线;数据单独存在 `moments` store(同 bottles /
+// keepsakes)。prompt 是中性骨架(怎么发、怎么反应),语气/内容交给 character.persona
 // (CLAUDE.md 铁律 3 —— 不给具体角色塞行为引导)。
 
 import { HUMANIZER_PROMPT } from './humanizer.js';
 import { parseTolerantJSON } from './util.js';
 
-// 好友看到你发的动态后多久会有反应。比漂流瓶短 —— 朋友圈反应更即时。
-const REACT_DELAY_MIN_MS = 1  * 60 * 1000;   // 1 分钟
-const REACT_DELAY_MAX_MS = 20 * 60 * 1000;   // 20 分钟
-export function randomReactDelay() {
-  return REACT_DELAY_MIN_MS + Math.floor(Math.random() * (REACT_DELAY_MAX_MS - REACT_DELAY_MIN_MS));
-}
-
-// 距上次「好友自己发动态」至少隔这么久,scan 才允许再生成一条(防刷屏)。
-const CHAR_POST_THROTTLE_MS = 3 * 60 * 60 * 1000;  // 3 小时
-// 你发的一条动态,单轮反应最多动用几个好友(控制 API 调用数)。
+// 一条动态一次反应最多动用几个好友(控制 API 调用数)。
 const MAX_REACTORS_PER_PASS = 3;
 
-// ── prompt 骨架(中性,语气交给 persona)──────────────────────────────────
+// ── prompt 骨架(中性,语气/内容交给 persona)──────────────────────────────
 
 const REACT_SYS = `
 你正在刷朋友圈,看到一条动态。按你的人设决定要不要点赞、要不要评论。
@@ -44,39 +33,18 @@ const COMPOSE_SYS = `
 你要发一条朋友圈动态。按你的人设,写一条你此刻会发的朋友圈。
 - 一段话,口语,像真人发朋友圈:日常、心情、吐槽、分享、感慨都行。
 - 20-80 字,不分段、不列点、不加话题标签(#)、不加抬头或署名。
-- 贴合你的人设,别千篇一律、别太甜。
+- **内容要贴合你的身份、处境和最近的生活,别硬凑跟你身份不搭的琐事**;别千篇一律、别太甜。
 - 只输出动态正文,不要任何额外说明。
 `.trim();
 
-// ── scan(打开朋友圈 app 时调用)───────────────────────────────────────────
-
-// 模块级锁:tab 切换可能重复触发,防并发对同一条 moment 各生成一次反应。
-let _scanning = false;
-export async function scanDueMoments(db, ai) {
-  if (_scanning) return 0;
-  _scanning = true;
-  try {
-    const all = await db.getAll('moments');
-    const now = Date.now();
-    const due = all.filter(m => Number.isFinite(m.reactDueAt) && m.reactDueAt > 0 && m.reactDueAt <= now);
-    for (const m of due) {
-      try { await generateReactions(db, ai, m); }
-      catch (e) { console.warn(`[moments] 反应生成失败 ${m.id} — 保留待下次:`, e); }
-    }
-    try { await maybeGenerateCharacterMoment(db, ai); }
-    catch (e) { console.warn('[moments] 好友发动态生成失败:', e); }
-    return due.length;
-  } finally {
-    _scanning = false;
-  }
-}
+// ── 共享小工具 ──────────────────────────────────────────────────────────
 
 async function friendRoster(db) {
   const all = await db.getAll('characters');
   return all.filter(c => !c.blocked && c.id !== '__bear__');
 }
 
-// Fisher–Yates 取前 n 个(不依赖 sort 的稳定性,洗牌更均匀)。
+// Fisher–Yates 取前 n 个。
 function pickN(arr, n) {
   const copy = [...arr];
   for (let i = copy.length - 1; i > 0; i--) {
@@ -86,47 +54,84 @@ function pickN(arr, n) {
   return copy.slice(0, Math.max(0, n));
 }
 
-async function generateReactions(db, ai, moment) {
+// ── 按钮:让某个好友发一条朋友圈 ───────────────────────────────────────────
+export async function generateCharacterMoment(db, ai) {
+  const friends = await friendRoster(db);
+  if (friends.length === 0) return { ok: false, reason: 'no-friends' };
+  const author = friends[Math.floor(Math.random() * friends.length)];
+  const sys = [
+    HUMANIZER_PROMPT,
+    '',
+    '# 你的人设',
+    author.persona || '(无设定)',
+    '',
+    '# 发朋友圈规约',
+    COMPOSE_SYS,
+  ].join('\n').trim();
+  const text = await ai.callAI({
+    systemPrompt: sys,
+    messages: [{ role: 'user', content: '请按你的人设,发一条你此刻会发的朋友圈。' }],
+    temperature: 0.95,
+  });
+  const clean = (text || '').trim();
+  if (!clean) return { ok: false, reason: 'empty' };
+  const moment = {
+    id: db.newId(),
+    authorType: 'character',
+    authorId: author.id,
+    authorName: author.name || '好友',
+    authorAvatar: author.avatar || null,
+    text: clean.slice(0, 280),
+    images: [],
+    likes: [],
+    comments: [],
+    visibility: 'all-friends',
+    reactedAt: null,
+    createdAt: Date.now(),
+  };
+  await db.set('moments', moment);
+  return { ok: true, moment, author: author.name || '好友' };
+}
+
+// ── 按钮:给某条动态生成好友反应(点赞 / 评论 / 回你的评论)────────────────
+export async function generateReactionsFor(db, ai, momentId) {
+  const moment = await db.get('moments', momentId);
+  if (!moment) return { ok: false, reason: 'not-found' };
   if (!Array.isArray(moment.likes)) moment.likes = [];
   if (!Array.isArray(moment.comments)) moment.comments = [];
 
   const friends = await friendRoster(db);
-  if (friends.length === 0) {
-    moment.reactDueAt = null;
-    moment.reactedAt = Date.now();
-    await db.set('moments', moment);
-    return;
-  }
+  if (friends.length === 0) return { ok: false, reason: 'no-friends' };
 
-  // 选反应者:
-  //   角色自己发的动态 → 作者优先(这样你在 ta 的动态下评论能被 ta 回)+ 至多再来 1 个;
-  //   你发的动态 → 随机 1-3 个好友。
+  // 角色发的动态 → 作者优先(好回你的评论)+ 至多再来 1 个;你发的动态 → 随机 1-3 个。
   let reactors;
   if (moment.authorType === 'character') {
     const author = friends.find(c => c.id === moment.authorId);
     const others = pickN(friends.filter(c => c.id !== moment.authorId), 1);
     reactors = [author, ...others].filter(Boolean);
   } else {
-    reactors = pickN(friends, 1 + Math.floor(Math.random() * MAX_REACTORS_PER_PASS));  // 1..3
+    reactors = pickN(friends, 1 + Math.floor(Math.random() * MAX_REACTORS_PER_PASS));
   }
 
+  let likesAdded = 0, commentsAdded = 0;
   for (const c of reactors) {
     try {
       const res = await reactOnce(ai, c, moment);
       if (res.like && !moment.likes.some(l => l.by === c.id)) {
         moment.likes.push({ by: c.id, name: c.name || '' });
+        likesAdded++;
       }
       if (res.comment) {
         moment.comments.push({ id: db.newId(), by: c.id, name: c.name || '', text: res.comment, at: Date.now() });
+        commentsAdded++;
       }
     } catch (e) {
       console.warn('[moments] 单个好友反应失败', c.id, e);
     }
   }
-
-  moment.reactDueAt = null;
   moment.reactedAt = Date.now();
   await db.set('moments', moment);
+  return { ok: true, likesAdded, commentsAdded };
 }
 
 async function reactOnce(ai, character, moment) {
@@ -164,49 +169,4 @@ async function reactOnce(ai, character, moment) {
     like: parsed.like === true,
     comment: typeof parsed.comment === 'string' ? parsed.comment.trim().slice(0, 60) : '',
   };
-}
-
-async function maybeGenerateCharacterMoment(db, ai) {
-  const settings = await db.get('settings', 'default');
-  const last = Number(settings?.lastCharMomentAt) || 0;
-  const now = Date.now();
-  if (now - last < CHAR_POST_THROTTLE_MS) return;
-
-  const friends = await friendRoster(db);
-  if (friends.length === 0) return;
-  const author = friends[Math.floor(Math.random() * friends.length)];
-
-  const sys = [
-    HUMANIZER_PROMPT,
-    '',
-    '# 你的人设',
-    author.persona || '(无设定)',
-    '',
-    '# 发朋友圈规约',
-    COMPOSE_SYS,
-  ].join('\n').trim();
-  const text = await ai.callAI({
-    systemPrompt: sys,
-    messages: [{ role: 'user', content: '请按你的人设,发一条你此刻会发的朋友圈。' }],
-    temperature: 0.95,
-  });
-  const clean = (text || '').trim();
-  if (!clean) return;
-
-  await db.set('moments', {
-    id: db.newId(),
-    authorType: 'character',
-    authorId: author.id,
-    authorName: author.name || '好友',
-    authorAvatar: author.avatar || null,
-    text: clean.slice(0, 280),
-    images: [],
-    likes: [],
-    comments: [],
-    visibility: 'all-friends',
-    reactDueAt: null,   // 好友自己发的不自动引一堆反应;你评论后页面再 arm
-    reactedAt: null,
-    createdAt: now,
-  });
-  await db.updateSettings(s => { s.lastCharMomentAt = now; });
 }
