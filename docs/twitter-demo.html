@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>推特 demo — 个人页 + 陌生人 feed</title>
+<style>
+  :root{
+    --accent:#1d9bf0; --fg:#0f1419; --muted:#536471; --border:#eff3f4; --bg:#fff;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;}
+  body{
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:#aab8c2; min-height:100vh; padding:24px 12px 60px; color:var(--fg);
+    display:flex; flex-direction:column; align-items:center; gap:14px;
+  }
+  .note{max-width:420px; font-size:13px; color:#22303c; line-height:1.7; background:rgba(255,255,255,.7); border-radius:12px; padding:12px 14px;}
+  .note b{color:var(--accent);} .note .k{color:#7a3; font-weight:600;}
+  .frame{
+    width:390px; max-width:100%; background:var(--bg); border-radius:26px; overflow:hidden;
+    box-shadow:0 18px 50px rgba(0,0,0,.3); border:1px solid rgba(0,0,0,.06);
+  }
+  .scroll{height:720px; overflow-y:auto;}
+  /* top bar */
+  .topbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:18px;padding:10px 14px;
+    background:rgba(255,255,255,.85);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+  .topbar .back{font-size:20px;color:var(--fg);}
+  .topbar .who .n{font-weight:800;font-size:16px;}
+  .topbar .who .c{font-size:12px;color:var(--muted);}
+
+  /* cover + avatar */
+  .cover{height:130px;background:linear-gradient(120deg,#1d9bf0,#7a4cf5 60%,#ff7eb3);background-size:cover;background-position:center;}
+  .ava-row{display:flex;justify-content:space-between;align-items:flex-end;padding:0 16px;margin-top:-42px;}
+  .avatar{width:84px;height:84px;border-radius:50%;border:4px solid #fff;background:linear-gradient(135deg,#ffd76a,#ff7eb3);background-size:cover;background-position:center;display:grid;place-items:center;color:#fff;font-size:34px;font-weight:700;}
+  .edit-btn{border:1px solid #cfd9de;background:#fff;color:var(--fg);font-weight:700;font-size:14px;padding:7px 16px;border-radius:999px;margin-bottom:8px;cursor:pointer;}
+
+  .profile{padding:10px 16px 14px;border-bottom:1px solid var(--border);}
+  .profile .name{font-size:20px;font-weight:800;display:flex;align-items:center;gap:5px;}
+  .profile .handle{color:var(--muted);font-size:14px;margin-top:1px;}
+  .profile .bio{font-size:14px;line-height:1.5;margin:10px 0;}
+  .profile .joined{color:var(--muted);font-size:13px;display:flex;align-items:center;gap:6px;}
+  .profile .joined svg{width:15px;height:15px;fill:var(--muted);}
+  .profile .stats{display:flex;gap:18px;margin-top:10px;font-size:13px;color:var(--muted);}
+  .profile .stats b{color:var(--fg);}
+  .profile .stats .soon{opacity:.5;}
+
+  .tabs{display:flex;border-bottom:1px solid var(--border);}
+  .tabs div{flex:1;text-align:center;padding:14px 0;font-size:14px;font-weight:700;color:var(--muted);position:relative;}
+  .tabs div.on{color:var(--fg);}
+  .tabs div.on::after{content:"";position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:46px;height:4px;border-radius:2px;background:var(--accent);}
+
+  /* compose */
+  .compose{display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);align-items:center;}
+  .compose .me{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#ffd76a,#ff7eb3);flex:0 0 auto;}
+  .compose .ph{color:var(--muted);font-size:17px;flex:1;}
+  .compose .post{background:var(--accent);color:#fff;font-weight:800;font-size:14px;border:none;border-radius:999px;padding:8px 16px;}
+
+  /* tweet */
+  .tweet{display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);}
+  .tweet .av{width:44px;height:44px;border-radius:50%;flex:0 0 auto;background-size:cover;background-position:center;display:grid;place-items:center;color:#fff;font-weight:700;font-size:18px;}
+  .tweet .body{flex:1;min-width:0;}
+  .tweet .head{display:flex;align-items:center;gap:5px;font-size:14px;white-space:nowrap;}
+  .tweet .head .nm{font-weight:800;overflow:hidden;text-overflow:ellipsis;}
+  .tweet .head .hd{color:var(--muted);overflow:hidden;text-overflow:ellipsis;}
+  .tweet .txt{font-size:15px;line-height:1.5;margin:3px 0 8px;white-space:pre-wrap;}
+  .tweet .acts{display:flex;justify-content:space-between;max-width:280px;color:var(--muted);font-size:13px;}
+  .tweet .acts span{display:inline-flex;align-items:center;gap:5px;}
+  .tweet .acts svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;}
+  .tweet .acts .liked{color:#f91880;}
+  .tweet .acts .liked svg{fill:#f91880;stroke:#f91880;}
+  .fishbar{padding:14px 16px;text-align:center;}
+  .fishbar button{border:1px solid #cfd9de;background:#fff;color:var(--accent);font-weight:700;font-size:14px;padding:9px 18px;border-radius:999px;}
+</style>
+</head>
+<body>
+  <div class="note">
+    <b>推特 demo</b> —— 个人页(可自定义<span class="k">封面 / 头像 / 名字 / @账号 / 签名 / 加入日期</span>)+ 陌生人 feed(AI 现造的网友发帖,复用漂流瓶陌生人生成器;看对眼能「加好友」升格成正式角色)。<b>关注者按你说的先不做</b>。这是视觉草样,你 OK 我就照这个做(新 store + 页面)。
+  </div>
+
+  <div class="frame"><div class="scroll">
+    <div class="topbar">
+      <span class="back">‹</span>
+      <div class="who"><div class="n">阿七</div><div class="c">128 推文</div></div>
+    </div>
+
+    <!-- 个人页头部:全部可自定义 -->
+    <div class="cover"></div>
+    <div class="ava-row">
+      <div class="avatar">七</div>
+      <button class="edit-btn">编辑资料</button>
+    </div>
+    <div class="profile">
+      <div class="name">阿七</div>
+      <div class="handle">@aqi_0707</div>
+      <div class="bio">写点东西，养只猫，偶尔失眠。这里都是碎碎念。</div>
+      <div class="joined">
+        <svg viewBox="0 0 24 24"><path d="M7 11h5v5H7zM5 4h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1zm2-3v3M17 1v3M4 8h16"/></svg>
+        2024年3月加入
+      </div>
+      <div class="stats">
+        <span><b>86</b> 正在关注</span>
+        <span><b>1,204</b> 关注者</span>
+        <span class="soon">（关注功能暂缓）</span>
+      </div>
+    </div>
+
+    <div class="tabs"><div class="on">推文</div><div>回复</div><div>媒体</div><div>喜欢</div></div>
+
+    <!-- 你自己发推 -->
+    <div class="compose">
+      <div class="me"></div>
+      <div class="ph">有什么新鲜事？</div>
+      <button class="post">发推</button>
+    </div>
+
+    <!-- 你的一条 -->
+    <div class="tweet">
+      <div class="av" style="background:linear-gradient(135deg,#ffd76a,#ff7eb3)">七</div>
+      <div class="body">
+        <div class="head"><span class="nm">阿七</span><span class="hd">@aqi_0707 · 2小时</span></div>
+        <div class="txt">凌晨三点的泡面就是比白天香，这是什么道理。</div>
+        <div class="acts">
+          <span><svg viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 01-12 7.7L3 21l1.8-6A8.5 8.5 0 1121 11.5z"/></svg>4</span>
+          <span><svg viewBox="0 0 24 24"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"/></svg>2</span>
+          <span class="liked"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9.3-8.2C1 10 1.8 6.4 5 5.3c2-.7 4 .2 5 1.9 1-1.7 3-2.6 5-1.9 3.2 1.1 4 4.7 2.3 7.5C19 16.5 12 21 12 21z"/></svg>23</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 陌生人 feed:多样化(漂流瓶生成器风格)-->
+    <div class="tweet">
+      <div class="av" style="background:linear-gradient(135deg,#1d9bf0,#13c1c1)">K</div>
+      <div class="body">
+        <div class="head"><span class="nm">夜班护士 Kira</span><span class="hd">@kira_nightshift · 5小时</span></div>
+        <div class="txt">又是连上三个夜班的一周。给自己买了束花，放在护士站，谁路过都能看。</div>
+        <div class="acts">
+          <span><svg viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 01-12 7.7L3 21l1.8-6A8.5 8.5 0 1121 11.5z"/></svg>12</span>
+          <span><svg viewBox="0 0 24 24"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"/></svg>8</span>
+          <span><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9.3-8.2C1 10 1.8 6.4 5 5.3c2-.7 4 .2 5 1.9 1-1.7 3-2.6 5-1.9 3.2 1.1 4 4.7 2.3 7.5C19 16.5 12 21 12 21z"/></svg>89</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="tweet">
+      <div class="av" style="background:linear-gradient(135deg,#536471,#0f1419)">冷</div>
+      <div class="body">
+        <div class="head"><span class="nm">老陈不想说话</span><span class="hd">@chen_silent · 昨天</span></div>
+        <div class="txt">人到中年最大的奢侈，是不用回任何消息的一个下午。</div>
+        <div class="acts">
+          <span><svg viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 01-12 7.7L3 21l1.8-6A8.5 8.5 0 1121 11.5z"/></svg>30</span>
+          <span><svg viewBox="0 0 24 24"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"/></svg>140</span>
+          <span><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9.3-8.2C1 10 1.8 6.4 5 5.3c2-.7 4 .2 5 1.9 1-1.7 3-2.6 5-1.9 3.2 1.1 4 4.7 2.3 7.5C19 16.5 12 21 12 21z"/></svg>521</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="tweet">
+      <div class="av" style="background:linear-gradient(135deg,#ff7eb3,#ffd76a)">软</div>
+      <div class="body">
+        <div class="head"><span class="nm">是软糖呀🍬</span><span class="hd">@soft_candy · 昨天</span></div>
+        <div class="txt">家人们谁懂啊！！追的剧今天大结局我哭成狗，求推荐下一部 😭</div>
+        <div class="acts">
+          <span><svg viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 01-12 7.7L3 21l1.8-6A8.5 8.5 0 1121 11.5z"/></svg>56</span>
+          <span><svg viewBox="0 0 24 24"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"/></svg>9</span>
+          <span><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9.3-8.2C1 10 1.8 6.4 5 5.3c2-.7 4 .2 5 1.9 1-1.7 3-2.6 5-1.9 3.2 1.1 4 4.7 2.3 7.5C19 16.5 12 21 12 21z"/></svg>77</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="fishbar"><button>＋ 刷出更多网友</button></div>
+  </div></div>
+
+  <div class="note">
+    交互设想:进 app 默认看 feed(陌生人广场);点头像/「我」看个人页;「发推」发自己的;
+    点某个网友 → 看 ta 主页 + 「加好友」(复用 <b>promoteStrangerToFriend</b>);「刷出更多网友」= 现造一批新陌生人(复用漂流瓶生成器,<b>按钮触发</b>,不自动)。
+  </div>
+</body>
+</html>

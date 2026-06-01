@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MP3 / 游戏机 widget 重设计 demo</title>
+<style>
+  :root { --accent:#6a4cf5; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin:0; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    color:#1a1a1a;
+    /* 用带图案的壁纸背景,这样半透明/玻璃外壳能透出底纹 —— 看"通透"效果 */
+    background:
+      radial-gradient(circle at 20% 20%, #ffd9a0 0, transparent 40%),
+      radial-gradient(circle at 80% 30%, #a0c4ff 0, transparent 45%),
+      radial-gradient(circle at 50% 80%, #ffc2e2 0, transparent 50%),
+      linear-gradient(135deg, #b8c6db, #f5f7fa);
+    min-height:100vh; padding:24px 16px 60px;
+  }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .sub { color:#555; font-size:13px; margin:0 0 24px; max-width:680px; line-height:1.7; }
+  .grid { display:flex; flex-wrap:wrap; gap:28px; align-items:flex-start; }
+  .item { width:200px; }
+  .item > .cap { font-size:12px; color:#333; margin-top:10px; line-height:1.6; }
+  .item > .cap b { color:var(--accent); }
+  .tag { display:inline-block; font-size:11px; background:rgba(106,76,245,.12); color:var(--accent); padding:2px 7px; border-radius:6px; margin-bottom:8px; }
+
+  /* ───────── MP3 变体 A:玻璃「正在播放」卡 ───────── */
+  .mp3-glass {
+    width:200px; height:200px; border-radius:22px; padding:16px;
+    background:rgba(255,255,255,.28);
+    backdrop-filter:blur(18px) saturate(1.4); -webkit-backdrop-filter:blur(18px) saturate(1.4);
+    border:1px solid rgba(255,255,255,.55);
+    box-shadow:0 8px 30px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.6);
+    display:flex; flex-direction:column; gap:12px; color:#222;
+  }
+  .mp3-glass .top { display:flex; gap:12px; align-items:center; }
+  .mp3-glass .cover {
+    width:64px; height:64px; border-radius:14px; flex:0 0 auto;
+    background:linear-gradient(135deg,#ff8fb1,#6a4cf5);
+    box-shadow:0 4px 14px rgba(0,0,0,.25);
+    display:grid; place-items:center; color:#fff; font-size:24px;
+    background-size:cover; background-position:center;
+  }
+  .mp3-glass .meta { min-width:0; }
+  .mp3-glass .song { font-weight:700; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mp3-glass .artist { font-size:12px; color:#555; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mp3-glass .bar { height:4px; border-radius:2px; background:rgba(0,0,0,.12); overflow:hidden; }
+  .mp3-glass .bar > i { display:block; height:100%; width:42%; background:var(--accent); border-radius:2px; }
+  .mp3-glass .ctrl { display:flex; justify-content:center; gap:22px; align-items:center; color:#333; }
+  .mp3-glass .ctrl svg { width:22px; height:22px; fill:currentColor; }
+  .mp3-glass .ctrl .play { width:34px; height:34px; border-radius:50%; background:var(--accent); display:grid; place-items:center; }
+  .mp3-glass .ctrl .play svg { fill:#fff; width:16px; height:16px; margin-left:2px; }
+
+  /* ───────── MP3 变体 B:iPod classic(自定义封面进屏幕)───────── */
+  .ipod {
+    width:170px; height:200px; border-radius:20px; padding:14px;
+    background:linear-gradient(160deg,#fafafa,#dcdce0);
+    border:1px solid rgba(0,0,0,.08);
+    box-shadow:0 8px 24px rgba(0,0,0,.2), inset 0 1px 0 #fff;
+    display:flex; flex-direction:column; align-items:center; gap:12px;
+  }
+  .ipod .screen {
+    width:100%; height:84px; border-radius:8px; overflow:hidden;
+    background:linear-gradient(135deg,#2bd6c4,#6a4cf5); position:relative;
+    display:flex; align-items:flex-end; padding:8px; color:#fff;
+    box-shadow:inset 0 0 0 2px rgba(0,0,0,.15);
+    background-size:cover; background-position:center;
+  }
+  .ipod .screen .t { font-size:12px; font-weight:700; text-shadow:0 1px 3px rgba(0,0,0,.4); }
+  .ipod .wheel {
+    width:96px; height:96px; border-radius:50%;
+    background:radial-gradient(circle at 50% 40%, #fff, #e6e6ea);
+    box-shadow:inset 0 2px 6px rgba(0,0,0,.12), 0 2px 4px rgba(0,0,0,.1);
+    display:grid; place-items:center; position:relative;
+  }
+  .ipod .wheel::after { content:""; width:34px; height:34px; border-radius:50%; background:#f3f3f5; box-shadow:inset 0 1px 3px rgba(0,0,0,.15); }
+  .ipod .wheel span { position:absolute; font-size:9px; color:#999; }
+  .ipod .wheel .mu{top:8px} .ipod .wheel .me{bottom:8px} .ipod .wheel .pr{left:10px} .ipod .wheel .nx{right:10px}
+
+  /* ───────── 游戏机 变体 A:经典灰 GB(自定义屏幕)───────── */
+  .gb {
+    width:160px; height:200px; border-radius:14px 14px 36px 14px; padding:14px;
+    background:linear-gradient(160deg,#e9e7df,#c9c6ba);
+    box-shadow:0 8px 22px rgba(0,0,0,.22), inset 0 1px 0 #fff;
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .gb .screenwrap { background:#5a5f4a; border-radius:8px 8px 16px 8px; padding:12px 16px; box-shadow:inset 0 2px 6px rgba(0,0,0,.4); }
+  .gb .screen {
+    background:#9bbc0f; height:74px; border-radius:3px; overflow:hidden;
+    display:grid; place-items:center; color:#0f380f; font-size:12px; text-align:center; padding:4px;
+    box-shadow:inset 0 0 0 2px #8aa80c; background-size:cover; background-position:center;
+    image-rendering:pixelated;
+  }
+  .gb .brand { font-size:9px; color:#3a3550; font-style:italic; font-weight:700; text-align:center; }
+  .gb .pad { display:flex; justify-content:space-between; align-items:center; padding:0 6px; }
+  .gb .dpad { width:34px; height:34px; position:relative; }
+  .gb .dpad::before,.gb .dpad::after { content:""; position:absolute; background:#3a3a40; border-radius:3px; }
+  .gb .dpad::before { width:12px; height:34px; left:11px; } .gb .dpad::after { width:34px; height:12px; top:11px; }
+  .gb .ab { display:flex; gap:8px; }
+  .gb .ab i { width:18px; height:18px; border-radius:50%; background:#9a2257; box-shadow:0 2px 3px rgba(0,0,0,.3); }
+
+  /* ───────── 游戏机 变体 B:半透明 GBC「通透」───────── */
+  .gbc {
+    width:160px; height:200px; border-radius:18px; padding:14px;
+    background:rgba(150,90,220,.30);
+    backdrop-filter:blur(10px) saturate(1.5); -webkit-backdrop-filter:blur(10px) saturate(1.5);
+    border:1px solid rgba(255,255,255,.5);
+    box-shadow:0 8px 26px rgba(80,30,140,.3), inset 0 1px 0 rgba(255,255,255,.7);
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .gbc .screenwrap { background:rgba(40,20,70,.45); border-radius:10px; padding:12px; box-shadow:inset 0 2px 8px rgba(0,0,0,.4); }
+  .gbc .screen {
+    height:78px; border-radius:4px; overflow:hidden; display:grid; place-items:center;
+    background:linear-gradient(135deg,#1a1233,#3a2a6a); color:#e6dfc8; font-size:12px; text-align:center; padding:6px;
+    box-shadow:inset 0 0 14px rgba(150,110,255,.4); background-size:cover; background-position:center;
+  }
+  .gbc .pad { display:flex; justify-content:space-between; align-items:center; padding:0 6px; }
+  .gbc .dpad { width:32px; height:32px; position:relative; }
+  .gbc .dpad::before,.gbc .dpad::after { content:""; position:absolute; background:rgba(255,255,255,.55); border-radius:3px; }
+  .gbc .dpad::before { width:11px; height:32px; left:10px; } .gbc .dpad::after { width:32px; height:11px; top:10px; }
+  .gbc .ab { display:flex; gap:8px; }
+  .gbc .ab i { width:17px; height:17px; border-radius:50%; background:rgba(255,255,255,.7); box-shadow:0 2px 3px rgba(0,0,0,.2); }
+</style>
+</head>
+<body>
+  <h1>MP3 / 游戏机 widget 重设计 demo</h1>
+  <p class="sub">
+    给你挑选用的草样。重点:① 外壳更精致(玻璃 / 半透明 / 拟物),底纹是壁纸,放在桌面上能"通透"地透出来;
+    ② 里面的内容<b>可自定义</b>(MP3 = 封面图 + 歌名歌手;游戏机 = 屏幕图 / 一句像素文字)。
+    告诉我你喜欢哪个变体、要不要混搭,我再接进真 widget(加自定义字段)。
+  </p>
+
+  <div class="grid">
+    <!-- MP3 A -->
+    <div class="item">
+      <span class="tag">MP3 · 变体 A · 玻璃卡</span>
+      <div class="mp3-glass">
+        <div class="top">
+          <div class="cover">♪</div>
+          <div class="meta">
+            <div class="song">夜曲</div>
+            <div class="artist">周杰伦</div>
+          </div>
+        </div>
+        <div class="bar"><i></i></div>
+        <div class="ctrl">
+          <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+          <span class="play"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span>
+          <svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 6l8.5 6L6 18z"/></svg>
+        </div>
+      </div>
+      <div class="cap">磨砂玻璃,透出壁纸。<b>可自定义</b>:封面图(留空=渐变+♪)、歌名、歌手、进度。</div>
+    </div>
+
+    <!-- MP3 B -->
+    <div class="item">
+      <span class="tag">MP3 · 变体 B · iPod</span>
+      <div class="ipod">
+        <div class="screen"><span class="t">正在播放 · 夜曲</span></div>
+        <div class="wheel">
+          <span class="mu">MENU</span><span class="me">≡</span><span class="pr">⏮</span><span class="nx">⏭</span>
+        </div>
+      </div>
+      <div class="cap">iPod classic 致敬。<b>可自定义</b>:屏幕里放专辑封面图 / 自定义文字。</div>
+    </div>
+
+    <!-- GB A -->
+    <div class="item">
+      <span class="tag">游戏机 · 变体 A · 经典灰</span>
+      <div class="gb">
+        <div class="screenwrap"><div class="screen">按 START<br>开始游戏</div></div>
+        <div class="brand">GAME WIDGET</div>
+        <div class="pad">
+          <div class="dpad"></div>
+          <div class="ab"><i></i><i></i></div>
+        </div>
+      </div>
+      <div class="cap">经典 GB。<b>可自定义</b>:屏幕放图(头像 / 像素图)或一句话文字。</div>
+    </div>
+
+    <!-- GB B -->
+    <div class="item">
+      <span class="tag">游戏机 · 变体 B · 半透明「通透」</span>
+      <div class="gbc">
+        <div class="screenwrap"><div class="screen">HELLO<br>♥ ♥ ♥</div></div>
+        <div class="pad">
+          <div class="dpad"></div>
+          <div class="ab"><i></i><i></i></div>
+        </div>
+      </div>
+      <div class="cap">半透明"原子紫"果冻壳,真·通透。<b>可自定义</b>:屏幕图 / 文字;外壳色调也能跟主题走。</div>
+    </div>
+  </div>
+</body>
+</html>
