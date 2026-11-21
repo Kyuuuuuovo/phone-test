@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>宠物机 · 外观 demo v2</title>
+<!--
+  宠物机(电子宠物机)外观设计稿 v2 — 纯静态,不接入 app。
+  本版新增:
+    1) 程序化宠物生成器 —— 手绘像素底模 × 随机配色 × 随机花纹 × 腮红。
+       关键点:随机的是「换色 / 花纹」,底模是手画的,所以怎么摇都好看,
+       不是 AI 出图(回应 user「AI 生成不好看」的担心)。
+    2) 孵蛋:给一颗蛋,敲一敲孵出随机宠物。
+    3) 像素房间 / 户外背景(参考角落生物宠物机的场景)。
+    4) 金币 + 商店(食物 / 玩具)+ 户外小游戏赚金币的闭环。
+    5) 顶部挂绳孔做成更清楚的椭圆环(回应 user 的疑问)。
+  配色仍全部从主题变量(--accent / --bg / --surface / --border)派生,
+  13 套主题各有一台对应配色的机子。宠物本体用自己的随机配色,不跟主题变。
+-->
+<style>
+  :root{
+    --bg:#FFF5F8; --fg:#3D2530; --surface:#FFFAFB; --muted:#B89AA3;
+    --border:#F5DEE5; --accent:#E08AA0;
+    --shell-hi:#f3c3d1; --shell:#E08AA0; --shell-lo:#c97690; --shell-edge:#a85f72;
+    --screen-bg:#fff3f6; --screen-edge:#e9d2da; --screen-grid:rgba(0,0,0,.05);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0}
+  body{
+    font-family:"Hiragino Sans GB","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--bg); color:var(--fg); min-height:100vh; padding:26px 16px 60px;
+    transition:background .25s,color .25s; line-height:1.6;
+  }
+  .wrap{max-width:1000px; margin:0 auto}
+  .hdr{text-align:center; margin-bottom:20px}
+  .hdr h1{font-size:20px; margin:0 0 6px; letter-spacing:.5px}
+  .hdr p{margin:0; color:var(--muted); font-size:13px}
+  .layout{display:grid; grid-template-columns:330px 1fr; gap:28px; align-items:start}
+  @media (max-width:780px){ .layout{grid-template-columns:1fr; gap:24px} }
+
+  /* ===================== 宠物机 ===================== */
+  .machine-col{display:flex; flex-direction:column; align-items:center; gap:12px; position:sticky; top:18px}
+  @media (max-width:780px){ .machine-col{position:static} }
+  .machine{position:relative; width:300px; filter:drop-shadow(0 6px 13px rgba(0,0,0,.07))}
+
+  /* 顶部挂绳孔(椭圆环)*/
+  .machine__strap{
+    width:30px; height:30px; border-radius:50%;
+    border:6px solid var(--shell-edge); background:var(--bg);
+    margin:0 auto -13px; position:relative; z-index:2;
+    box-shadow:inset 0 0 0 2px var(--shell-hi);
+  }
+  /* 机身轮廓用 SVG 渲染(支持方形/蛋形/云朵/房子),HTML 内容叠在上面 */
+  .machine__shell{ position:relative; width:100%; aspect-ratio:120/132 }
+  .shell-bg{ position:absolute; inset:0 } .shell-bg svg{ display:block }
+  .machine__brand{ position:absolute; top:7%; left:0; right:0; text-align:center; font-size:10px; letter-spacing:3px; font-weight:700; color:var(--shell-edge); opacity:.6; user-select:none; z-index:1 }
+  .machine[data-shape="house"] .machine__brand{ top:12% }
+
+  .screen{
+    position:absolute; z-index:1; border-radius:16px; overflow:hidden;
+    background:var(--screen-bg); border:3px solid var(--screen-edge);
+    box-shadow:inset 0 2px 8px rgba(0,0,0,.18);
+  }
+  .machine[data-shape="square"] .screen{ top:22%; left:15%; width:70%; height:56% }
+  .machine[data-shape="egg"]    .screen{ top:25%; left:20%; width:60%; height:48% }
+  .machine[data-shape="house"]  .screen{ top:33%; left:19%; width:62%; height:45% }
+  .machine[data-shape="cloud"]  .screen{ top:32%; left:23%; width:54%; height:40% }
+  .machine[data-shape="house"] .bob, .machine[data-shape="cloud"] .bob{ --px:4px }
+
+  .row{display:flex;gap:7px;flex-wrap:wrap}
+  .chip{border:1px solid var(--border);background:var(--bg);color:var(--fg);border-radius:18px;padding:6px 12px;font-size:12px;cursor:pointer;transition:all .12s}
+  .chip:hover{border-color:var(--accent)} .chip.sel{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .swatch{width:12px;height:12px;border-radius:50%;display:inline-block;vertical-align:-1px;margin-right:5px;border:1px solid rgba(0,0,0,.12)}
+  .screen::after{ /* LCD 点阵 */
+    content:""; position:absolute; inset:0; pointer-events:none; z-index:3;
+    background-image:linear-gradient(var(--screen-grid) 1px,transparent 1px),linear-gradient(90deg,var(--screen-grid) 1px,transparent 1px);
+    background-size:6px 6px; opacity:.6;
+  }
+  .screen__top{
+    position:absolute; top:5px; left:7px; right:7px; z-index:4;
+    display:flex; justify-content:space-between; align-items:center; font-size:10px; color:var(--fg);
+  }
+  .hud{display:flex; gap:3px; align-items:center; background:color-mix(in srgb,var(--screen-bg) 70%,#fff); border-radius:8px; padding:1px 5px}
+  .hud svg{width:11px;height:11px}
+  .screen__name{font-weight:700; font-size:10px}
+  .screen__name span{opacity:.6; font-weight:400; font-size:9px}
+
+  /* 场景背景 */
+  .scene{position:absolute; inset:0; z-index:1; overflow:hidden}
+  .scene b{position:absolute; display:block}
+  /* 房间 */
+  .rm-wall{inset:0 0 36% 0; background:#f3e6d8}
+  .rm-floor{inset:64% 0 0 0; background:#e3c7a6}
+  .rm-window{left:12%; top:16%; width:28%; height:30%; background:linear-gradient(#bfe1f5,#dcefff)}
+  .rm-window2{left:12%; top:16%; width:28%; height:30%; border:3px solid #d8b58a; box-shadow:inset 0 0 0 1px #d8b58a}
+  .rm-rug{left:50%; bottom:16%; width:74%; height:14%; transform:translateX(-50%); background:#e9a6b8; border-radius:50%; opacity:.7}
+  .rm-pot{right:12%; bottom:23%; width:14%; height:11%; background:#c98a5a; border-radius:3px 3px 5px 5px}
+  .rm-leaf{right:13%; bottom:32%; width:12%; height:16%; background:#8fd6a8; border-radius:50% 50% 50% 50%/60% 60% 40% 40%}
+  /* 户外 */
+  .ou-sky{inset:0 0 30% 0; background:linear-gradient(#bfe3f7,#e6f4ff)}
+  .ou-ground{inset:70% 0 0 0; background:#a7d486}
+  .ou-ground2{inset:70% 0 0 0; background:repeating-linear-gradient(90deg,transparent 0 14px,#98c878 14px 16px)}
+  .ou-sun{left:13%; top:12%; width:34px; height:34px; background:#ffd95e; border-radius:50%; box-shadow:0 0 0 4px rgba(255,217,94,.35)}
+  .ou-cloud{right:16%; top:16%; width:40px; height:16px; background:#fff; border-radius:12px; box-shadow:-12px 4px 0 -2px #fff,12px 4px 0 -3px #fff}
+  .ou-trunk{right:18%; bottom:24%; width:8px; height:18%; background:#a6704a}
+  .ou-tree{right:11%; bottom:34%; width:22%; height:24%; background:#7cc48c; border-radius:50%}
+
+  .screen__pet{position:absolute; left:0; right:0; top:12%; bottom:30px; display:flex; align-items:flex-end; justify-content:center; z-index:2}
+  .bob{position:relative; --px:5px; animation:bob 2.6s ease-in-out infinite; transform-origin:bottom center}
+  .acc-layers{position:absolute; top:0; left:0; z-index:2; pointer-events:none}
+  .acc-layers .px-grid{position:absolute; top:0; left:0}
+  .bob.hop{animation:hop .5s ease}
+  @keyframes bob{0%,100%{transform:translateY(0) scaleY(1)}50%{transform:translateY(-7%) scaleY(1.02)}}
+  @keyframes hop{0%{transform:translateY(0)}30%{transform:translateY(-32%) scaleY(1.06)}60%{transform:translateY(0) scaleY(.94)}100%{transform:translateY(0)}}
+  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-3px) rotate(-4deg)}75%{transform:translateX(3px) rotate(4deg)}}
+  .bob.shake{animation:shake .3s ease}
+  .px-grid{display:grid; grid-template-columns:repeat(16,var(--px,9px)); line-height:0}
+  .px-grid i{width:var(--px,9px); height:var(--px,9px); display:block}
+  .mouth{position:absolute; left:50%; top:52%; transform:translateX(-50%); width:calc(var(--px) * 3.6); z-index:3; pointer-events:none}
+  .mouth svg{width:100%; height:auto; display:block}
+  .shadow{position:absolute; left:50%; bottom:26px; transform:translateX(-50%); width:84px; height:11px; border-radius:50%; background:rgba(0,0,0,.12); z-index:1}
+
+  .screen__acts{position:absolute; left:0; right:0; bottom:4px; z-index:4; display:flex; justify-content:space-around; align-items:flex-end; padding:0 7px}
+  .act{display:flex; flex-direction:column; align-items:center; gap:1px; opacity:.5; transition:opacity .15s,transform .15s; cursor:pointer}
+  .act svg{width:17px;height:17px;color:var(--fg)}
+  .act .cur{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:5px solid var(--accent);opacity:0;transition:opacity .15s}
+  .act.sel{opacity:1;transform:translateY(-2px)} .act.sel .cur{opacity:1}
+  .act .label{font-size:8px;color:var(--fg)}
+
+  .fx{position:absolute; z-index:5; pointer-events:none}
+  .fx svg{width:14px;height:14px}
+  @keyframes floatup{0%{transform:translateY(0) scale(.6);opacity:0}20%{opacity:1}100%{transform:translateY(-44px) scale(1);opacity:0}}
+
+  /* 小游戏 */
+  .target{position:absolute; z-index:5; cursor:pointer; animation:pop .15s ease}
+  .target svg{width:22px;height:22px; filter:drop-shadow(0 2px 2px rgba(0,0,0,.2))}
+  @keyframes pop{from{transform:scale(.3)}to{transform:scale(1)}}
+  .game-hud{position:absolute; top:22px; left:50%; transform:translateX(-50%); z-index:6; background:rgba(0,0,0,.55); color:#fff; font-size:11px; padding:3px 10px; border-radius:20px; white-space:nowrap}
+  /* 像素赛车小游戏 */
+  .race{position:absolute; inset:0; z-index:6; overflow:hidden; background:#bfe3a8}
+  .race .road{position:absolute; left:17%; right:17%; top:0; bottom:0; background:#7d828c}
+  .race .lane-line{position:absolute; top:0; bottom:0; width:3px; transform:translateX(-50%); background:repeating-linear-gradient(#fff 0 10px, transparent 10px 22px)}
+  .race .racer{position:absolute; bottom:11%; transform:translateX(-50%); transition:left .09s; z-index:2}
+  .race .obstacle{position:absolute; width:15%; height:9%; transform:translateX(-50%); background:#e08a8a; border:2px solid #b85b5b; border-radius:3px; z-index:1}
+  .race-hud{position:absolute; top:5px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.5); color:#fff; font-size:10px; padding:2px 9px; border-radius:10px; white-space:nowrap; z-index:3}
+
+  .machine__btns{display:flex; justify-content:center; gap:28px; margin-top:16px}
+  .pbtn{width:42px;height:42px;border-radius:50%;border:3px solid var(--shell-edge);
+    background:radial-gradient(circle at 35% 30%,var(--shell-hi),var(--shell-lo));
+    color:var(--shell-edge);display:flex;align-items:center;justify-content:center;cursor:pointer;
+    box-shadow:0 4px 0 var(--shell-edge);transition:transform .08s,box-shadow .08s}
+  .pbtn svg{width:17px;height:17px}
+  .pbtn:active{transform:translateY(4px);box-shadow:0 0 0 var(--shell-edge)}
+  .btnhint{text-align:center;font-size:10px;color:var(--muted);margin-top:7px;letter-spacing:1px}
+
+  /* ===================== 控制面板 ===================== */
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px 16px 16px;margin-bottom:14px}
+  .panel h2{font-size:12px;margin:0 0 11px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;font-weight:700;display:flex;justify-content:space-between;align-items:center}
+  .panel h2 .coin{display:flex;gap:4px;align-items:center;color:var(--fg);font-size:13px}
+  .panel h2 .coin svg{width:14px;height:14px;color:#f4c430}
+
+  .btn{border:1px solid var(--border);background:var(--bg);color:var(--fg);border-radius:10px;padding:9px 12px;font-size:13px;cursor:pointer;transition:all .12s}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .btnrow{display:flex;gap:8px;margin-bottom:10px}
+  .btnrow .btn{flex:1}
+
+  .species{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:6px}
+  .sp{border:2px solid var(--border);border-radius:12px;padding:5px 4px 3px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;background:var(--bg);width:54px;transition:border-color .12s,transform .1s}
+  .sp:hover{transform:translateY(-2px)} .sp.sel{border-color:var(--accent)}
+  .sp .px-grid{--px:2.6px} .sp .nm{font-size:10px}
+  .petmeta{font-size:11px;color:var(--muted);margin-top:4px}
+  .hint{font-size:11px;color:var(--muted);margin-top:7px}
+
+  .stat{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+  .stat svg{width:15px;height:15px;color:var(--accent);flex:none}
+  .stat .lbl{width:32px;font-size:12px;flex:none}
+  .bar{flex:1;height:11px;background:var(--bg);border:1px solid var(--border);border-radius:7px;overflow:hidden;display:flex;gap:1px;padding:1px}
+  .bar i{flex:1;border-radius:1px;background:var(--border)} .bar i.on{background:var(--accent)}
+  .stat .val{width:30px;text-align:right;font-size:11px;color:var(--muted)}
+
+  .shop{display:flex;flex-direction:column;gap:7px}
+  .shop .sub{font-size:11px;color:var(--muted);margin:3px 0 1px}
+  .item{display:flex;align-items:center;gap:9px;border:1px solid var(--border);border-radius:10px;padding:6px 9px;background:var(--bg)}
+  .item .ico{width:24px;height:24px;flex:none;display:flex;align-items:center;justify-content:center}
+  .item .ico svg{width:20px;height:20px;color:var(--accent)}
+  .item .nm{flex:1;font-size:12.5px}
+  .item .buy{border:1px solid var(--accent);color:var(--accent);background:transparent;border-radius:14px;padding:3px 10px;font-size:11px;cursor:pointer;display:flex;gap:3px;align-items:center}
+  .item .buy svg{width:11px;height:11px;color:#f4c430}
+  .item .buy:hover{background:var(--accent);color:#fff}
+
+  .coraise{display:flex;gap:9px;flex-wrap:wrap}
+  .ava{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;font-size:11px}
+  .ava .face{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;border:2px solid transparent;transition:border-color .12s}
+  .ava.sel .face{border-color:var(--accent)}
+  .ava.none .face{background:var(--bg)!important;color:var(--muted);border:1px dashed var(--border)}
+
+  .themes{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:7px}
+  .theme-chip{cursor:pointer;border-radius:10px;overflow:hidden;border:2px solid transparent;transition:transform .1s}
+  .theme-chip:hover{transform:translateY(-2px)} .theme-chip.sel{border-color:var(--fg)}
+  .theme-chip .sw{height:24px;display:flex} .theme-chip .sw b{flex:1}
+  .theme-chip .tl{font-size:10px;text-align:center;padding:3px 0;background:var(--surface);color:var(--fg)}
+
+  .inject{background:var(--bg);border:1px dashed var(--accent);border-radius:12px;padding:12px 13px;font-size:12.5px;white-space:pre-wrap;line-height:1.75;font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace}
+  .inject .k{color:var(--accent);font-weight:700}
+  .note{font-size:11px;color:var(--muted);margin-top:8px}
+
+  .toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%) translateY(20px);background:var(--fg);color:var(--bg);padding:9px 18px;border-radius:22px;font-size:13px;opacity:0;transition:all .25s;z-index:99;pointer-events:none}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <h1>口袋宠物机 · 外观 demo v2</h1>
+    <p>手绘零件随机拼装(不是 AI 出图,怎么摇都好看)· 孵蛋 · 像素房间/户外 · 金币商店 · 小游戏(纯设计稿)</p>
+  </div>
+
+  <div class="layout">
+    <!-- 左:宠物机 -->
+    <div class="machine-col">
+      <div class="machine" id="machine" data-shape="square">
+        <div class="machine__shell">
+          <div class="shell-bg" id="shellBg"></div>
+          <div class="machine__brand">P · O · C · K · E · T</div>
+          <div class="screen">
+            <div class="scene" id="scene"></div>
+            <div class="screen__top">
+              <div class="hud" id="coinHud"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="9"/></svg><span id="coins">30</span></div>
+              <div class="screen__name"><b id="petName">奶酪</b> <span id="petStage">· 成年</span></div>
+              <div class="hud"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.5-7 10-7 10z"/></svg><span id="petDays">12</span>天</div>
+            </div>
+            <div class="screen__pet"><div class="bob" id="bob"><div class="px-grid" id="petSprite"></div><div class="acc-layers" id="accLayers"></div><div class="mouth" id="mouth"></div></div></div>
+            <div class="screen__acts" id="acts"></div>
+          </div>
+        </div>
+        <div class="machine__btns">
+          <div class="pbtn" id="btnA"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></div>
+          <div class="pbtn" id="btnB"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg></div>
+          <div class="pbtn" id="btnC"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+        </div>
+        <div class="btnhint">◀ 选择　　● 确定　　选择 ▶</div>
+      </div>
+    </div>
+
+    <!-- 右:控制 -->
+    <div>
+      <div class="panel">
+        <h2>机身外形 · 配色</h2>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:5px">形状</div>
+        <div class="row" id="shapeChips"></div>
+        <div style="font-size:11px;color:var(--muted);margin:9px 0 5px">机身配色</div>
+        <div class="row" id="skinChips"></div>
+        <div class="hint">机身配色挑一个就行(跟 app 主题分开走)—— 奶油淡色系 + 末尾两个赛博霓虹款。</div>
+      </div>
+
+      <div class="panel">
+        <h2>捏一只宠物</h2>
+        <div class="btnrow">
+          <button class="btn primary" id="rollBtn">🎲 随机一只</button>
+          <button class="btn" id="eggBtn">🥚 孵蛋</button>
+          <button class="btn" id="wishBtn">🌠 许愿</button>
+        </div>
+        <div id="wishRow" style="display:none; gap:6px; margin-bottom:8px">
+          <input id="wishInput" placeholder="描述你想要的小动物…(比如:戴帽子的小水獭)" style="flex:1; padding:8px 10px; border:1px solid var(--border); border-radius:9px; background:var(--bg); color:var(--fg); font-size:13px">
+          <button class="btn primary" id="wishGo" style="flex:none">生成</button>
+        </div>
+        <div class="species" id="species"></div>
+        <div class="petmeta" id="petMeta"></div>
+        <div class="hint">随机的只是<b>配色 / 花纹 / 腮红</b>,底模是手画的 —— 所以怎么摇都好看,不会像 AI 出图那样崩。点物种=换种类(保留配色),🎲=全随机。颜色已整体降饱和。</div>
+      </div>
+
+      <div class="panel">
+        <h2>配饰(点了叠在宠物身上)</h2>
+        <div class="row" id="accChips"></div>
+        <div class="hint">花金币买的配饰,叠在宠物身上换装。这几个是像素草稿,位置按圆头宠物调的(蛇/鹦鹉可能要单独适配)。</div>
+      </div>
+
+      <div class="panel">
+        <h2>状态</h2>
+        <div id="stats"></div>
+        <div class="btnrow" style="margin-top:4px">
+          <button class="btn" id="ffwd">⏩ 演示:模拟过了几小时</button>
+          <button class="btn" id="reset">↺ 重置</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2><span>金币商店</span><span class="coin"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="9"/></svg><b id="coins2">30</b></span></h2>
+        <div class="shop" id="shop"></div>
+        <div class="note">金币靠玩小游戏赢。食物加饱食,玩具加心情。</div>
+      </div>
+
+      <div class="panel">
+        <h2>场景 & 玩法</h2>
+        <div class="btnrow">
+          <button class="btn" id="sceneRoom">🏠 房间</button>
+          <button class="btn" id="sceneOut">🌳 户外</button>
+          <button class="btn primary" id="playBtn">🎮 玩一局</button>
+        </div>
+        <div class="note">户外做小游戏赢金币。这里先放一个「接食物」demo 游戏(点掉落的食物 +金币)。</div>
+      </div>
+
+      <div class="panel">
+        <h2>家具(预览草稿)</h2>
+        <div class="species" id="furniture"></div>
+        <div class="hint">花金币买来摆房间的像素家具,先给你看草稿。<b>房间/户外背景图你那边生成</b>,这些家具叠在背景上摆放。</div>
+      </div>
+
+      <div class="panel">
+        <h2>和谁一起养</h2>
+        <div class="coraise" id="coraise"></div>
+        <div class="note">绑定角色后,宠物状态进入那个角色的聊天上下文 —— 你们「共同养」。</div>
+      </div>
+
+      <div class="panel">
+        <h2>主题配色(机身联动)</h2>
+        <div class="themes" id="themes"></div>
+      </div>
+
+      <div class="panel">
+        <h2>AI 看到的状态</h2>
+        <div class="inject" id="inject"></div>
+        <div class="note">铁律 3:只陈述事实,<b>不写</b>「你该多陪它」这类行为引导。</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ 主题(取自 theme.js,只取机身需要的色)============ */
+const THEMES=[
+  {id:'pink-metal',label:'嫩粉',bg:'#FFF5F8',fg:'#3D2530',surface:'#FFFAFB',accent:'#E08AA0',muted:'#B89AA3',border:'#F5DEE5'},
+  {id:'misty-white',label:'素白',bg:'#F4F4F2',fg:'#3A3A38',surface:'#FFFFFF',accent:'#6B6B68',muted:'#9A9A95',border:'#E0DFDB'},
+  {id:'light-mint',label:'浅荷',bg:'#E9F5F2',fg:'#243634',surface:'#FFFFFF',accent:'#84B8B1',muted:'#7FA7A1',border:'#B4DED6'},
+  {id:'night-violet',label:'浅紫',bg:'#F0EEF8',fg:'#2F2C3E',surface:'#FFFFFF',accent:'#A6A3C7',muted:'#9A97B2',border:'#D2CEEA'},
+  {id:'deep-teal',label:'荷紫',bg:'#E7F4F0',fg:'#2B3340',surface:'#FFFFFF',accent:'#8FA6C8',muted:'#8B96A4',border:'#C6D4E4'},
+  {id:'warm-amber',label:'琥珀',bg:'#FFF8EC',fg:'#3A2A18',surface:'#FFF7E6',accent:'#DDA863',muted:'#A8927A',border:'#F0E0BE'},
+  {id:'blue-grey-serif',label:'黛蓝',bg:'#EEF1F5',fg:'#171A21',surface:'#FFFFFF',accent:'#7E9AB5',muted:'#8895A5',border:'#E0E6EE'},
+  {id:'glass-ink-dawn',label:'晨雾',bg:'#E8E6E2',fg:'#1A1A1F',surface:'#F5F3EE',accent:'#1F2A44',muted:'#7A7A7E',border:'#D0CEC8'},
+  {id:'script-letter',label:'旧信',bg:'#ECE9E2',fg:'#1A1A1A',surface:'#F6F4ED',accent:'#2C2C2C',muted:'#8A8A85',border:'#D6D2C8'},
+  {id:'dark',label:'墨黑',bg:'#0F0F12',fg:'#F5F5F7',surface:'#2C2C2E',accent:'#0A84FF',muted:'#98989D',border:'#38383A'},
+  {id:'glass-ink-night',label:'雪夜',bg:'#1A1A1F',fg:'#ECECEC',surface:'#16161A',accent:'#3A4A6E',muted:'#888890',border:'#2A2A30'},
+  {id:'script-night',label:'夜读',bg:'#15130F',fg:'#E8E2D2',surface:'#1E1B16',accent:'#D4B98C',muted:'#7A7468',border:'#2A2620'},
+  {id:'gothic-mass',label:'弥撒',bg:'#040305',fg:'#CFC3C3',surface:'#0A0506',accent:'#8B131C',muted:'#6B5358',border:'#4A0D12'},
+  // 赛博「依赖」—— 参考主播女孩重度依赖:深紫黑底 + 霓虹粉主色 + 青色次色
+  {id:'cyber',label:'依赖',bg:'#16101F',fg:'#EAFBFF',surface:'#241A38',accent:'#FF4DA6',muted:'#6FD3D6',border:'#46305C'},
+];
+function hx(h){h=h.replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');return[parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];}
+function tohex(r){return'#'+r.map(v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join('');}
+function mix(a,b,t){const A=hx(a),B=hx(b);return tohex(A.map((v,i)=>v+(B[i]-v)*t));}
+const lighten=(h,t)=>mix(h,'#ffffff',t), darken=(h,t)=>mix(h,'#000000',t), lum=h=>{const[r,g,b]=hx(h);return(.299*r+.587*g+.114*b)/255;};
+// 降饱和:把颜色往自身灰度拉一点,得到柔和的奶油/马卡龙感
+const mute=(h,t)=>{const[r,g,b]=hx(h);const y=.299*r+.587*g+.114*b;return tohex([r,g,b].map(v=>v+(y-v)*t));};
+function mutePalette(p){const o=Object.assign({},p);['b','s','a','l'].forEach(k=>{if(o[k])o[k]=mute(o[k],.34);});return o;}
+function applyTheme(t){
+  const r=document.documentElement.style;
+  ['bg','fg','surface','muted','border','accent'].forEach(k=>r.setProperty('--'+k,t[k]));
+  r.setProperty('--shell-hi',lighten(t.accent,.30)); r.setProperty('--shell',t.accent);
+  r.setProperty('--shell-lo',darken(t.accent,.14)); r.setProperty('--shell-edge',darken(t.accent,.32));
+  const sb=mix(t.surface,t.accent,.10); r.setProperty('--screen-bg',sb);
+  r.setProperty('--screen-edge',darken(sb,.12));
+  r.setProperty('--screen-grid',lum(sb)>.5?'rgba(0,0,0,.055)':'rgba(255,255,255,.05)');
+}
+
+/* ============ 机身形状 + 配色(奶油色系可单独选,跟主题分开)============ */
+const SHAPES=[{id:'square',label:'方形'},{id:'egg',label:'蛋形'},{id:'cloud',label:'云朵'},{id:'house',label:'房子'}];
+const CREAM=[{id:'cream',label:'奶油',c:'#FAF3DD'},{id:'peach',label:'蜜桃',c:'#FBE8D8'},{id:'pink',label:'樱粉',c:'#FCE6EC'},{id:'lilac',label:'丁香',c:'#F2ECF5'},{id:'sky',label:'天蓝',c:'#E8F0F7'},{id:'mint',label:'薄荷',c:'#EBF4E8'},{id:'butter',label:'奶黄',c:'#F8F0D6'},{id:'cyberpink',label:'赛博粉',c:'#FF6FB5'},{id:'cybercyan',label:'赛博蓝',c:'#74E6E6'}];
+function currentSkin(){
+  // 机身只用奶油色系(已删「跟随主题」),全是淡色。渐变/描边都很轻,保持通透。
+  const base=(CREAM.find(c=>c.id===state.machineColor)||CREAM[0]).c;
+  const main=base;
+  const hi=lighten(main,0.10),lo=darken(main,0.05),edge=darken(main,0.15);
+  const sb=mix('#ffffff',main,0.12);
+  return {main,hi,lo,edge,screenBg:sb,screenEdge:darken(sb,0.08),grid:lum(sb)>.5?'rgba(0,0,0,.05)':'rgba(255,255,255,.05)'};
+}
+function buildShellSVG(shape,sk){
+  const g=`<defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${sk.hi}"/><stop offset="0.55" stop-color="${sk.main}"/><stop offset="1" stop-color="${sk.lo}"/></linearGradient></defs>`;
+  let p;
+  if(shape==='square') p=`<rect x="6" y="6" width="108" height="120" rx="26" fill="url(#sg)" stroke="${sk.edge}" stroke-width="3.5"/>`;
+  else if(shape==='egg') p=`<path d="M60 4C91 4 112 35 112 73C112 111 90 129 60 129C30 129 8 111 8 73C8 35 29 4 60 4Z" fill="url(#sg)" stroke="${sk.edge}" stroke-width="3.5"/>`;
+  else if(shape==='house') p=`<path d="M60 7L106 45Q112 50 112 58L112 119Q112 127 104 127L16 127Q8 127 8 119L8 58Q8 50 14 45Z" fill="url(#sg)" stroke="${sk.edge}" stroke-width="3.5" stroke-linejoin="round"/>`;
+  else p=`<path d="M32 120C9 120 2 96 17 87C0 78 5 52 26 56C19 32 49 25 57 43C64 21 96 23 96 48C120 41 130 71 109 84C124 95 113 120 90 113C85 126 49 128 47 112C40 122 38 122 32 120Z" fill="url(#sg)" stroke="${sk.edge}" stroke-width="3.5" stroke-linejoin="round"/>`;
+  return `<svg viewBox="0 0 120 132" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">${g}${p}<ellipse cx="42" cy="33" rx="24" ry="12" fill="#fff" opacity="0.24"/></svg>`;
+}
+function applyMachineSkin(){
+  const sk=currentSkin(),r=document.documentElement.style;
+  r.setProperty('--shell-hi',sk.hi);r.setProperty('--shell',sk.main);r.setProperty('--shell-lo',sk.lo);r.setProperty('--shell-edge',sk.edge);
+  r.setProperty('--screen-bg',sk.screenBg);r.setProperty('--screen-edge',sk.screenEdge);r.setProperty('--screen-grid',sk.grid);
+  document.getElementById('machine').dataset.shape=state.shape;
+  document.getElementById('shellBg').innerHTML=buildShellSVG(state.shape,sk);
+}
+function renderSkinChips(){
+  document.getElementById('shapeChips').innerHTML=SHAPES.map(s=>`<button class="chip ${s.id===state.shape?'sel':''}" data-shape="${s.id}">${s.label}</button>`).join('');
+  document.getElementById('skinChips').innerHTML=CREAM.map(c=>`<button class="chip ${state.machineColor===c.id?'sel':''}" data-skin="${c.id}"><span class="swatch" style="background:${c.c}"></span>${c.label}</button>`).join('');
+  document.querySelectorAll('#shapeChips .chip').forEach(b=>b.onclick=()=>{state.shape=b.dataset.shape;applyMachineSkin();renderSkinChips();});
+  document.querySelectorAll('#skinChips .chip').forEach(b=>b.onclick=()=>{state.machineColor=b.dataset.skin;applyMachineSkin();renderSkinChips();});
+}
+
+/* ============ 像素物种底模(16×16,手画;符号 o描边 b身体 s暗部 e眼 p腮红 l亮部 a特征)============ */
+const SPECIES={
+  cat:{label:'猫',grid:["...o......o.....","..ooo....ooo....",".obbbo..obbbo...","...oobbbbbboo...","..obbbbbbbbbbo..","..obbbbbbbbbbo..",".obbbbbbbbbbbbo.",".obbeebbbbeebbo.",".obbeebbbbeebbo.",".obbbbbbbbbbbbo.",".obpbbbbbbbbpbo.",".obbbbbbbbbbbbo.","..obbbbbbbbbbo..","...oobbbbbboo...",".....oooooo.....","................"]},
+  dog:{label:'狗',grid:["................","...oobbbbbboo...","..obbbbbbbbbbo..",".ossbbbbbbbbsso.",".ossbbbbbbbbsso.",".ossbeebbeebsso.",".ossbeebbeebsso.",".osbbbbbbbbbbso.",".obbbbllllbbbbo.",".obbblllllllbbo.",".obbbllaalllbbo.",".obbbbllllbbbbo.","..obbbbbbbbbbo..","...oobbbbbboo...",".....oooooo.....","................"]},
+  bird:{label:'鹦鹉',grid:["................",".......oo.......","......oaao......",".....oaaao......","...oobbbbboo....","..obbbbbbbbbo...",".obbeebbbeebbo..",".obbeebbbeebbo..",".obbbaaaabbbo..",".obbbaaaabbbo..",".obbbbaaobbbbo.",".obpbbbbbbssbo.","..obbbbbbssbo...","...oobbbbboo....",".....ooooo......","................"]},
+  snake:{label:'蛇',grid:["......ooooo.....",".....obbbbbo....",".....obebebo....",".....obbbbboa...","......obbbo.....","......obbbo.....",".......obbbo....","........obbbo...",".......obbbo....","......obbbo.....","......obbbo.....",".....obbbo......",".....obbbbo.....","....obbbbbbo....","....obbbbbbo....",".....oooooo....."]},
+  bunny:{label:'兔',grid:["....ooo..ooo....","....oao..oao....","....oao..oao....","....obo..obo....","...oobbbbbboo...","..obbbbbbbbbbo..","..obbbbbbbbbbo..",".obbbbbbbbbbbbo.",".obbeebbbbeebbo.",".obbeebbbbeebbo.",".obbbbbbbbbbbbo.",".obpbbbbbbbbpbo.",".obbbbbbbbbbbbo.","..oobbbbbbbboo..","...oobbbbbboo...",".....oooooo....."]},
+  bear:{label:'熊',grid:["................","..ooo....ooo....",".obbbo..obbbo...","...oobbbbbboo...","..obbbbbbbbbbo..","..obbbbbbbbbbo..",".obbbbbbbbbbbbo.",".obbeebbbbeebbo.",".obbeebbbbeebbo.",".obbbbbbbbbbbbo.",".obpbbbbbbbbpbo.",".obbbbbbbbbbbbo.","..obbbbbbbbbbo..","...oobbbbbboo...",".....oooooo.....","................"]},
+  penguin:{label:'企鹅',grid:["................",".......oo.......","...oobbbbbboo...","..obbbbbbbbbbo..","..obbbbbbbbbbo..",".obbeebbbbeebbo.",".obbeebbbbeebbo.",".obbbbbaabbbbbo.",".obbblllllllbbo.",".obbllllllllbbo.",".obbllllllllbbo.",".obbbllllllbbbo.","..obbllllllbbo..","...oobbbbbboo...",".....oooooo.....","................"]},
+};
+const SP_KEYS=Object.keys(SPECIES);
+const EGG_GRID=["................",".....oooo.......","....obbbbo......","...obbbbbbo.....","..obbbbbbbbo....","..obbsbbbbbo....",".obbbbbbbsbbo...",".obbbbbbbbbbo...",".obbsbbbbbbbo...",".obbbbbbbsbbo...","..obbbbbbbbo....","..obbbbbbbbo....","...obbbbbbo.....","....oooooo......","................","................"];
+const EGG_PAL={o:'#d9c9a0',b:'#fff7e6',s:'#ecdcb0',e:'#000',p:'#000',l:'#fff',a:'#000'};
+
+/* ============ 精选配色(手挑,任意组合都可爱)============ */
+// 配色取自 user 的乳胶漆色卡(柔和粉彩)。每个只给"身体主色 + 特征色",
+// 描边/暗部/亮部由主色派生,眼睛统一柔和深褐(豆豆眼)。
+function makePal(b,a){return {b,s:darken(b,.10),o:darken(b,.42),l:lighten(b,.45),a:a||'#f0b07a',p:'#f1b6c2',e:'#5b4a45'};}
+const PAL_DEFS={
+  cream:['奶油','#F5ECC9'], butter:['奶黄','#F2E6B8'], peach:['蜜桃','#F8DCC2'], apricot:['杏','#F8DCBE'],
+  pink:['樱粉','#F8D2DC'], rose:['玫瑰','#F4C4CC'], salmon:['蜜桔','#F6D8CE'],
+  lilac:['丁香','#E8DCEC'], violet:['薰衣','#E4DCEE'],
+  sky:['天蓝','#D6E2EE'], blue:['湖蓝','#CFE0EC'], mint:['薄荷','#DCEAD8'], green:['抹茶','#D8E6CC'], grey:['灰','#E3E5E6'],
+};
+const PALETTES={}; for(const k in PAL_DEFS){const d=PAL_DEFS[k];PALETTES[k]={label:d[0],...makePal(d[1])};}
+const PAL_KEYS=Object.keys(PALETTES);
+const PATTERNS={plain:'纯色',belly:'白肚皮',spots:'圆点',stripes:'条纹'};
+const NAMES=['团子','奶酪','麻薯','布丁','冰沙','抹茶','可可','芋圆','丸子','棉花','糯米','豆沙','芝麻','桃酥','椰果','栗子'];
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+
+/* 拼装:底模 + 花纹 overlay + 腮红开关。只改 'b' 格,不动眼睛/描边 */
+function assemble(spKey,pattern,blush){
+  const g=SPECIES[spKey].grid.map(r=>r.padEnd(16,'.').split(''));
+  const set=(r,c,v)=>{if(g[r]&&g[r][c]==='b')g[r][c]=v;};
+  if(pattern==='belly') for(let r=8;r<=12;r++)for(let c=5;c<=10;c++)set(r,c,'l');
+  if(pattern==='spots') [[6,5],[6,10],[9,4],[9,11],[8,8],[11,6]].forEach(([r,c])=>set(r,c,'s'));
+  if(pattern==='stripes')[6,8,10].forEach(r=>{for(let c=2;c<14;c++)set(r,c,'s');});
+  if(!blush) g.forEach(row=>row.forEach((ch,i)=>{if(ch==='p')row[i]='b';}));
+  return g.map(a=>a.join(''));
+}
+function buildPet(spKey,palKey,pattern,blush,name){
+  return {species:spKey,palKey,pattern,blush,name,palette:PALETTES[palKey],grid:assemble(spKey,pattern,blush)};
+}
+function randomPet(spKey){
+  return buildPet(spKey||pick(SP_KEYS),pick(PAL_KEYS),pick(Object.keys(PATTERNS)),Math.random()<0.7,pick(NAMES));
+}
+function spriteHTML(grid,pal,noEyes){
+  const R=[];for(let r=0;r<16;r++)R.push((grid[r]||'').padEnd(16,'.'));
+  let s='';
+  for(let r=0;r<16;r++)for(let c=0;c<16;c++){
+    let ch=R[r][c];
+    if(ch==='e'&&!noEyes){
+      // 豆豆眼:眼块左上角一格给白色高光,显得水汪汪
+      const up=r>0?R[r-1][c]:'.', lf=c>0?R[r][c-1]:'.';
+      s+=`<i style="background:${(up!=='e'&&lf!=='e')?'#ffffff':pal.e}"></i>`; continue;
+    }
+    if(ch==='e') ch='b';
+    const col=pal[ch]; s+=col?`<i style="background:${col}"></i>`:'<i></i>';
+  }
+  return s;
+}
+
+/* ============ 状态 ============ */
+const ACTIONS=[
+  {key:'feed',label:'喂食',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3v18M11 3v6a4 4 0 0 1-4 4M17 3c-1.5 0-2.5 2-2.5 5s1 4 2.5 4 2.5-1 2.5-4-1-5-2.5-5zM17 12v9"/></svg>'},
+  {key:'play',label:'玩耍',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18"/></svg>'},
+  {key:'bath',label:'洗澡',icon:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8 8 6 11 6 14a6 6 0 0 0 12 0c0-3-2-6-6-12z"/></svg>'},
+  {key:'sleep',label:'睡觉',icon:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8z"/></svg>'},
+];
+const STAT_DEF=[
+  {key:'hunger',label:'饱食',icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3v18M11 3v6a4 4 0 0 1-4 4M17 3c-1.5 0-2.5 2-2.5 5s1 4 2.5 4 2.5-1 2.5-4-1-5-2.5-5zM17 12v9"/></svg>'},
+  {key:'mood',label:'心情',icon:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.5-7 10-7 10z"/></svg>'},
+  {key:'energy',label:'精力',icon:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg>'},
+  {key:'clean',label:'清洁',icon:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8 8 6 11 6 14a6 6 0 0 0 12 0c0-3-2-6-6-12z"/></svg>'},
+];
+const FOODS=[
+  {name:'胡萝卜',cost:5,hunger:15,mood:3,icon:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 19l8-12 4 4z"/><path d="M13 7l2-3M16 8l3-1" stroke="currentColor" stroke-width="2"/></svg>'},
+  {name:'小鱼干',cost:8,hunger:25,mood:6,icon:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 12c4-5 11-5 15 0-4 5-11 5-15 0z"/><path d="M18 9l3 3-3 3z"/></svg>'},
+  {name:'草莓蛋糕',cost:12,hunger:20,mood:14,icon:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 21V11h14v10z"/><path d="M5 11l7-7 7 7z"/></svg>'},
+];
+const TOYS=[
+  {name:'毛线球',cost:10,mood:18,icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M6 9c4 2 8 2 12 0M5 14c5 2 9 2 14-1"/></svg>'},
+  {name:'小皮球',cost:14,mood:26,icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18"/></svg>'},
+];
+const CHARS=[{id:'c1',name:'樱',color:'#e08aa0'},{id:'c2',name:'阿澈',color:'#7e9ab5'},{id:'c3',name:'林夏',color:'#84b8b1'}];
+// 配饰:叠在宠物身上的 overlay(16×16,跟宠物对齐)。可多选叠加。
+const ACCESSORIES=[
+  {id:'hat',label:'帽子',palette:{H:'#d98a9e',h:'#bf7488'},grid:["................","................","....HHHHHHHH....","...HHHHHHHHHH...","....hhhhhhhh....","................","................","................","................","................","................","................","................","................","................","................"]},
+  {id:'bow',label:'蝴蝶结',palette:{R:'#e69aae',k:'#c97d92'},grid:["................","................",".........R.R....",".........RkR....",".........R.R....","................","................","................","................","................","................","................","................","................","................","................"]},
+  {id:'scarf',label:'围巾',palette:{S:'#8fbac4',s:'#6f9aa4'},grid:["................","................","................","................","................","................","................","................","................","................","................","..SSSSSSSSSS....","...s......s.....","................","................","................"]},
+  {id:'glasses',label:'眼镜',palette:{G:'#5a5560',W:'#dfe9ee'},grid:["................","................","................","................","................","................","..GGGG.GGGG.....","..GWWG.GWWG.....","..GGGG.GGGG.....","................","................","................","................","................","................","................"]},
+];
+// 家具:花金币买来摆房间的像素物件(预览草稿)
+const FURNITURE=[
+  {id:'bed',label:'床',palette:{W:'#f6e6ea',b:'#e0c49a',o:'#a87c52',B:'#dba0b0'},grid:["................","................","................",".....WWWWW......","....oWWWWWo.....","...obbbbbbbo....","...obbbbbbbo....","...oBBBBBBBo....","...oBBBBBBBo....","...o.......o....","................","................","................","................","................","................"]},
+  {id:'lamp',label:'台灯',palette:{L:'#efdca6',o:'#9a8a6a',n:'#d8c79a'},grid:["................",".....LLLLL......","....LLLLLLL.....","....LLLLLLL.....","......nnn.......","......ono.......","......ono.......","......ono.......",".....ooooo......","................","................","................","................","................","................","................"]},
+  {id:'plant',label:'盆栽',palette:{G:'#9cc8a0',P:'#c98a5a'},grid:["................","................",".......G........","......GGG.......",".....GGGGG......","....GGGGGGG.....",".....GGGGG......","......GGG.......","......PPPP......","......PPPP......",".....PPPPPP.....","................","................","................","................","................"]},
+  {id:'table',label:'小桌',palette:{T:'#cda06a',o:'#a87c4e'},grid:["................","................","................","................","....TTTTTTTT....","...TTTTTTTTTT...","....o......o....","....o......o....","....o......o....","................","................","................","................","................","................","................"]},
+  {id:'pic',label:'挂画',palette:{F:'#b08a5a',a:'#cfe0ec',i:'#9cc8a0'},grid:["................","................","....FFFFFFF.....","....FaaaaaF.....","....FaiiiaF.....","....FaaaaaF.....","....FFFFFFF.....","................","................","................","................","................","................","................","................","................"]},
+  {id:'cushion',label:'坐垫',palette:{C:'#dba0b0'},grid:["................","................","................","................","................","....CCCCCCCC....","...CCCCCCCCCC...","...CCCCCCCCCC...","....CCCCCCCC....","................","................","................","................","................","................","................"]},
+];
+
+const state={pet:buildPet('cat','cream','plain',true,'奶酪'),isEgg:false,eggTaps:0,days:12,cursor:0,coins:30,scene:'room',coraise:null,lastAction:null,gameActive:false,_gameIv:null,
+  shape:'square',machineColor:'cream',theme:null,accessories:new Set(),
+  stats:{hunger:62,mood:80,energy:74,clean:55}};
+const stageOf=d=>d<=0?'蛋':d<3?'幼年':d<7?'少年':'成年';
+const clamp=v=>Math.max(0,Math.min(100,v));
+
+function renderSprite(){
+  const grid=state.isEgg?EGG_GRID:state.pet.grid, pal=state.isEgg?EGG_PAL:state.pet.palette;
+  document.getElementById('petSprite').innerHTML=spriteHTML(grid,pal);
+  document.getElementById('accLayers').innerHTML=state.isEgg?'':[...state.accessories].map(id=>{const a=ACCESSORIES.find(x=>x.id===id);return a?`<div class="px-grid">${spriteHTML(a.grid,a.palette)}</div>`:'';}).join('');
+  document.getElementById('petName').textContent=state.isEgg?'蛋':state.pet.name;
+  document.getElementById('petStage').textContent='· '+(state.isEgg?'孵化中':stageOf(state.days));
+  document.getElementById('petDays').textContent=state.days;
+  renderMouth(); renderMeta();
+}
+function renderMeta(){
+  const m=document.getElementById('petMeta');
+  if(state.isEgg){m.textContent='敲蛋 '+state.eggTaps+'/3 …';return;}
+  const p=state.pet;
+  m.innerHTML=`这只:<b>${SPECIES[p.species].label}</b> · ${PALETTES[p.palKey].label} · ${PATTERNS[p.pattern]}${p.blush?' · 有腮红':''}`;
+}
+function renderMouth(){
+  const el=document.getElementById('mouth');
+  if(state.isEgg){el.innerHTML='';return;}
+  const m=state.stats.mood, col=state.pet.palette.e;
+  const path=m>=60?'M2 3 Q6 7 10 3':m>=30?'M3.5 5 L8.5 5':'M2 6 Q6 2 10 6';
+  el.innerHTML=`<svg viewBox="0 0 12 8"><path d="${path}" fill="none" stroke="${col}" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+}
+function renderActs(){
+  const box=document.getElementById('acts');
+  box.innerHTML=ACTIONS.map((a,i)=>`<div class="act ${i===state.cursor?'sel':''}" data-i="${i}">${a.icon}<span class="label">${a.label}</span><span class="cur"></span></div>`).join('');
+  box.querySelectorAll('.act').forEach(el=>el.onclick=()=>{state.cursor=+el.dataset.i;renderActs();doAction();});
+}
+function renderStats(){
+  document.getElementById('stats').innerHTML=STAT_DEF.map(s=>{const v=state.stats[s.key],on=Math.round(v/10);let b='';for(let i=0;i<10;i++)b+=`<i class="${i<on?'on':''}"></i>`;return`<div class="stat">${s.icon}<span class="lbl">${s.label}</span><span class="bar">${b}</span><span class="val">${v}</span></div>`;}).join('');
+}
+function renderCoins(){document.getElementById('coins').textContent=state.coins;document.getElementById('coins2').textContent=state.coins;}
+function renderShop(){
+  const ci='<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="9"/></svg>';
+  const row=(it,kind)=>`<div class="item"><span class="ico">${it.icon}</span><span class="nm">${it.name}</span><button class="buy" data-kind="${kind}" data-name="${it.name}">${it.cost}${ci}</button></div>`;
+  document.getElementById('shop').innerHTML='<div class="sub">食物</div>'+FOODS.map(f=>row(f,'food')).join('')+'<div class="sub">玩具</div>'+TOYS.map(t=>row(t,'toy')).join('');
+  document.querySelectorAll('.buy').forEach(b=>b.onclick=()=>buy(b.dataset.kind,b.dataset.name));
+}
+function renderCoraise(){
+  const box=document.getElementById('coraise');
+  box.innerHTML=`<div class="ava none ${state.coraise===null?'sel':''}" data-id=""><span class="face">独</span>独立养</div>`+CHARS.map(c=>`<div class="ava ${state.coraise===c.id?'sel':''}" data-id="${c.id}"><span class="face" style="background:${c.color}">${c.name[0]}</span>${c.name}</div>`).join('');
+  box.querySelectorAll('.ava').forEach(el=>el.onclick=()=>{state.coraise=el.dataset.id||null;renderCoraise();renderInject();});
+}
+function renderThemes(){
+  document.getElementById('themes').innerHTML=THEMES.map((t,i)=>`<div class="theme-chip ${i===0?'sel':''}" data-id="${t.id}"><div class="sw"><b style="background:${t.bg}"></b><b style="background:${t.accent}"></b><b style="background:${t.surface}"></b></div><div class="tl">${t.label}</div></div>`).join('');
+  document.querySelectorAll('.theme-chip').forEach(el=>el.onclick=()=>{document.querySelectorAll('.theme-chip').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');state.theme=THEMES.find(t=>t.id===el.dataset.id);applyTheme(state.theme);applyMachineSkin();});
+}
+function renderSpecies(){
+  document.getElementById('species').innerHTML=SP_KEYS.map(k=>{
+    const sample=buildPet(k,state.pet.palKey,'plain',true,'');
+    return `<div class="sp ${(!state.isEgg&&state.pet.species===k)?'sel':''}" data-k="${k}"><div class="px-grid">${spriteHTML(sample.grid,sample.palette)}</div><span class="nm">${SPECIES[k].label}</span></div>`;
+  }).join('');
+  document.querySelectorAll('.sp').forEach(el=>el.onclick=()=>{
+    state.isEgg=false;state.pet=buildPet(el.dataset.k,state.pet.palKey,state.pet.pattern,state.pet.blush,state.pet.name||pick(NAMES));
+    if(state.days<=0)state.days=1; renderSpecies();renderSprite();renderInject();
+  });
+}
+function renderScene(){
+  const s=document.getElementById('scene');
+  if(state.scene==='room') s.innerHTML='<b class="rm-wall"></b><b class="rm-floor"></b><b class="rm-window"></b><b class="rm-window2"></b><b class="rm-rug"></b><b class="rm-pot"></b><b class="rm-leaf"></b>';
+  else s.innerHTML='<b class="ou-sky"></b><b class="ou-ground"></b><b class="ou-ground2"></b><b class="ou-sun"></b><b class="ou-cloud"></b><b class="ou-trunk"></b><b class="ou-tree"></b>';
+}
+
+/* ---- 注入文本 ---- */
+function moodWords(){const m=state.stats,o=[];o.push(m.hunger>70?'吃得饱饱的':m.hunger>=30?'有点饿了':'饿坏了');o.push(m.energy>70?'精力充沛':m.energy>=30?'有些犯困':'累得睁不开眼');if(m.clean<30)o.push('身上脏兮兮的');else if(m.clean<60)o.push('该洗澡了');return o.join('、');}
+function feelWord(){const m=state.stats.mood;return m>=60?'心情很好':m>=30?'情绪一般':'有点闷闷不乐';}
+function recentWord(){const who=state.coraise?CHARS.find(c=>c.id===state.coraise).name:'你';return{feed:`刚才${who}喂过它。`,play:`刚才${who}陪它玩了一会儿。`,bath:`刚才${who}给它洗了澡。`,sleep:'它刚睡了一觉。',shop:`刚才${who}给它买了点东西。`}[state.lastAction]||'';}
+function renderInject(){
+  const who=state.coraise?CHARS.find(c=>c.id===state.coraise).name:null, own=who?`你和${who}一起养着`:'你养着';
+  let body;
+  if(state.isEgg) body=`${own}一颗还没孵化的蛋(电子宠物机),再敲几下就出生了。`;
+  else{const p=state.pet,sp=SPECIES[p.species].label;
+    body=`${own}一只叫「${p.name}」的${PALETTES[p.palKey].label}色${sp}(电子宠物机),养到第 ${state.days} 天,现在是${stageOf(state.days)}。\n此刻它${feelWord()},${moodWords()}。`;
+    const r=recentWord();if(r)body+='\n'+r;}
+  document.getElementById('inject').innerHTML=`<span class="k"># 当前宠物</span>\n${body}`;
+}
+
+/* ---- 互动 / 粒子 / 商店 / 游戏 ---- */
+const FX={feed:'<svg viewBox="0 0 24 24" fill="#f4c430"><path d="M12 2l2.5 6.5L21 9l-5 4.5L17.5 21 12 17l-5.5 4L8 13.5 3 9l6.5-.5z"/></svg>',play:'<svg viewBox="0 0 24 24" fill="#e08aa0"><path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg>',bath:'<svg viewBox="0 0 24 24" fill="#7ec8e3"><circle cx="8" cy="10" r="4"/><circle cx="16" cy="14" r="3"/></svg>',sleep:'<svg viewBox="0 0 24 24" fill="#a6a3c7"><text x="2" y="18" font-size="16" font-weight="700">z</text></svg>',love:'<svg viewBox="0 0 24 24" fill="#ff7a9c"><path d="M12 21s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.5-7 10-7 10z"/></svg>'};
+function spawnFx(kind){const sc=document.querySelector('.screen');for(let i=0;i<3;i++){const el=document.createElement('div');el.className='fx';el.innerHTML=FX[kind]||FX.love;el.style.left=(38+i*12)+'%';el.style.top='42%';el.style.animation=`floatup 1s ease ${i*.12}s forwards`;sc.appendChild(el);setTimeout(()=>el.remove(),1300);}}
+function hop(cls){const b=document.getElementById('bob');b.classList.remove('hop','shake');void b.offsetWidth;b.classList.add(cls||'hop');}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),1600);}
+function doAction(){
+  if(state.isEgg){tapEgg();return;}
+  const a=ACTIONS[state.cursor],s=state.stats;
+  if(a.key==='feed'){s.hunger=clamp(s.hunger+30);s.mood=clamp(s.mood+5);}
+  if(a.key==='play'){s.mood=clamp(s.mood+25);s.energy=clamp(s.energy-15);s.hunger=clamp(s.hunger-5);}
+  if(a.key==='bath'){s.clean=clamp(s.clean+40);s.mood=clamp(s.mood+5);}
+  if(a.key==='sleep'){s.energy=clamp(s.energy+45);s.mood=clamp(s.mood+5);}
+  state.lastAction=a.key;state._faceAction=a.key;clearTimeout(state._faceT);state._faceT=setTimeout(()=>{state._faceAction=null;renderMouth();},1400);hop();spawnFx(a.key);renderStats();renderMouth();renderInject();
+}
+function buy(kind,name){
+  const it=(kind==='food'?FOODS:TOYS).find(x=>x.name===name);
+  if(state.coins<it.cost){toast('金币不够,去户外玩一局吧');return;}
+  state.coins-=it.cost;const s=state.stats;
+  if(it.hunger)s.hunger=clamp(s.hunger+it.hunger); if(it.mood)s.mood=clamp(s.mood+it.mood);
+  state.lastAction='shop';state._faceAction='love';clearTimeout(state._faceT);state._faceT=setTimeout(()=>{state._faceAction=null;renderMouth();},1400);renderCoins();renderStats();renderMouth();renderInject();hop();spawnFx('love');toast(`买了${name}!`);
+}
+function setScene(sc){state.scene=sc;renderScene();}
+function tapEgg(){state.eggTaps++;hop('shake');if(state.eggTaps>=3){state.isEgg=false;state.eggTaps=0;state.days=1;state.pet=randomPet();spawnFx('love');toast(`孵出了一只${SPECIES[state.pet.species].label}!`);renderSpecies();}renderSprite();renderInject();}
+function startEgg(){state.isEgg=true;state.eggTaps=0;state.days=0;renderSprite();renderSpecies();renderInject();toast('敲三下孵化(点蛋或按 ●)');}
+
+/* 户外小游戏:点掉落的食物 +金币 */
+const GAME_ICON='<svg viewBox="0 0 24 24" fill="#f4a259"><path d="M5 21V11h14v10z"/><path d="M5 11l7-7 7 7z"/></svg>';
+// 像素赛车:宠物在赛道上跑,障碍从上往下来,◀▶(或点屏幕左右/A·C 键)变道躲避,跑得远→金币
+function playGame(){
+  if(state.gameActive)return; setScene('outdoor'); state.gameActive=true;
+  const sc=document.querySelector('.screen');
+  const race=document.createElement('div'); race.className='race';
+  const LANES=[28,50,72];
+  race.innerHTML=`<div class="road"><span class="lane-line" style="left:39%"></span><span class="lane-line" style="left:61%"></span></div><div class="racer" id="racer">${spriteHTML(state.pet.grid,state.pet.palette,true)}</div><div class="race-hud" id="rhud"></div>`;
+  sc.appendChild(race);
+  const racer=race.querySelector('#racer'); racer.style.setProperty('--px','4px');
+  let lane=1; const place=()=>racer.style.left=LANES[lane]+'%'; place();
+  const rhud=race.querySelector('#rhud');
+  let dist=0,tk=0; const obs=[];
+  state._raceSteer=d=>{lane=Math.max(0,Math.min(2,lane+d));place();};
+  race.onclick=e=>{const r=race.getBoundingClientRect();state._raceSteer&&state._raceSteer(e.clientX<r.left+r.width/2?-1:1);};
+  state._gameIv=setInterval(()=>{
+    tk++; dist++;
+    if(tk%13===0){const ol=Math.floor(Math.random()*3);const o=document.createElement('span');o.className='obstacle';o.dataset.lane=ol;o.style.left=LANES[ol]+'%';o.style.top='-14%';race.appendChild(o);obs.push(o);}
+    for(let i=obs.length-1;i>=0;i--){const o=obs[i];const top=(parseFloat(o.style.top)||0)+6;o.style.top=top+'%';
+      if(top>72&&top<90&&(+o.dataset.lane)===lane){return endRace(race,dist,true);}
+      if(top>110){o.remove();obs.splice(i,1);}}
+    rhud.textContent=`赛车中　${dist}m　◀▶ 变道`;
+    if(dist>=180) endRace(race,dist,false);
+  },60);
+}
+function endRace(race,dist,crashed){
+  if(!state.gameActive)return; state.gameActive=false; clearInterval(state._gameIv); state._raceSteer=null;
+  const coins=Math.floor(dist/7); state.coins+=coins; state.stats.mood=clamp(state.stats.mood+8);
+  if(race&&race.remove)race.remove(); renderCoins(); renderStats(); renderMouth();
+  toast(crashed?`撞车啦!跑了 ${dist}m · +${coins} 金币`:`冲过终点!+${coins} 金币`);
+}
+
+/* ---- 按键 / 按钮 ---- */
+document.getElementById('btnA').onclick=()=>{if(state._raceSteer)return state._raceSteer(-1);state.cursor=(state.cursor+3)%4;renderActs();};
+document.getElementById('btnC').onclick=()=>{if(state._raceSteer)return state._raceSteer(1);state.cursor=(state.cursor+1)%4;renderActs();};
+document.getElementById('btnB').onclick=doAction;
+document.getElementById('petSprite').onclick=()=>{if(state.isEgg)tapEgg();};
+document.getElementById('rollBtn').onclick=()=>{state.isEgg=false;if(state.days<=0)state.days=1;state.pet=randomPet();renderSpecies();renderSprite();renderInject();};
+document.getElementById('eggBtn').onclick=startEgg;
+document.getElementById('wishBtn').onclick=()=>{const w=document.getElementById('wishRow');w.style.display=(w.style.display==='flex')?'none':'flex';if(w.style.display==='flex')document.getElementById('wishInput').focus();};
+document.getElementById('wishGo').onclick=()=>{const v=(document.getElementById('wishInput').value||'').trim();state.isEgg=false;if(state.days<=0)state.days=1;state.pet=randomPet();renderSpecies();renderSprite();renderInject();toast(v?`许愿:「${v}」(demo 先随机占位,接入后调 AI 生成)`:'随机生成了一只');};
+document.getElementById('ffwd').onclick=()=>{const s=state.stats;s.hunger=clamp(s.hunger-25);s.energy=clamp(s.energy-20);s.clean=clamp(s.clean-20);s.mood=clamp(s.mood-15);state.lastAction=null;renderStats();renderMouth();renderInject();};
+document.getElementById('reset').onclick=()=>{if(state._gameIv)clearInterval(state._gameIv);state.gameActive=false;state._raceSteer=null;document.querySelectorAll('.race').forEach(r=>r.remove());state.isEgg=false;state.days=12;state.coins=30;state.coraise=null;state.scene='room';state.lastAction=null;state._faceAction=null;state.accessories=new Set();state.pet=buildPet('cat','cream','plain',true,'奶酪');state.stats={hunger:62,mood:80,energy:74,clean:55};renderAll();};
+document.getElementById('sceneRoom').onclick=()=>setScene('room');
+document.getElementById('sceneOut').onclick=()=>setScene('outdoor');
+document.getElementById('playBtn').onclick=playGame;
+
+function renderAccChips(){
+  document.getElementById('accChips').innerHTML=ACCESSORIES.map(a=>`<button class="chip ${state.accessories.has(a.id)?'sel':''}" data-acc="${a.id}">${a.label}</button>`).join('');
+  document.querySelectorAll('#accChips .chip').forEach(b=>b.onclick=()=>{const id=b.dataset.acc;state.accessories.has(id)?state.accessories.delete(id):state.accessories.add(id);renderSprite();renderAccChips();});
+}
+function renderFurniture(){
+  document.getElementById('furniture').innerHTML=FURNITURE.map(f=>`<div class="sp" style="cursor:default"><div class="px-grid" style="--px:4px">${spriteHTML(f.grid,f.palette)}</div><span class="nm">${f.label}</span></div>`).join('');
+}
+function renderAll(){renderScene();renderSprite();renderActs();renderStats();renderCoins();renderShop();renderCoraise();renderThemes();renderSpecies();renderSkinChips();renderAccChips();renderFurniture();applyMachineSkin();renderInject();}
+state.theme=THEMES[0]; applyTheme(THEMES[0]); renderAll();
+</script>
+</body>
+</html>

@@ -1,0 +1,473 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>电子宠物机 · 可玩 demo(手机内页)</title>
+<style>
+  :root{ --accent:#e7a6b8; --ink:#5f4b55; --muted:#9a8b93; --card:#fffaf7; --line:#f0e2e6; --bg:#f7eff2; }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{background:#d8cdd4;color:var(--ink);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+       line-height:1.5;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:14px}
+
+  .phone-frame{width:100%;max-width:414px;height:min(92vh,860px);background:var(--bg);border-radius:38px;
+    box-shadow:0 10px 40px rgba(80,50,70,.28), inset 0 0 0 9px #fff, inset 0 0 0 11px #e7dde2;
+    overflow:hidden;display:flex;flex-direction:column;position:relative}
+  .notch{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:120px;height:22px;background:#2a2230;border-radius:14px;z-index:5}
+  .status-bar{flex:0 0 auto;display:flex;justify-content:space-between;align-items:center;padding:12px 26px 6px;font-size:13px;font-weight:700;color:var(--ink);user-select:none}
+  .status-bar .icons{display:flex;align-items:center;gap:6px}
+  .app-head{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:4px 16px 10px;font-weight:800;font-size:16px}
+  .app-head .back{color:var(--muted);font-weight:700;font-size:18px}
+  .body{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 14px 26px;display:flex;flex-direction:column;align-items:center;gap:13px}
+  .body::-webkit-scrollbar{width:0}
+
+  .device{position:relative;width:288px;height:288px;flex:none;margin-top:2px;filter:drop-shadow(0 8px 16px rgba(120,90,110,.18))}
+  .screen{position:absolute;left:19.6%;top:22.8%;width:60.7%;height:48.7%;overflow:hidden;background:#fff;border-radius:7px}
+  .room{position:absolute;inset:0;overflow:hidden}
+  .room img{position:absolute;image-rendering:pixelated}
+  .bg{left:0;top:0;width:100%;height:100%;object-fit:cover}
+  .ov{position:absolute;inset:0;background:rgba(40,48,92,.34);opacity:0;transition:opacity .5s;z-index:4}
+  .glow{position:absolute;inset:0;opacity:0;transition:opacity .5s;z-index:5}
+  /* 宠物 + 装饰共用一个会上下浮动的容器 → 装饰永远黏在宠物身上一起动 */
+  .pet-stage{position:absolute;z-index:7;width:32%;aspect-ratio:1;bottom:18%;left:50%;transform:translateX(-50%);transform-origin:bottom center}
+  .pet-stage.bob{animation:bob 2.6s ease-in-out infinite}
+  .pet-stage.hop{animation:hop .5s ease}
+  .pet-body{display:block;width:100%;height:100%;object-fit:contain;image-rendering:pixelated}
+  .pet-body.sick{filter:grayscale(.55) brightness(.96)}
+  .pet-acc{position:absolute;inset:0;pointer-events:none}              /* 装饰层,跟宠物同一个 box */
+  .pet-acc svg,.pet-acc img{position:absolute;image-rendering:pixelated}
+  @keyframes bob{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(-6%)}}
+  @keyframes hop{0%{transform:translateX(-50%) translateY(0)}35%{transform:translateX(-50%) translateY(-26%) scaleY(1.05)}70%{transform:translateX(-50%) translateY(0) scaleY(.95)}100%{transform:translateX(-50%) translateY(0)}}
+  .shell{position:absolute;inset:0;width:100%;height:100%;z-index:10;pointer-events:none}
+  /* 透明热区:盖在「机壳上画好的 3 个按钮」上,点它们触发 ◀●▶,不另画按钮 */
+  .hot{position:absolute;width:12%;aspect-ratio:1;border-radius:50%;transform:translate(-50%,-50%);z-index:11;cursor:pointer}
+  .hot:active{background:rgba(255,255,255,.22)}
+
+  .hud{position:absolute;top:5px;left:7px;right:7px;z-index:8;display:flex;justify-content:space-between;font-size:9.5px;color:#5a4750;pointer-events:none}
+  .hud .pill{background:rgba(255,255,255,.8);border-radius:8px;padding:1px 6px;display:flex;gap:3px;align-items:center;font-weight:700}
+  .coinic{display:inline-flex;flex:none}
+  .coinic svg,.coinic img{display:block;width:100%;height:100%}
+  .hud .coinic{width:12px;height:12px}
+  .emote{position:absolute;z-index:9;width:22px;height:22px;pointer-events:none;animation:floatup 1s ease forwards}
+  .emote svg{width:100%;height:100%;display:block}
+  @keyframes floatup{0%{transform:translateY(0) scale(.6);opacity:0}20%{opacity:1}100%{transform:translateY(-46px) scale(1.1);opacity:0}}
+  .acts{position:absolute;left:0;right:0;bottom:3px;z-index:8;display:flex;justify-content:space-around;padding:0 6px}
+  .act{opacity:.42;transition:.15s;cursor:pointer;display:flex;flex-direction:column;align-items:center;line-height:1}
+  .act svg{width:14px;height:14px;color:#5a4750}
+  .act img.px{position:static;display:block;width:16px;height:16px;object-fit:contain;image-rendering:pixelated}
+  .act .t{font-size:6.5px;margin-top:1px;color:#5a4750}
+  .act.sel{opacity:1;transform:translateY(-3px)} .act.sel svg{color:var(--accent)}
+  .treat{position:absolute;z-index:8;width:28px;height:28px;cursor:pointer;transition:top linear;will-change:top}
+  .treat svg,.treat img{width:100%;height:100%;display:block;image-rendering:pixelated;filter:drop-shadow(0 1px 1px rgba(0,0,0,.18))}
+  .treat.caught{animation:pop .25s ease forwards}
+  @keyframes pop{to{transform:scale(1.8);opacity:0}}
+  .gtop{position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:9;background:rgba(0,0,0,.6);color:#fff;font-size:10px;padding:3px 10px;border-radius:20px;white-space:nowrap;pointer-events:none;text-align:center}
+
+  .secbar{display:flex;align-items:center;gap:8px;width:100%;font-size:11px;color:var(--muted);font-weight:700;letter-spacing:1px}
+  .secbar::after{content:"";flex:1;height:1px;background:var(--line)}
+  .themebar{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;width:100%;min-height:30px}
+  .tchip{border:1.5px solid var(--line);background:#fff;border-radius:20px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;color:var(--ink);white-space:nowrap}
+  .tchip.sel{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .statusline{font-size:12.5px;color:var(--ink);text-align:center;background:#fff;border:1px solid var(--line);border-radius:20px;padding:7px 14px;font-weight:600}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:13px 14px;width:100%}
+  .card h2{font-size:11.5px;margin:0 0 10px;letter-spacing:1px;color:var(--muted);font-weight:800;display:flex;justify-content:space-between;align-items:center}
+  .coins{display:flex;gap:4px;align-items:center;color:var(--ink);font-size:14px;font-weight:800}
+  .coins .coinic{width:15px;height:15px}
+  .stat{display:flex;align-items:center;gap:9px;margin-bottom:9px} .stat:last-child{margin-bottom:0}
+  .stat .lbl{width:34px;font-size:12px;flex:none;font-weight:700}
+  .bar{flex:1;height:13px;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .bar i{display:block;height:100%;border-radius:8px;transition:width .35s,background .35s}
+  .stat .pct{width:30px;text-align:right;font-size:11px;color:var(--muted)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .btn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:12px;padding:11px 8px;font-size:13.5px;cursor:pointer;font-weight:700;transition:.08s;display:flex;align-items:center;justify-content:center;gap:6px}
+  .btn:active{transform:scale(.96)} .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)} .btn.wide{width:100%}
+  .btn svg{width:16px;height:16px} .btn.primary svg{color:#fff}
+  .btn img.px{width:22px;height:22px;object-fit:contain;image-rendering:pixelated}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  .mini{flex:1;border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px;font-size:11.5px;cursor:pointer;font-weight:700;text-align:center;white-space:nowrap}
+  .shop{display:flex;flex-direction:column;gap:8px}
+  .item{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:7px 10px;background:#fff}
+  .item .ic{width:24px;height:24px;flex:none;color:var(--accent)} .item .ic svg{width:100%;height:100%}
+  .item .nm{flex:1;font-size:13px;font-weight:700} .item .nm small{display:block;font-size:10.5px;color:var(--muted);font-weight:400}
+  .item .buy{border:1px solid var(--accent);color:var(--accent);background:transparent;border-radius:14px;padding:4px 11px;font-size:12px;cursor:pointer;font-weight:700;display:flex;gap:4px;align-items:center;white-space:nowrap}
+  .item .buy .coinic{width:12px;height:12px}
+  .inject{background:#fbf3f6;border:1px dashed var(--accent);border-radius:12px;padding:11px 12px;font-size:12px;white-space:pre-wrap;line-height:1.7;font-family:ui-monospace,Menlo,Consolas,monospace;color:#5a4750}
+  .note{font-size:11px;color:var(--muted);margin-top:8px}
+  .acc-on{position:absolute;image-rendering:pixelated}
+  .accclear{border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:14px;padding:3px 12px;font-size:11.5px;cursor:pointer;font-weight:700}
+  .accpick{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .accchip{border:1px solid var(--line);background:#fff;border-radius:13px;padding:8px 4px 5px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;font-size:11px;font-weight:700;color:var(--ink);transition:.1s}
+  .accchip:active{transform:scale(.95)}
+  .accchip img{width:40px;height:40px;object-fit:contain;image-rendering:pixelated}
+  .accchip.sel{border-color:var(--accent);background:#fde9f0}
+  .toast{position:absolute;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:#5a4750;color:#fff;padding:9px 18px;border-radius:22px;font-size:13px;opacity:0;transition:.25s;z-index:99;pointer-events:none}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style></head>
+<body>
+<div class="phone-frame">
+  <div class="notch"></div>
+  <div class="status-bar"><span id="clock">--:--</span>
+    <span class="icons"><svg width="16" height="11" viewBox="0 0 16 11"><rect x="0" y="7" width="2.5" height="4" rx="1" fill="currentColor"/><rect x="4" y="5" width="2.5" height="6" rx="1" fill="currentColor"/><rect x="8" y="3" width="2.5" height="8" rx="1" fill="currentColor"/><rect x="12" y="1" width="2.5" height="10" rx="1" fill="currentColor"/></svg>
+    <span style="font-size:11px">82%</span><svg width="22" height="11" viewBox="0 0 22 11"><rect x="0.5" y="0.5" width="18" height="10" rx="2.5" fill="none" stroke="currentColor"/><rect x="2" y="2" width="13" height="7" rx="1" fill="currentColor"/><rect x="19.5" y="3.5" width="1.5" height="4" rx="0.7" fill="currentColor"/></svg></span>
+  </div>
+  <div class="app-head"><span class="back">‹</span>电子宠物机</div>
+  <div class="body">
+    <div class="device" id="device">
+      <div class="screen" id="screen"><div class="room" id="room">
+        <img class="bg" id="bg">
+        <div class="ov" id="ov"></div>
+        <div class="glow" id="glow"></div>
+        <div class="pet-stage bob" id="petStage"><img class="pet-body" id="pet"><div class="pet-acc" id="petAcc"></div></div>
+        <div class="hud"><div class="pill"><span class="coinic" data-coin></span><span id="hudCoins">30</span></div><div class="pill" id="hudName">糯米 · 成年</div></div>
+        <div class="acts" id="acts"></div>
+        <div class="gtop" id="gtop" style="display:none"></div>
+      </div></div>
+      <img class="shell" id="shell">
+      <!-- 3 个热区,对准机壳画好的按钮:◀ 选择 / ● 确定 / 选择 ▶ -->
+      <div class="hot" id="hA" style="left:35.4%;top:81.4%" title="◀ 选择"></div>
+      <div class="hot" id="hB" style="left:50%;top:81.4%" title="● 确定"></div>
+      <div class="hot" id="hC" style="left:64.7%;top:81.4%" title="选择 ▶"></div>
+    </div>
+
+    <div class="secbar">机壳形状</div>
+    <div class="themebar" id="shellbar"></div>
+    <div class="secbar">房间主题</div>
+    <div class="themebar" id="themebar"></div>
+    <div class="statusline" id="statusline">糯米此刻心情很好~</div>
+
+    <div class="card">
+      <h2><span>状态</span><span class="coins"><span class="coinic" data-coin></span><span id="coins1">30</span></span></h2>
+      <div id="stats"></div>
+      <div class="grid2" id="actBtns" style="margin-top:12px"></div>
+      <div class="row" style="margin-top:10px">
+        <button class="mini" id="ffwd">过几小时</button>
+        <button class="mini" id="night">预览夜晚</button>
+        <button class="mini" id="reset">重置</button>
+      </div>
+      <div class="note">屏幕下方 3 个按钮 = 机壳上那三颗:◀ 左选 · ● 确定 · 选择 ▶。也可直接点上面的按钮。</div>
+    </div>
+
+    <div class="card">
+      <h2><span>装饰 · 打扮一下</span><button class="accclear" id="accClear">全脱下</button></h2>
+      <div class="accpick" id="accpick"></div>
+      <div class="note">点一下给它戴上 / 脱下,可以同时戴好几样。装饰会跟着宠物一起上下浮动。</div>
+    </div>
+
+    <div class="card">
+      <h2><span>赚金币 · 商店</span><span class="coins"><span class="coinic" data-coin></span><span id="coins2">30</span></span></h2>
+      <button class="btn primary wide" id="playGame">接食物小游戏(赢金币)</button>
+      <div class="note" style="margin:8px 0 12px">开始后,食物从屏幕上方掉下来,<b>点中它就接住 +金币</b>,25 秒一局。</div>
+      <div class="shop" id="shop"></div>
+    </div>
+
+    <div class="card">
+      <h2>AI 在聊天里看到的状态</h2>
+      <div class="inject" id="inject"></div>
+      <div class="note">铁律 3:只陈述事实,<b>不写</b>「你该多陪它」这类行为引导。白天/夜晚随手机真实时间自动切换。</div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+const A = '../pet-machine-assets';
+const $ = s => document.querySelector(s);
+const clamp = v => Math.max(0, Math.min(100, v));
+
+/* ---- SVG 图标(代替 emoji,统一 currentColor) ---- */
+const IC = {
+  feed:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 3v18M11 3v6a4 4 0 0 1-4 4M17 3c-1.5 0-2.5 2-2.5 5s1 4 2.5 4 2.5-1 2.5-4-1-5-2.5-5zM17 12v9"/></svg>',
+  bath:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="7" r="2.5"/><circle cx="16" cy="9" r="1.8"/><path d="M3 14h18v2a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/></svg>',
+  play:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M5 9c4.5 2.5 9.5 2.5 14 0M4 14c5.5 2.5 10.5 2.5 16-1"/></svg>',
+  sleep:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8z"/></svg>',
+  fish:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 12c4-5 11-5 15 0-4 5-11 5-15 0z"/><path d="M17 9l4 3-4 3z"/><circle cx="7" cy="11" r="1" fill="#fff"/></svg>',
+  cake:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 21v-9h16v9z"/><path d="M4 12l8-6 8 6z"/><circle cx="12" cy="4" r="1.3"/></svg>',
+  yarn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M5 9c4.5 2.5 9.5 2.5 14 0M4 14c5.5 2.5 10.5 2.5 16-1"/></svg>',
+  tub:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="6" r="2"/><circle cx="15" cy="8" r="1.4"/><path d="M3 13h18v2a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4zM6 19v2M18 19v2"/></svg>',
+  carrot:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 20L14.5 7.5l2 2z"/><path d="M14 7l1.5-3M16.5 8.5l3-2" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>',
+  cookie:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="9"/><circle cx="9" cy="9" r="1.2" fill="#fff"/><circle cx="14.5" cy="11" r="1.2" fill="#fff"/><circle cx="11" cy="15" r="1.2" fill="#fff"/></svg>',
+  heart:'<svg viewBox="0 0 24 24" fill="#e88aa8"><path d="M12 21s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.5-7 10-7 10z"/></svg>',
+  coin:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="#f7d067" stroke="#e0a93c" stroke-width="1.6"/><circle cx="12" cy="12" r="6.4" fill="none" stroke="#fbe9a6" stroke-width="1.2"/><path d="M12 8.4L12.9 10.8L15.4 10.9L13.4 12.5L14.1 14.9L12 13.5L9.9 14.9L10.6 12.5L8.6 10.9L11.1 10.8Z" fill="#fff6d4"/></svg>',
+};
+
+const THEMES = {
+  'cream-bedroom': { zh:'奶油卧室', bgy:.80,
+    items:[['furn_window',.05,.09,.27],['furn_picture',.44,.11,.12],['furn_shelf',.63,.10,.33],['furn_plant',.04,.49,.18],['furn_rug',.17,.71,.38],['furn_bed',.60,.39,.36],['furn_lamp_off',.19,.52,.15]],
+    lamp:['furn_lamp_on',.19,.52,.15], glow:[.26,.60], pet:[.32,.50,.19] },
+  'forest-cabin': { zh:'森林木屋', bgy:.5,
+    items:[['furn_window',.05,.11,.28],['furn_log_shelf',.64,.14,.30],['furn_hanging_lamp',.50,.05,.12],['furn_plant',.02,.55,.16],['furn_table',.40,.50,.27],['furn_chair',.66,.49,.20],['furn_mushroom_stool',.84,.60,.17]],
+    lamp:['furn_hanging_lamp',.50,.05,.12], glow:[.54,.52], pet:[.32,.31,.12] },
+  'seaside': { zh:'海边小屋', bgy:.5,
+    items:[['furn_window',.04,.11,.29],['furn_shell_shelf',.66,.14,.30],['furn_shell',.71,.20,.09],['furn_swim_ring',.02,.64,.18],['furn_surfboard',.82,.56,.26],['furn_umbrella',.44,.40,.28],['furn_beach_chair',.64,.50,.26]],
+    lamp:null, glow:[.15,.22], pet:[.32,.30,.10] },
+  'sakura-room': { zh:'樱花和室', bgy:.5,
+    items:[['furn_window',.05,.11,.29],['furn_hanging_scroll',.75,.12,.12],['furn_bonsai',.02,.52,.16],['furn_cushion',.17,.64,.22],['furn_low_table',.35,.56,.30],['furn_vase',.43,.46,.10],['furn_paper_lantern',.82,.64,.16]],
+    lamp:['furn_paper_lantern',.82,.64,.16], glow:[.90,.70], pet:[.32,.70,.10] },
+  'starry-room': { zh:'星空小屋', bgy:.5,
+    items:[['furn_window',.04,.11,.28],['furn_moon_wall',.40,.08,.16],['furn_planet_shelf',.66,.12,.30],['furn_planet_rug',.34,.66,.30],['furn_cloud_cushion',.03,.62,.20],['furn_star_lamp',.24,.42,.15],['furn_rocket_bed',.64,.40,.30]],
+    lamp:['furn_star_lamp',.24,.42,.15], glow:[.32,.56], pet:[.32,.48,.12] },
+  'sweets-shop': { zh:'甜品店', bgy:.5,
+    items:[['furn_window',.04,.11,.28],['furn_hanging_sign',.42,.06,.14],['furn_dessert_rack',.70,.12,.26],['furn_milk_tea',.07,.58,.12],['furn_cupcake_stand',.28,.54,.20],['furn_high_stool',.49,.56,.14],['furn_cake_cabinet',.64,.40,.30]],
+    lamp:['furn_cake_cabinet',.64,.40,.30], glow:[.78,.58], pet:[.32,.30,.10] },
+};
+const THEME_KEYS = Object.keys(THEMES);
+
+// 4 种机壳 —— 每种屏幕洞 + 3 按钮位置不同(脚本量出来的),切壳时同步更新。
+// screen:[left,top,w,h]%  btns:[x1,x2,x3]%  btnY:%
+const SHELLS = {
+  square: { label:'方形', src:'shell_square', screen:[19.6,22.8,60.6,48.7], btns:[35.4,50.0,64.5], btnY:81.8 },
+  egg:    { label:'蛋形', src:'shell_egg',    screen:[27.8,28.9,43.9,41.4], btns:[39.3,49.8,60.3], btnY:81.0 },
+  cloud:  { label:'云朵', src:'shell_cloud',  screen:[27.4,29.9,45.7,35.1], btns:[39.3,50.3,61.2], btnY:77.6 },
+  house:  { label:'房子', src:'shell_house',  screen:[28.4,34.1,43.3,35.2], btns:[39.6,50.0,60.4], btnY:80.4 },
+};
+const SHELL_KEYS = Object.keys(SHELLS);
+
+const STATS = [
+  { k:'hunger', label:'饱食', color:'#f0a868' }, { k:'mood', label:'心情', color:'#e88aa8' },
+  { k:'energy', label:'精力', color:'#7bbce0' }, { k:'clean', label:'清洁', color:'#86cdb6' },
+];
+const UI = A + '/ui';                                // 动作图标 PNG(128² 透明)
+const ACCDIR = A + '/accessories';                   // 宠物装饰 PNG(160² 透明)
+const uiIcon = name => `<img class="px" src="${UI}/${name}.png" alt="">`;
+const ACTS = [
+  { key:'feed',  img:'icon_feed',  icon:IC.feed,  label:'喂食', stat:'hunger', amt:22 },
+  { key:'bath',  img:'icon_bath',  icon:IC.bath,  label:'洗澡', stat:'clean',  amt:30 },
+  { key:'play',  img:'icon_play',  icon:IC.play,  label:'玩耍', stat:'mood',   amt:22, costEnergy:8 },
+  { key:'sleep', img:'icon_sleep', icon:IC.sleep, label:'睡觉', stat:'energy', amt:34 },
+];
+const actIcon = a => a.img ? uiIcon(a.img) : a.icon;
+// 装饰:每件 160² 透明 PNG,内容居中、横向占 ~75.6%。w=贴在宠物框上的宽度%,cy=内容中心 Y%(贴猫身坐标系),top=cy-w/2。
+const ACC = [
+  { key:'hat',       img:'acc_hat',       nm:'帽子',   w:62, cy:23 },
+  { key:'bow',       img:'acc_bow',       nm:'蝴蝶结', w:46, cy:16 },
+  { key:'crown',     img:'acc_crown',     nm:'皇冠',   w:52, cy:17 },
+  { key:'flower',    img:'acc_flower',    nm:'头花',   w:34, cy:17 },
+  { key:'glasses',   img:'acc_glasses',   nm:'眼镜',   w:56, cy:45 },
+  { key:'scarf',     img:'acc_scarf',     nm:'围巾',   w:62, cy:73 },
+  { key:'headphone', img:'acc_headphone', nm:'耳机',   w:80, cy:33 },
+];
+const ITEMS = A + '/items';                          // 真实物品 PNG(美术出图,160² 透明)
+const GAME_BG = A + '/minigames/game_picnic.png';    // 接食物小游戏背景(640² 不透明)
+const imgIcon = name => `<img src="${ITEMS}/${name}.png" alt="" style="width:100%;height:100%;object-fit:contain;image-rendering:pixelated">`;
+// 金币标志:SVG 小金星币(user 定了暂不做 PNG 版),HUD / 状态卡 / 商店三处统一走它
+const coinHTML = IC.coin;
+const SHOP = [
+  { img:'item_fish',     nm:'小鱼干',   sub:'饱食 +30',          cost:8,  stat:'hunger', amt:30 },
+  { img:'item_cake',     nm:'草莓蛋糕', sub:'饱食 +18 · 心情 +12', cost:14, stat:'hunger', amt:18, mood:12 },
+  { img:'item_riceball', nm:'饭团',     sub:'饱食 +26',          cost:10, stat:'hunger', amt:26 },
+  { icon:IC.yarn,        nm:'毛线球',   sub:'心情 +32',          cost:12, stat:'mood',   amt:32 },
+  { icon:IC.tub,         nm:'泡泡浴',   sub:'清洁 +45',          cost:11, stat:'clean',  amt:45 },
+];
+// 掉落道具 = 6 个真实食物 PNG(跟商店食物一份两用)
+const TREATS = ['item_fish','item_cake','item_carrot','item_cookie','item_milk','item_riceball'];
+const itemIcon = it => it.img ? imgIcon(it.img) : it.icon;
+
+const S = { hunger:60, mood:78, energy:70, clean:55, coins:30, day:12, night:false, nightOverride:null, name:'糯米', theme:'cream-bedroom', shell:'square', cursor:0, playing:false, worn:{} };
+const avg = () => (S.hunger + S.mood + S.energy + S.clean) / 4;
+const autoNight = () => { const h = new Date().getHours(); return h < 6 || h >= 18; };
+
+/* ---------- room ---------- */
+function buildRoom(){
+  const L = THEMES[S.theme], room = $('#room'), dir = `${A}/themes/${S.theme}`;
+  [...room.querySelectorAll('.furn')].forEach(n => n.remove());
+  document.getElementById('litlamp')?.remove();
+  $('#bg').src = dir + '/bg.png';
+  $('#bg').style.objectPosition = `50% ${(L.bgy ?? .5) * 100}%`;
+  $('#pet').src = A + '/pets/pet_cat.png';
+  const glow = $('#glow');
+  L.items.forEach(([name, l, t, w]) => {
+    if (name === 'furn_window') name = S.night ? 'furn_window_night' : 'furn_window_day';
+    const img = document.createElement('img');
+    img.className = 'furn'; img.src = `${dir}/${name}.png`;
+    img.style.cssText = `left:${l*100}%;top:${t*100}%;width:${w*100}%;z-index:2`;
+    glow.insertAdjacentElement('beforebegin', img);
+  });
+  $('#ov').style.opacity = S.night ? 1 : 0;
+  glow.style.opacity = S.night ? 1 : 0;
+  glow.style.background = `radial-gradient(circle at ${L.glow[0]*100}% ${L.glow[1]*100}%, rgba(255,226,165,.55), rgba(255,226,165,0) 40%)`;
+  if (S.night && L.lamp) {
+    const [n, l, t, w] = L.lamp;
+    const img = document.createElement('img');
+    img.id = 'litlamp'; img.className = 'furn'; img.src = `${dir}/${n}.png`;
+    img.style.cssText = `left:${l*100}%;top:${t*100}%;width:${w*100}%;z-index:6`;
+    glow.insertAdjacentElement('afterend', img);
+  }
+  const [pw, pcx, pb] = L.pet, stage = $('#petStage');
+  stage.style.left = pcx*100 + '%'; stage.style.width = pw*100 + '%'; stage.style.bottom = pb*100 + '%';
+}
+function renderThemebar(){
+  $('#themebar').innerHTML = THEME_KEYS.map(k => `<button class="tchip ${k === S.theme ? 'sel' : ''}" data-k="${k}">${THEMES[k].zh}</button>`).join('');
+  $('#themebar').querySelectorAll('.tchip').forEach(b => b.onclick = () => { S.theme = b.dataset.k; buildRoom(); renderThemebar(); });
+}
+// 切机壳:换壳图 + 把屏幕洞和 3 个按钮热区挪到这种壳对应的位置
+function applyShell(){
+  const sh = SHELLS[S.shell];
+  $('#shell').src = `${A}/shells/${sh.src}.png`;
+  const [l, t, w, h] = sh.screen, scr = $('#screen');
+  scr.style.left = l + '%'; scr.style.top = t + '%'; scr.style.width = w + '%'; scr.style.height = h + '%';
+  [['#hA',0],['#hB',1],['#hC',2]].forEach(([id, i]) => { const el = $(id); el.style.left = sh.btns[i] + '%'; el.style.top = sh.btnY + '%'; });
+}
+function renderShellbar(){
+  $('#shellbar').innerHTML = SHELL_KEYS.map(k => `<button class="tchip ${k === S.shell ? 'sel' : ''}" data-k="${k}">${SHELLS[k].label}</button>`).join('');
+  $('#shellbar').querySelectorAll('.tchip').forEach(b => b.onclick = () => { S.shell = b.dataset.k; applyShell(); renderShellbar(); });
+}
+
+/* ---------- stats ---------- */
+function renderStats(){
+  $('#stats').innerHTML = STATS.map(s => {
+    const v = Math.round(S[s.k]);
+    return `<div class="stat"><div class="lbl">${s.label}</div><div class="bar"><i style="width:${v}%;background:${s.color}"></i></div><div class="pct">${v}</div></div>`;
+  }).join('');
+  const c = Math.round(S.coins);
+  ['#coins1','#coins2','#hudCoins'].forEach(id => $(id).textContent = c);
+  const stage = S.day < 3 ? '幼年' : S.day < 7 ? '少年' : '成年';
+  $('#hudName').textContent = `${S.name} · ${stage}`;
+  const sick = avg() < 25;
+  $('#pet').classList.toggle('sick', sick);
+  $('#statusline').textContent = statusLine(sick);
+  $('#inject').textContent = aiStatus(stage, sick);
+}
+function statusLine(sick){
+  if (sick) return `${S.name}蔫蔫的,需要好好照顾…`;
+  if (S.hunger < 35) return `${S.name}有点饿了,喂点东西吧~`;
+  if (S.clean < 35) return `${S.name}有点脏脏的,该洗澡啦~`;
+  if (S.energy < 35) return `${S.name}打了个哈欠,困了…`;
+  if (S.mood >= 70) return `${S.name}此刻心情很好~`;
+  return `${S.name}看着你,等你陪它玩~`;
+}
+function aiStatus(stage, sick){
+  const room = THEMES[S.theme].zh, f = [];
+  f.push(S.mood >= 66 ? '心情很好' : S.mood >= 33 ? '心情一般' : '闷闷不乐');
+  f.push(S.hunger < 40 ? '有点饿了' : '吃得饱饱的');
+  f.push(S.energy < 40 ? '有点困' : '精力充沛');
+  f.push(S.clean < 40 ? '该洗澡了' : '干干净净');
+  return `# 当前宠物\n你和樱一起养着一只叫「${S.name}」的奶油色小猫(电子宠物机),住在「${room}」,养到第 ${S.day} 天,现在是${stage}。\n此刻它${f.join('、')}。` + (sick ? `\n它看起来蔫蔫的,需要照顾。` : ``);
+}
+
+/* ---------- interactions ---------- */
+function floatEmote(svg){
+  const e = document.createElement('div');
+  e.className = 'emote'; e.innerHTML = svg;
+  e.style.left = '44%'; e.style.bottom = '52%';
+  $('#room').appendChild(e); setTimeout(() => e.remove(), 1000);
+}
+function reactHop(){ const p = $('#petStage'); p.classList.remove('hop'); void p.offsetWidth; p.classList.add('hop'); }
+// 装饰层:每件真图叠在宠物身上,#petAcc 在会浮动的 #petStage 里 → 自动跟宠物一起上下浮动。
+function renderAcc(){
+  $('#petAcc').innerHTML = ACC.filter(a => S.worn[a.key]).map(a => {
+    const top = a.cy - a.w / 2;
+    return `<img class="acc-on" src="${ACCDIR}/${a.img}.png" alt="" style="left:50%;top:${top}%;width:${a.w}%;transform:translateX(-50%)">`;
+  }).join('');
+}
+function renderAccPick(){
+  $('#accpick').innerHTML = ACC.map(a => `<button class="accchip ${S.worn[a.key] ? 'sel' : ''}" data-k="${a.key}"><img src="${ACCDIR}/${a.img}.png" alt=""><span>${a.nm}</span></button>`).join('');
+  $('#accpick').querySelectorAll('.accchip').forEach(b => b.onclick = () => { S.worn[b.dataset.k] = !S.worn[b.dataset.k]; renderAcc(); renderAccPick(); });
+}
+function doAction(key){
+  if (S.playing) return;
+  const a = ACTS.find(x => x.key === key); if (!a) return;
+  S[a.stat] = clamp(S[a.stat] + a.amt);
+  if (a.costEnergy) S.energy = clamp(S.energy - a.costEnergy);
+  floatEmote(IC.heart); reactHop(); renderStats();
+}
+function buy(item){
+  if (S.coins < item.cost) { toast('金币不够,去玩小游戏赚~'); return; }
+  S.coins -= item.cost; S[item.stat] = clamp(S[item.stat] + item.amt);
+  if (item.mood) S.mood = clamp(S.mood + item.mood);
+  floatEmote(itemIcon(item)); reactHop(); renderStats(); toast(`买了${item.nm},喂给${S.name}啦`);
+}
+function renderShop(){
+  $('#shop').innerHTML = SHOP.map((it, i) => `<div class="item"><span class="ic">${itemIcon(it)}</span><div class="nm">${it.nm}<small>${it.sub}</small></div><button class="buy" data-i="${i}"><span class="coinic">${coinHTML}</span>${it.cost}</button></div>`).join('');
+  $('#shop').querySelectorAll('.buy').forEach(b => b.onclick = () => buy(SHOP[+b.dataset.i]));
+}
+function renderActBtns(){
+  $('#actBtns').innerHTML = ACTS.map(a => `<button class="btn" data-act="${a.key}">${actIcon(a)}${a.label}</button>`).join('');
+  $('#actBtns').querySelectorAll('[data-act]').forEach(b => b.onclick = () => doAction(b.dataset.act));
+}
+function tickDecay(mult = 1){
+  S.hunger = clamp(S.hunger - 2*mult); S.mood = clamp(S.mood - 1.5*mult);
+  S.energy = clamp(S.energy - 1.4*mult); S.clean = clamp(S.clean - 1.2*mult);
+  renderStats();
+}
+
+/* ---------- mini-game ---------- */
+let game = null;
+function startGame(){
+  if (S.playing) return;
+  S.playing = true; let score = 0, left = 25;
+  const gtop = $('#gtop'); gtop.style.display = ''; gtop.textContent = `点掉落的食物接住它!  0 个  ·  ${left}s`;
+  const room = $('#room');
+  // 小游戏:换成「接食物」场景背景,藏掉房间家具/夜灯,只留宠物在底下接
+  $('#bg').src = GAME_BG; $('#bg').style.objectPosition = '50% 50%';
+  room.querySelectorAll('.furn').forEach(f => f.style.display = 'none');
+  $('#ov').style.opacity = 0; $('#glow').style.opacity = 0;
+  const spawn = () => {
+    if (!S.playing) return;
+    const t = document.createElement('div');
+    t.className = 'treat';
+    t.innerHTML = `<img src="${ITEMS}/${TREATS[Math.floor(Math.random()*TREATS.length)]}.png" alt="">`;
+    t.style.left = (8 + Math.random()*78) + '%'; t.style.top = '-9%';
+    room.appendChild(t);
+    requestAnimationFrame(() => { t.style.transitionDuration = (1.9 + Math.random()*1.2) + 's'; t.style.top = '90%'; });
+    t.addEventListener('click', () => {
+      if (t.dataset.done) return; t.dataset.done = '1';
+      score += 1 + (Math.random() < 0.25 ? 1 : 0);
+      gtop.textContent = `点掉落的食物接住它!  ${score} 个  ·  ${left}s`;
+      t.classList.add('caught'); reactHop(); setTimeout(() => t.remove(), 250);
+    });
+    t.addEventListener('transitionend', () => { if (!t.dataset.done) t.remove(); });
+  };
+  const spawnIv = setInterval(spawn, 650);
+  const tickIv = setInterval(() => { left--; gtop.textContent = `点掉落的食物接住它!  ${score} 个  ·  ${left}s`; if (left <= 0) endGame(score); }, 1000);
+  spawn(); game = { spawnIv, tickIv };
+}
+function endGame(score){
+  if (!S.playing) return;
+  S.playing = false; clearInterval(game.spawnIv); clearInterval(game.tickIv);
+  [...$('#room').querySelectorAll('.treat')].forEach(n => n.remove());
+  $('#gtop').style.display = 'none';
+  buildRoom();   // 还原房间背景 + 家具 + 夜灯
+  S.coins += score; S.mood = clamp(S.mood + Math.min(12, score));
+  renderStats(); toast(`小游戏结束!接到 ${score} 个 → 得 ${score} 金币`);
+}
+
+/* ---------- cursor (机壳 3 键 + 屏内光标) ---------- */
+function renderActs(){
+  $('#acts').innerHTML = ACTS.map((a, i) => `<div class="act ${i === S.cursor ? 'sel' : ''}" data-i="${i}">${actIcon(a)}<div class="t">${a.label}</div></div>`).join('');
+  $('#acts').querySelectorAll('.act').forEach(el => el.onclick = () => { S.cursor = +el.dataset.i; renderActs(); doAction(ACTS[S.cursor].key); });
+}
+function moveCursor(d){ S.cursor = (S.cursor + d + ACTS.length) % ACTS.length; renderActs(); }
+
+let toastTimer;
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 1900); }
+
+/* ---------- clock + 自动日夜(跟手机真实时间)---------- */
+function tickClock(){
+  const d = new Date();
+  $('#clock').textContent = `${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+  if (S.nightOverride === null) {            // 没手动预览时,跟真实时间自动切
+    const auto = autoNight();
+    if (auto !== S.night) { S.night = auto; buildRoom(); }
+  }
+  syncNightBtn();
+}
+function syncNightBtn(){ $('#night').textContent = S.night ? '预览白天' : '预览夜晚'; }
+
+function init(){
+  S.night = autoNight();
+  document.querySelectorAll('[data-coin]').forEach(e => e.innerHTML = coinHTML);
+  renderShellbar(); applyShell(); renderThemebar(); buildRoom(); renderStats(); renderShop(); renderActBtns(); renderActs(); renderAcc(); renderAccPick();
+  $('#playGame').onclick = startGame;
+  $('#ffwd').onclick = () => tickDecay(4);
+  $('#accClear').onclick = () => { S.worn = {}; renderAcc(); renderAccPick(); };
+  $('#night').onclick = () => { S.nightOverride = !S.night; S.night = S.nightOverride; buildRoom(); syncNightBtn(); };
+  $('#reset').onclick = () => { Object.assign(S, { hunger:60, mood:78, energy:70, clean:55, coins:30, day:12, nightOverride:null }); S.night = autoNight(); buildRoom(); renderStats(); syncNightBtn(); toast('重置好啦'); };
+  // 机壳 3 键映射
+  $('#hA').onclick = () => S.playing || moveCursor(-1);
+  $('#hB').onclick = () => S.playing ? null : doAction(ACTS[S.cursor].key);
+  $('#hC').onclick = () => S.playing || moveCursor(1);
+  tickClock(); setInterval(tickClock, 15000);
+  setInterval(() => { if (!S.playing) tickDecay(1); }, 6000);
+}
+init();
+</script>
+</body></html>

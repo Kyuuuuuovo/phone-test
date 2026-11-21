@@ -1,0 +1,48 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
+<title>日间 / 夜间(分层 · 均匀滤镜)</title>
+<style>
+  body{margin:0;background:#f3e9f0;display:flex;gap:40px;align-items:center;justify-content:center;min-height:100vh;flex-wrap:wrap;font-family:system-ui}
+  .device{position:relative;width:384px;height:384px;filter:drop-shadow(0 8px 16px rgba(0,0,0,.08))}
+  .screen{position:absolute;left:19.6%;top:22.8%;width:60.7%;height:48.7%;overflow:hidden;background:#fff}
+  .room{position:absolute;inset:0;overflow:hidden}
+  .room img{position:absolute;image-rendering:pixelated}
+  .bg{inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
+  .furn{z-index:2}
+  .bed{z-index:3}
+  .pet{z-index:7}                       /* 宠物最上,绝不被挡 */
+  .lamp{z-index:6}                      /* 台灯在滤镜之上(夜间也亮)、在宠物之下 */
+  .ov{position:absolute;inset:0;z-index:4;background:rgba(40,48,92,.34)}   /* 均匀夜间滤镜,盖住所有家具+背景 */
+  .glow{position:absolute;inset:0;z-index:5;background:radial-gradient(circle at 26% 58%, rgba(255,226,165,.55), rgba(255,226,165,0) 38%)}
+  .shell{position:absolute;inset:0;width:100%;height:100%;z-index:10;pointer-events:none}
+  .cap{position:absolute;bottom:-26px;left:0;right:0;text-align:center;font-size:13px;color:#888}
+</style></head><body>
+
+  <!-- 日间 -->
+  <div class="device"><div class="screen"><div class="room">
+    <img class="bg"   src="../pet-machine-assets/themes/cream-bedroom/bg.png">
+    <img class="furn" src="../pet-machine-assets/themes/cream-bedroom/furn_window_day.png" style="left:6%;top:9%;width:24%">
+    <img class="furn" src="../pet-machine-assets/themes/cream-bedroom/furn_picture.png"     style="left:43%;top:11%;width:12%">
+    <img class="furn" src="../pet-machine-assets/themes/cream-bedroom/furn_shelf.png"       style="left:62%;top:10%;width:33%">
+    <img class="furn" src="../pet-machine-assets/themes/cream-bedroom/furn_plant.png"       style="left:4%;top:49%;width:18%">
+    <img class="furn" src="../pet-machine-assets/themes/cream-bedroom/furn_rug.png"         style="left:17%;top:71%;width:38%">
+    <img class="bed"  src="../pet-machine-assets/themes/cream-bedroom/furn_bed.png"         style="left:60%;top:39%;width:36%">
+    <img class="lamp" src="../pet-machine-assets/themes/cream-bedroom/furn_lamp_off.png"    style="left:19%;top:52%;width:15%">
+    <img class="pet"  src="../pet-machine-assets/pets/pet_cat.png"                          style="left:50%;bottom:19%;width:32%;transform:translateX(-50%)">
+  </div></div><img class="shell" src="../pet-machine-assets/shells/shell_square.png"><div class="cap">☀ 日间</div></div>
+
+  <!-- 夜间:同一套素材 + 均匀滤镜,台灯(亮版)不压 + 暖光,窗户用夜空版 -->
+  <div class="device"><div class="screen"><div class="room">
+    <img class="bg"   src="../pet-machine-assets/themes/cream-bedroom/bg.png">
+    <img class="furn" src="../pet-machine-assets/themes/cream-bedroom/furn_window_night.png" style="left:6%;top:9%;width:24%">
+    <img class="furn" src="../pet-machine-assets/themes/cream-bedroom/furn_picture.png"       style="left:43%;top:11%;width:12%">
+    <img class="furn" src="../pet-machine-assets/themes/cream-bedroom/furn_shelf.png"         style="left:62%;top:10%;width:33%">
+    <img class="furn" src="../pet-machine-assets/themes/cream-bedroom/furn_plant.png"         style="left:4%;top:49%;width:18%">
+    <img class="furn" src="../pet-machine-assets/themes/cream-bedroom/furn_rug.png"           style="left:17%;top:71%;width:38%">
+    <img class="bed"  src="../pet-machine-assets/themes/cream-bedroom/furn_bed.png"           style="left:60%;top:39%;width:36%">
+    <div class="ov"></div>
+    <div class="glow"></div>
+    <img class="lamp" src="../pet-machine-assets/themes/cream-bedroom/furn_lamp_on.png"       style="left:19%;top:52%;width:15%">
+    <img class="pet"  src="../pet-machine-assets/pets/pet_cat.png"                            style="left:50%;bottom:19%;width:32%;transform:translateX(-50%)">
+  </div></div><img class="shell" src="../pet-machine-assets/shells/shell_square.png"><div class="cap">🌙 夜间(均匀压暗,只台灯亮)</div></div>
+
+</body></html>
